@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  createPost, createProject, deletePost, deleteProject, fetchAdminPosts, fetchAdminProjects,
-  updatePost, updateProject, type AdminPost, type AdminProject, type PostPayload, type ProjectPayload,
+  createPost, createProject, deletePost, deleteProject, fetchAdminPosts, fetchAdminProjects, fetchNotes,
+  updatePost, updateProject, type AdminNote, type AdminPost, type AdminProject, type PostPayload, type ProjectPayload,
 } from '../api/admin'
 
 const router = useRouter()
 const tab = ref<'posts' | 'projects'>('posts')
 const posts = ref<AdminPost[]>([])
 const projects = ref<AdminProject[]>([])
+const notes = ref<AdminNote[]>([])
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
@@ -29,8 +30,6 @@ const projectForm = reactive({
   status: '进行中', color: '#A6784C', displayOrder: 0,
 })
 
-const currentCount = computed(() => tab.value === 'posts' ? posts.value.length : projects.value.length)
-
 function handleAuthError(cause: unknown) {
   if (axios.isAxiosError(cause) && cause.response?.status === 401) {
     logout()
@@ -44,7 +43,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    ;[posts.value, projects.value] = await Promise.all([fetchAdminPosts(), fetchAdminProjects()])
+    ;[posts.value, projects.value, notes.value] = await Promise.all([fetchAdminPosts(), fetchAdminProjects(), fetchNotes()])
   } catch (cause) {
     if (!handleAuthError(cause)) error.value = '暂时无法读取内容，请确认后端服务正在运行。'
   } finally {
@@ -132,30 +131,44 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="admin-workspace section-wrap">
-    <header class="admin-workspace-head">
-      <div><p class="eyebrow"><span /> CONTENT OPERATIONS</p><h1>内容工作台</h1><p>{{ username }}，欢迎回来。今天也留下一些值得再次阅读的内容。</p></div>
-      <div class="admin-head-actions"><RouterLink class="button primary" to="/admin/notes">学习笔记 ✦</RouterLink><RouterLink class="button secondary" to="/">查看博客 ↗</RouterLink><button class="button secondary" type="button" @click="logout">退出</button></div>
-    </header>
+  <section class="admin-console">
+    <aside class="admin-sidebar">
+      <RouterLink class="admin-brand" to="/admin"><span>余</span><div><strong>余白后台</strong><small>ADMIN CONSOLE</small></div></RouterLink>
+      <nav aria-label="后台导航">
+        <p>工作空间</p>
+        <RouterLink class="active" to="/admin"><i>⌂</i><span>总览</span></RouterLink>
+        <button :class="{ active: tab === 'posts' }" @click="tab = 'posts'"><i>▤</i><span>文章管理</span><b>{{ posts.length }}</b></button>
+        <button :class="{ active: tab === 'projects' }" @click="tab = 'projects'"><i>◇</i><span>项目管理</span><b>{{ projects.length }}</b></button>
+        <p>创作</p>
+        <RouterLink class="notes-nav" to="/admin/notes"><i>✎</i><span>学习笔记</span><b>{{ notes.length }}</b></RouterLink>
+      </nav>
+      <footer><div class="admin-avatar">{{ username.slice(0, 1).toUpperCase() }}</div><div><strong>{{ username }}</strong><small>Administrator</small></div><button title="退出登录" @click="logout">↪</button></footer>
+    </aside>
 
-    <div class="admin-metrics"><article><span>ALL CONTENT</span><strong>{{ posts.length + projects.length }}</strong><small>全部记录</small></article><article><span>POSTS</span><strong>{{ posts.length }}</strong><small>已发布文章</small></article><article><span>PROJECTS</span><strong>{{ projects.length }}</strong><small>项目档案</small></article></div>
+    <main class="admin-main">
+      <header class="admin-topbar"><div><span class="admin-breadcrumb">后台管理 / 总览</span><h1>上午好，{{ username }}</h1></div><div><RouterLink to="/">查看博客 ↗</RouterLink><button @click="logout">退出登录</button></div></header>
 
-    <div class="admin-toolbar">
-      <div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="tab = 'posts'">文章</button><button :class="{ active: tab === 'projects' }" @click="tab = 'projects'">项目</button></div>
-      <span>{{ currentCount.toString().padStart(2, '0') }} RECORDS</span>
-      <button class="button primary" type="button" @click="newItem">＋ 新建{{ tab === 'posts' ? '文章' : '项目' }}</button>
-    </div>
+      <section class="admin-writing-hero">
+        <div><span class="writing-kicker">WRITING STUDIO · TYPORA MODE</span><h2>开始写一篇<br><em>学习笔记。</em></h2><p>所见即所得 Markdown、图片粘贴、KaTeX 公式、任务清单与自动保存，都在同一个安静的写作空间。</p><RouterLink class="admin-write-button" to="/admin/notes"><span>打开 Typora 写作台</span><b>→</b></RouterLink></div>
+        <div class="writing-preview" aria-hidden="true"><header><i /><i /><i /><span>learning-note.md</span></header><div><small># 今天学到的东西</small><strong>让知识留下结构，<br>而不只是痕迹。</strong><p>输入 <b>/</b> 快速插入 · 自动保存中</p></div><footer><span>Markdown</span><span>{{ notes.length }} NOTES</span></footer></div>
+      </section>
 
-    <p v-if="error" class="admin-error admin-page-error" role="alert">{{ error }}</p>
-    <div v-if="loading" class="admin-empty">正在读取内容…</div>
-    <div v-else-if="tab === 'posts'" class="admin-table">
-      <div class="admin-table-head"><span>编号</span><span>内容</span><span>状态</span><span>操作</span></div>
-      <article v-for="post in posts" :key="post.id"><span class="admin-index">{{ post.number }}</span><div><small>{{ post.category }} · {{ post.date }}</small><strong>{{ post.title }}</strong><p>{{ post.excerpt }}</p></div><span class="admin-status" :class="{ featured: post.featured }">{{ post.featured ? '精选' : '已发布' }}</span><div class="admin-row-actions"><button @click="editPost(post)">编辑</button><button class="danger" @click="remove('post', post.id, post.title)">删除</button></div></article>
-    </div>
-    <div v-else class="admin-table">
-      <div class="admin-table-head"><span>顺序</span><span>内容</span><span>状态</span><span>操作</span></div>
-      <article v-for="project in projects" :key="project.id"><span class="admin-index">{{ String(project.displayOrder).padStart(2, '0') }}</span><div><small>{{ project.year }} · {{ project.stack.join(' / ') }}</small><strong>{{ project.title }}</strong><p>{{ project.description }}</p></div><span class="admin-status">{{ project.status }}</span><div class="admin-row-actions"><button @click="editProject(project)">编辑</button><button class="danger" @click="remove('project', project.id, project.title)">删除</button></div></article>
-    </div>
+      <section class="admin-stat-grid"><article><span>文章</span><strong>{{ posts.length }}</strong><small>POSTS</small></article><article><span>项目</span><strong>{{ projects.length }}</strong><small>PROJECTS</small></article><article><span>学习笔记</span><strong>{{ notes.length }}</strong><small>NOTES</small></article><article><span>公开笔记</span><strong>{{ notes.filter(note => note.status === 'PUBLISHED').length }}</strong><small>PUBLISHED</small></article></section>
+
+      <section class="admin-content-section">
+        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ tab === 'posts' ? '文章管理' : '项目管理' }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="tab = 'posts'">文章</button><button :class="{ active: tab === 'projects' }" @click="tab = 'projects'">项目</button></div><button class="button primary" type="button" @click="newItem">＋ 新建{{ tab === 'posts' ? '文章' : '项目' }}</button></header>
+        <p v-if="error" class="admin-error admin-page-error" role="alert">{{ error }}</p>
+        <div v-if="loading" class="admin-empty">正在读取管理数据…</div>
+        <div v-else-if="tab === 'posts'" class="admin-table">
+          <div class="admin-table-head"><span>编号</span><span>内容</span><span>状态</span><span>操作</span></div>
+          <article v-for="post in posts" :key="post.id"><span class="admin-index">{{ post.number }}</span><div><small>{{ post.category }} · {{ post.date }}</small><strong>{{ post.title }}</strong><p>{{ post.excerpt }}</p></div><span class="admin-status" :class="{ featured: post.featured }">{{ post.featured ? '精选' : '已发布' }}</span><div class="admin-row-actions"><button @click="editPost(post)">编辑</button><button class="danger" @click="remove('post', post.id, post.title)">删除</button></div></article>
+        </div>
+        <div v-else class="admin-table">
+          <div class="admin-table-head"><span>顺序</span><span>内容</span><span>状态</span><span>操作</span></div>
+          <article v-for="project in projects" :key="project.id"><span class="admin-index">{{ String(project.displayOrder).padStart(2, '0') }}</span><div><small>{{ project.year }} · {{ project.stack.join(' / ') }}</small><strong>{{ project.title }}</strong><p>{{ project.description }}</p></div><span class="admin-status">{{ project.status }}</span><div class="admin-row-actions"><button @click="editProject(project)">编辑</button><button class="danger" @click="remove('project', project.id, project.title)">删除</button></div></article>
+        </div>
+      </section>
+    </main>
 
     <div v-if="editorOpen" class="admin-editor-backdrop" @click.self="editorOpen = false">
       <form class="admin-editor" @submit.prevent="save">

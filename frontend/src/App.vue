@@ -44,6 +44,7 @@ const relatedPosts = computed(() => {
   if (!currentPost.value) return []
   return posts.value.filter((post) => post.slug !== currentPost.value?.slug && post.tags.some((tag) => currentPost.value?.tags.includes(tag))).slice(0, 2)
 })
+const isAdminRoute = computed(() => String(route.name).startsWith('admin'))
 
 async function loadRemoteContent() {
   try {
@@ -191,9 +192,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="site-shell" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
-    <div class="reading-progress" :style="{ width: `${readingProgress}%` }" aria-hidden="true" />
-    <header class="site-header">
+  <div class="site-shell" :class="{ 'admin-mode': isAdminRoute }" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
+    <div v-if="!isAdminRoute" class="reading-progress" :style="{ width: `${readingProgress}%` }" aria-hidden="true" />
+    <header v-if="!isAdminRoute" class="site-header">
       <RouterLink class="brand" to="/" aria-label="余白首页">
         <span class="brand-stamp">余</span>
         <span><strong>余白</strong><small>YUBAI / NOTES</small></span>
