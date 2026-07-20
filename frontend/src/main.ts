@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import './styles.css'
@@ -16,4 +17,4 @@ const router = createRouter({
   scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { top: 0 },
 })
 
-createApp(App).use(router).mount('#app')
+createApp(App).use(createPinia()).use(router).mount('#app')

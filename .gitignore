@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/frontend/node_modules
 /.npm-cache/
 /.pnp
 .pnp.*
@@ -31,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+**/.env*
+!.env.example
+!**/.env.example
 
 # vercel
 .vercel
@@ -38,6 +42,9 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 /dist/
+/frontend/dist/
+/backend/target/
+/storage/
 /.wrangler/
 /outputs/
 /work/

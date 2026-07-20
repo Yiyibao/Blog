@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { categories, posts, projects, type Post } from './data'
+import { fetchPosts, fetchProjects } from './api/content'
+import { posts as seedPosts, projects as seedProjects, type Post, type Project } from './data'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,27 +16,40 @@ const toast = ref('')
 const isDark = ref(false)
 const readingProgress = ref(0)
 const favorites = ref<string[]>([])
+const posts = ref<Post[]>([...seedPosts])
+const projects = ref<Project[]>([...seedProjects])
 let toastTimer: number | undefined
 let revealObserver: IntersectionObserver | undefined
 
-const currentPost = computed(() => posts.find((post) => post.slug === route.params.slug))
-const featuredPost = computed(() => posts.find((post) => post.featured) ?? posts[0])
+const categories = computed(() => ['全部', ...new Set(posts.value.map((post) => post.category))])
+const currentPost = computed(() => posts.value.find((post) => post.slug === route.params.slug))
+const featuredPost = computed(() => posts.value.find((post) => post.featured) ?? posts.value[0])
 const filteredPosts = computed(() => {
   const normalized = query.value.trim().toLowerCase()
-  return posts
+  return posts.value
     .filter((post) => category.value === '全部' || post.category === category.value)
     .filter((post) => !normalized || [post.title, post.excerpt, post.category, ...post.tags].join(' ').toLowerCase().includes(normalized))
     .sort((a, b) => sortOrder.value === 'newest' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date))
 })
 const searchResults = computed(() => {
   const normalized = query.value.trim().toLowerCase()
-  if (!normalized) return posts.slice(0, 3)
-  return posts.filter((post) => [post.title, post.excerpt, ...post.tags].join(' ').toLowerCase().includes(normalized)).slice(0, 5)
+  if (!normalized) return posts.value.slice(0, 3)
+  return posts.value.filter((post) => [post.title, post.excerpt, ...post.tags].join(' ').toLowerCase().includes(normalized)).slice(0, 5)
 })
 const relatedPosts = computed(() => {
   if (!currentPost.value) return []
-  return posts.filter((post) => post.slug !== currentPost.value?.slug && post.tags.some((tag) => currentPost.value?.tags.includes(tag))).slice(0, 2)
+  return posts.value.filter((post) => post.slug !== currentPost.value?.slug && post.tags.some((tag) => currentPost.value?.tags.includes(tag))).slice(0, 2)
 })
+
+async function loadRemoteContent() {
+  try {
+    const [remotePosts, remoteProjects] = await Promise.all([fetchPosts(), fetchProjects()])
+    if (remotePosts.length) posts.value = remotePosts
+    if (remoteProjects.length) projects.value = remoteProjects
+  } catch (error) {
+    console.info('Backend API is unavailable; using bundled content.', error)
+  }
+}
 
 function showToast(message: string) {
   toast.value = message
@@ -160,6 +174,7 @@ onMounted(() => {
   try { favorites.value = JSON.parse(localStorage.getItem('yubai-reading-list') ?? '[]') as string[] } catch { favorites.value = [] }
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('scroll', updateProgress, { passive: true })
+  void loadRemoteContent()
   void nextTick(setupReveals)
 })
 
