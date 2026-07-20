@@ -2,9 +2,13 @@ package com.yubai.blog.common;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -15,6 +19,40 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
             "status", HttpStatus.NOT_FOUND.value(),
             "message", exception.getMessage(),
+            "timestamp", Instant.now()
+        ));
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleBadCredentials() {
+        return error(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException exception) {
+        var details = exception.getBindingResult().getFieldErrors().stream()
+            .collect(Collectors.toMap(
+                error -> error.getField(),
+                error -> error.getDefaultMessage() == null ? "参数不合法" : error.getDefaultMessage(),
+                (first, ignored) -> first
+            ));
+        return ResponseEntity.badRequest().body(Map.of(
+            "status", HttpStatus.BAD_REQUEST.value(),
+            "message", "请求参数不合法",
+            "details", details,
+            "timestamp", Instant.now()
+        ));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConflict() {
+        return error(HttpStatus.CONFLICT, "数据与现有记录冲突，请检查唯一字段");
+    }
+
+    private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(Map.of(
+            "status", status.value(),
+            "message", message,
             "timestamp", Instant.now()
         ));
     }

@@ -49,6 +49,24 @@ public class ProjectEntity {
     protected ProjectEntity() {
     }
 
+    public static ProjectEntity create(ProjectRequest request) {
+        var project = new ProjectEntity();
+        project.update(request);
+        return project;
+    }
+
+    public void update(ProjectRequest request) {
+        this.title = request.title();
+        this.description = request.description();
+        this.stack.clear();
+        this.stack.addAll(request.stack());
+        this.year = request.year();
+        this.status = request.status();
+        this.color = request.color();
+        this.displayOrder = request.displayOrder();
+    }
+
+    public Long getId() { return id; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
     public List<String> getStack() { return List.copyOf(stack); }

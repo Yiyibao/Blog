@@ -12,6 +12,8 @@ const router = createRouter({
     { path: '/articles/:slug', name: 'article', component: App },
     { path: '/projects', name: 'projects', component: App },
     { path: '/about', name: 'about', component: App },
+    { path: '/admin/login', name: 'admin-login', component: App },
+    { path: '/admin', name: 'admin', component: App },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { top: 0 },

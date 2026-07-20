@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record PostResponse(
+    Long id,
     String slug,
     String title,
     String excerpt,
@@ -18,7 +19,7 @@ public record PostResponse(
 ) {
     static PostResponse from(PostEntity post) {
         return new PostResponse(
-            post.getSlug(), post.getTitle(), post.getExcerpt(), post.getDate(), post.getReadTime(),
+            post.getId(), post.getSlug(), post.getTitle(), post.getExcerpt(), post.getDate(), post.getReadTime(),
             post.getCategory(), post.getTags(), post.getColor(), post.getNumber(), post.isFeatured(), post.getContent()
         );
     }

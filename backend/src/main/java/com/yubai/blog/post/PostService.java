@@ -29,4 +29,25 @@ public class PostService {
     public List<String> findCategories() {
         return repository.findDistinctCategories();
     }
+
+    @Transactional
+    public PostResponse create(PostRequest request) {
+        return PostResponse.from(repository.save(PostEntity.create(request)));
+    }
+
+    @Transactional
+    public PostResponse update(long id, PostRequest request) {
+        var post = repository.findById(id)
+            .orElseThrow(() -> new NotFoundException("文章不存在：" + id));
+        post.update(request);
+        return PostResponse.from(post);
+    }
+
+    @Transactional
+    public void delete(long id) {
+        if (!repository.existsById(id)) {
+            throw new NotFoundException("文章不存在：" + id);
+        }
+        repository.deleteById(id);
+    }
 }

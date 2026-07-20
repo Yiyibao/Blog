@@ -28,6 +28,16 @@ Copy-Item backend/.env.example backend/.env.properties
 
 打开 `backend/.env.properties`，把 `DB_PASSWORD` 改成刚才设置的密码。该文件已被 Git 忽略，不会提交真实凭据。
 
+后台管理还需要在同一文件中配置：
+
+```properties
+APP_JWT_SECRET=至少32位的随机字符串
+APP_ADMIN_USERNAME=你的管理员用户名
+APP_ADMIN_PASSWORD=你的强密码
+```
+
+首次启动时，后端会用 BCrypt 加密管理员密码并写入数据库。此后不会保存明文密码；JWT 默认两小时过期。
+
 ## 启动后端
 
 ```powershell
@@ -44,6 +54,16 @@ mvn spring-boot:run
 - `GET /api/v1/categories`
 - `GET /api/v1/projects`
 
+管理接口：
+
+- `POST /api/v1/auth/login`
+- `GET|POST /api/v1/admin/posts`
+- `PUT|DELETE /api/v1/admin/posts/{id}`
+- `GET|POST /api/v1/admin/projects`
+- `PUT|DELETE /api/v1/admin/projects/{id}`
+
+除登录外，所有管理接口都必须携带有效的管理员 Bearer Token。
+
 ## 启动前端
 
 另开一个 PowerShell：
@@ -55,6 +75,8 @@ npm run dev
 ```
 
 前端默认地址为 `http://localhost:5173`，开发代理会把 `/api` 请求转发到 Spring Boot。后端暂未启动时，页面会使用内置内容作为安全回退，不影响现有公开站点。
+
+后台入口为 `http://localhost:5173/admin/login`。登录令牌仅保存在当前浏览器会话中，关闭该会话后需要重新登录。
 
 ## 构建
 

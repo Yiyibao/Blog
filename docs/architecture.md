@@ -20,3 +20,11 @@
 2. Administration: login, JWT, content CRUD and audit metadata.
 3. Learning notes: note library, Markdown upload, attachment storage and editor autosave.
 4. Publishing: draft, preview, publish and export workflows.
+
+## Administration security
+
+- Admin passwords are stored only as BCrypt hashes.
+- The login endpoint issues an HS256 JWT with a two-hour default lifetime.
+- Spring Security validates every bearer token server-side and requires the `ADMIN` role for write APIs.
+- The SPA keeps its token in `sessionStorage`, not long-lived local storage.
+- Bootstrap credentials and signing secrets stay in the ignored `backend/.env.properties` file.

@@ -1,4 +1,5 @@
 export interface Post {
+  id?: number
   slug: string
   title: string
   excerpt: string
@@ -13,6 +14,7 @@ export interface Post {
 }
 
 export interface Project {
+  id?: number
   title: string
   description: string
   stack: string[]

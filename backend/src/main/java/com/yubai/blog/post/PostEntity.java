@@ -62,6 +62,27 @@ public class PostEntity {
     protected PostEntity() {
     }
 
+    public static PostEntity create(PostRequest request) {
+        var post = new PostEntity();
+        post.update(request);
+        return post;
+    }
+
+    public void update(PostRequest request) {
+        this.slug = request.slug();
+        this.title = request.title();
+        this.excerpt = request.excerpt();
+        this.date = request.date();
+        this.readTime = request.readTime();
+        this.category = request.category();
+        this.tags.clear();
+        this.tags.addAll(request.tags());
+        this.color = request.color();
+        this.number = request.number();
+        this.featured = request.featured();
+        this.content = request.content();
+    }
+
     public Long getId() { return id; }
     public String getSlug() { return slug; }
     public String getTitle() { return title; }
