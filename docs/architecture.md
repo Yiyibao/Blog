@@ -28,6 +28,8 @@
 - The Vue editor uses Tiptap 3 to convert between a ProseMirror document and Markdown source.
 - Editing is saved after a one-second debounce. The server-returned version becomes the precondition for the next save.
 - Imports accept `.md`, `.markdown` and `.txt` up to 2 MB. Exports use UTF-8 `text/markdown` downloads.
+- Note images are stored as PostgreSQL `bytea` values with searchable metadata and an unguessable UUID resource URL. Accepted formats are PNG, JPEG, WebP and GIF up to 8 MB.
+- Tiptap's image/file-handler extensions support paste, drop and picker uploads; the Mathematics extension serializes LaTeX back to Markdown and KaTeX renders it in both editor and public reader.
 
 ## Administration security
 

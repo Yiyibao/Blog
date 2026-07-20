@@ -50,6 +50,17 @@ export interface NotePayload {
   version: number
 }
 
+export interface NoteAttachment {
+  id: number
+  publicId: string
+  noteId: number
+  fileName: string
+  mediaType: string
+  byteSize: number
+  url: string
+  createdAt: string
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 8000,
@@ -133,4 +144,18 @@ export async function exportNote(note: AdminNote) {
   anchor.download = `${note.title.replace(/[\\/:*?\"<>|]/g, '_')}.md`
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+export function fetchNoteAttachments(noteId: number) {
+  return unwrap<NoteAttachment[]>(api.get(`/admin/notes/${noteId}/attachments`, { headers: tokenHeader() }))
+}
+
+export function uploadNoteAttachment(noteId: number, file: File) {
+  const body = new FormData()
+  body.append('file', file)
+  return unwrap<NoteAttachment>(api.post(`/admin/notes/${noteId}/attachments`, body, { headers: tokenHeader() }))
+}
+
+export function deleteNoteAttachment(noteId: number, attachmentId: number) {
+  return api.delete(`/admin/notes/${noteId}/attachments/${attachmentId}`, { headers: tokenHeader() })
 }

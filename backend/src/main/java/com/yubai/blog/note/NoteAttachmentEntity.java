@@ -1,0 +1,64 @@
+package com.yubai.blog.note;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "note_attachments")
+public class NoteAttachmentEntity {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "public_id", nullable = false, unique = true)
+    private UUID publicId;
+
+    @Column(name = "note_id", nullable = false)
+    private long noteId;
+
+    @Column(name = "file_name", nullable = false, length = 255)
+    private String fileName;
+
+    @Column(name = "media_type", nullable = false, length = 100)
+    private String mediaType;
+
+    @Column(name = "byte_size", nullable = false)
+    private long byteSize;
+
+    @Column(nullable = false, columnDefinition = "bytea")
+    private byte[] content;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    protected NoteAttachmentEntity() {}
+
+    static NoteAttachmentEntity create(long noteId, String fileName, String mediaType, byte[] content) {
+        var attachment = new NoteAttachmentEntity();
+        attachment.publicId = UUID.randomUUID();
+        attachment.noteId = noteId;
+        attachment.fileName = fileName;
+        attachment.mediaType = mediaType;
+        attachment.byteSize = content.length;
+        attachment.content = content;
+        return attachment;
+    }
+
+    @PrePersist void created() { createdAt = Instant.now(); }
+
+    public Long getId() { return id; }
+    public UUID getPublicId() { return publicId; }
+    public long getNoteId() { return noteId; }
+    public String getFileName() { return fileName; }
+    public String getMediaType() { return mediaType; }
+    public long getByteSize() { return byteSize; }
+    public byte[] getContent() { return content; }
+    public Instant getCreatedAt() { return createdAt; }
+}

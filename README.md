@@ -8,7 +8,6 @@
 BlogDemo/
 ├── frontend/   Vue 3、TypeScript、Vite、Pinia、Axios
 ├── backend/    Java 21、Spring Boot、Spring Data JPA、Flyway
-├── storage/    后续用于本地笔记与附件（不提交）
 └── docs/       项目文档
 ```
 
@@ -54,6 +53,7 @@ mvn spring-boot:run
 - `GET /api/v1/categories`
 - `GET /api/v1/projects`
 - `GET /api/v1/notes`（仅返回公开学习笔记）
+- `GET /api/v1/note-assets/{publicId}`（读取笔记内图片）
 
 管理接口：
 
@@ -66,6 +66,8 @@ mvn spring-boot:run
 - `GET|PUT|DELETE /api/v1/admin/notes/{id}`：笔记读取、自动保存与删除
 - `POST /api/v1/admin/notes/import`：上传 `.md`、`.markdown` 或 `.txt`（最大 2 MB）
 - `GET /api/v1/admin/notes/{id}/export`：导出 UTF-8 Markdown
+- `GET|POST /api/v1/admin/notes/{id}/attachments`：列出或上传笔记图片
+- `DELETE /api/v1/admin/notes/{id}/attachments/{attachmentId}`：删除笔记图片
 
 除登录外，所有管理接口都必须携带有效的管理员 Bearer Token。
 
@@ -83,7 +85,7 @@ npm run dev
 
 后台入口为 `http://localhost:5173/admin/login`。登录令牌仅保存在当前浏览器会话中，关闭该会话后需要重新登录。
 
-登录后从内容工作台进入 `http://localhost:5173/admin/notes`。学习笔记工作室支持所见即所得与 Markdown 源码双模式、标题大纲、任务清单、表格、代码块、标签/目录/状态管理、本地 Markdown 导入、导出和 1 秒防抖自动保存。`Ctrl/Cmd + S` 可立即保存，`Ctrl/Cmd + Shift + F` 切换专注模式。
+登录后从内容工作台进入 `http://localhost:5173/admin/notes`。学习笔记工作室支持所见即所得与 Markdown 源码双模式、标题大纲、任务清单、表格、代码块、KaTeX 公式、多笔记标签页、标签/目录/状态管理、本地 Markdown 导入、导出和 1 秒防抖自动保存。PNG、JPEG、WebP、GIF 图片可直接粘贴、拖入或从工具栏上传，单张最大 8 MB；输入 `/` 可打开快速插入菜单。`Ctrl/Cmd + S` 可立即保存，`Ctrl/Cmd + Shift + M` 切换源码模式，`Ctrl/Cmd + Shift + F` 切换专注模式。
 
 ## 构建
 

@@ -11,6 +11,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.yubai.blog.note.InvalidNoteFileException;
 import com.yubai.blog.note.NoteVersionConflictException;
@@ -60,6 +61,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoteVersionConflictException.class)
     public ResponseEntity<Map<String, Object>> handleNoteConflict(NoteVersionConflictException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleUploadTooLarge() {
+        return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件不能超过 8 MB");
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

@@ -4,8 +4,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { useRouter } from 'vue-router'
 import TyporaEditor from './TyporaEditor.vue'
 import {
-  createNote, deleteNote, exportNote, fetchNotes, importNote, updateNote,
-  type AdminNote, type NotePayload, type NoteStatus,
+  createNote, deleteNote, deleteNoteAttachment, exportNote, fetchNoteAttachments, fetchNotes, importNote,
+  updateNote, uploadNoteAttachment, type AdminNote, type NoteAttachment, type NotePayload, type NoteStatus,
 } from '../api/admin'
 
 const router = useRouter()
@@ -20,6 +20,8 @@ const focusMode = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const form = reactive<NotePayload>({ title: '', markdownContent: '', folder: '未分类', status: 'DRAFT', tags: [], version: 0 })
 const tagText = ref('')
+const attachments = ref<NoteAttachment[]>([])
+const openIds = ref<number[]>([])
 let saveTimer: number | undefined
 let applying = false
 
@@ -47,7 +49,48 @@ function applyNote(note: AdminNote) {
   Object.assign(form, { title: note.title, markdownContent: note.markdownContent, folder: note.folder, status: note.status, tags: note.tags, version: note.version })
   tagText.value = note.tags.join(', ')
   saveState.value = 'saved'
+  if (!openIds.value.includes(note.id)) openIds.value.push(note.id)
+  void loadAttachments(note.id)
   void nextTick(() => { applying = false })
+}
+
+async function selectNote(note: AdminNote) {
+  if (note.id === selectedId.value) return
+  if (saveState.value === 'dirty' || saveState.value === 'error') await saveNow()
+  applyNote(note)
+}
+
+async function loadAttachments(noteId: number) {
+  try { attachments.value = await fetchNoteAttachments(noteId) }
+  catch { attachments.value = [] }
+}
+
+async function uploadEditorImage(file: File) {
+  if (!selectedId.value) throw new Error('No active note')
+  const attachment = await uploadNoteAttachment(selectedId.value, file)
+  attachments.value.unshift(attachment)
+  return attachment.url
+}
+
+async function removeAttachment(attachment: NoteAttachment) {
+  if (!selectedId.value || !window.confirm(`确认删除图片“${attachment.fileName}”？笔记中已插入的引用将失效。`)) return
+  try {
+    await deleteNoteAttachment(selectedId.value, attachment.id)
+    attachments.value = attachments.value.filter(item => item.id !== attachment.id)
+  } catch (cause) { handleError(cause, '删除图片失败。') }
+}
+
+async function copyAttachment(attachment: NoteAttachment) {
+  await navigator.clipboard.writeText(`![${attachment.fileName}](${attachment.url})`)
+}
+
+function closeTab(id: number) {
+  const index = openIds.value.indexOf(id)
+  openIds.value = openIds.value.filter(item => item !== id)
+  if (selectedId.value !== id) return
+  const nextId = openIds.value[Math.max(0, index - 1)]
+  const next = notes.value.find(note => note.id === nextId)
+  if (next) applyNote(next); else selectedId.value = null
 }
 
 async function load() {
@@ -130,7 +173,7 @@ onBeforeUnmount(() => { clearTimeout(saveTimer); window.removeEventListener('key
       <div v-if="loading" class="notes-empty">正在整理书架…</div>
       <div v-else-if="!filteredNotes.length" class="notes-empty">暂无匹配笔记</div>
       <div class="notes-list">
-        <button v-for="note in filteredNotes" :key="note.id" :class="{ active: selectedId === note.id }" @click="applyNote(note)">
+        <button v-for="note in filteredNotes" :key="note.id" :class="{ active: selectedId === note.id }" @click="selectNote(note)">
           <span>{{ note.folder }} · {{ new Date(note.updatedAt).toLocaleDateString('zh-CN') }}</span><strong>{{ note.title }}</strong><small>{{ note.wordCount }} 字 · {{ note.tags.slice(0,2).join(' / ') || '无标签' }}</small>
         </button>
       </div>
@@ -144,10 +187,13 @@ onBeforeUnmount(() => { clearTimeout(saveTimer); window.removeEventListener('key
           <div class="note-save-state" :class="saveState"><i />{{ saveLabel }}</div>
           <div class="note-top-actions"><button title="专注模式 Ctrl+Shift+F" @click="focusMode = !focusMode">{{ focusMode ? '退出专注' : '专注' }}</button><button @click="selected && exportNote(selected)">导出 .md</button><button class="danger" @click="removeCurrent">删除</button><button class="save-note" @click="saveNow">保存</button></div>
         </header>
+        <nav v-if="openIds.length" class="note-tabs" aria-label="打开的笔记">
+          <button v-for="id in openIds" :key="id" :class="{ active: selectedId === id }" @click="notes.find(note => note.id === id) && selectNote(notes.find(note => note.id === id)!)"><span>{{ notes.find(note => note.id === id)?.title || '未命名笔记' }}</span><i @click.stop="closeTab(id)">×</i></button>
+        </nav>
         <div class="manuscript">
           <input v-model="form.title" class="note-title" maxlength="200" placeholder="未命名笔记" aria-label="笔记标题">
           <input v-model="tagText" class="note-tags" placeholder="添加标签，用逗号分隔" aria-label="标签">
-          <TyporaEditor v-model="form.markdownContent" />
+          <TyporaEditor v-model="form.markdownContent" :upload-image="uploadEditorImage" @upload-error="error = $event" />
         </div>
         <footer class="note-statusbar"><span>Markdown</span><span>{{ charCount }} 字符</span><span>约 {{ readMinutes }} 分钟阅读</span><span>Ctrl + S 保存</span></footer>
       </template>
@@ -159,6 +205,7 @@ onBeforeUnmount(() => { clearTimeout(saveTimer); window.removeEventListener('key
       <div v-if="outline.length"><button v-for="item in outline" :key="`${item.index}-${item.title}`" :style="{ paddingLeft: `${(item.level - 1) * 14}px` }">{{ item.title }}</button></div>
       <small v-else>添加一至三级标题后，文章结构会显示在这里。</small>
       <div class="outline-note"><b>写作提示</b><p>输入 <code>#</code> 创建标题，<code>- [ ]</code> 创建任务，三个反引号创建代码块。</p></div>
+      <div class="attachment-panel"><header><b>图片</b><span>{{ attachments.length }}</span></header><p v-if="!attachments.length">粘贴、拖入或从工具栏上传图片。</p><article v-for="attachment in attachments" :key="attachment.id"><img :src="attachment.url" :alt="attachment.fileName"><div><strong>{{ attachment.fileName }}</strong><small>{{ Math.ceil(attachment.byteSize / 1024) }} KB</small></div><button title="复制 Markdown" @click="copyAttachment(attachment)">复制</button><button class="danger" title="删除图片" @click="removeAttachment(attachment)">×</button></article></div>
     </aside>
   </section>
 </template>

@@ -450,13 +450,20 @@ a { color: inherit; text-decoration: none; }
 .note-top-actions button:hover { background: #f0ece4; color: var(--studio-ink); }
 .note-top-actions .danger:hover { color: #b84f48; }
 .note-top-actions .save-note { background: #292a26; color: #fff; }
+.note-tabs { position: sticky; z-index: 11; top: 55px; display: flex; min-height: 37px; overflow-x: auto; border-bottom: 1px solid #e7e2d9; background: #f5f2eb; }
+.note-tabs > button { display: flex; align-items: center; gap: 12px; min-width: 130px; max-width: 210px; border: 0; border-right: 1px solid #e2ddd3; padding: 0 10px 0 14px; background: transparent; color: #8a857d; cursor: pointer; font-size: 10px; }
+.note-tabs > button.active { background: var(--studio-paper); color: var(--studio-ink); }
+.note-tabs button span { overflow: hidden; flex: 1; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.note-tabs button i { display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; font-style: normal; font-size: 14px; }
+.note-tabs button i:hover { background: #e4dfd5; }
 .manuscript { width: min(760px, calc(100% - 70px)); margin: 0 auto; padding: 64px 0 130px; }
 .note-title { width: 100%; border: 0; outline: 0; padding: 0; background: transparent; color: var(--studio-ink); font: 500 clamp(34px, 4vw, 52px)/1.17 Georgia, 'Noto Serif SC', serif; letter-spacing: -.035em; }
 .note-title::placeholder { color: #c2beb6; }
 .note-tags { width: 100%; margin: 18px 0 26px; border: 0; border-bottom: 1px solid transparent; outline: 0; padding: 6px 0; background: transparent; color: #9a704d; font: 11px/1.4 inherit; }
 .note-tags:focus { border-bottom-color: #ded8cd; }
 
-.typora-toolbar { position: sticky; z-index: 10; top: 55px; display: flex; align-items: center; gap: 5px; margin: 0 -14px 28px; padding: 8px 10px; border: 1px solid #e5e0d6; border-radius: 9px; background: rgba(255,254,251,.92); box-shadow: 0 12px 35px rgba(52,45,35,.06); backdrop-filter: blur(15px); }
+.typora-editor { position: relative; }
+.typora-toolbar { position: sticky; z-index: 10; top: 96px; display: flex; align-items: center; gap: 5px; margin: 0 -14px 28px; padding: 8px 10px; border: 1px solid #e5e0d6; border-radius: 9px; background: rgba(255,254,251,.92); box-shadow: 0 12px 35px rgba(52,45,35,.06); backdrop-filter: blur(15px); }
 .tool-group { display: flex; gap: 1px; padding-right: 5px; border-right: 1px solid #e5e0d6; }
 .typora-toolbar button { min-width: 28px; height: 29px; border: 0; border-radius: 5px; padding: 0 7px; background: transparent; color: #777269; cursor: pointer; font-size: 10px; }
 .typora-toolbar button:hover, .typora-toolbar button.active { background: #ece7dd; color: #292a26; }
@@ -484,6 +491,21 @@ a { color: inherit; text-decoration: none; }
 .typora-prose th { background: #f3efe8; }
 .typora-prose p.is-editor-empty:first-child::before { float: left; height: 0; pointer-events: none; color: #bbb6ae; content: attr(data-placeholder); }
 .markdown-source { display: block; width: 100%; min-height: 62vh; resize: vertical; border: 0; outline: 0; background: transparent; color: #34332f; font: 14px/1.8 'SFMono-Regular', Consolas, monospace; tab-size: 2; }
+.editor-uploading { position: sticky; z-index: 13; top: 145px; width: max-content; margin: -18px auto 18px; border-radius: 999px; padding: 7px 12px; background: #292a26; color: #fff; box-shadow: 0 9px 25px rgba(0,0,0,.15); font-size: 10px; }
+.editor-uploading i { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #d9b786; animation: note-pulse 1s infinite; }
+.slash-menu { position: absolute; z-index: 30; top: 48px; left: 0; display: grid; grid-template-columns: 1fr 1fr; width: min(470px, 90vw); border: 1px solid #ded8cd; border-radius: 11px; padding: 8px; background: rgba(255,254,251,.98); box-shadow: 0 25px 70px rgba(45,38,29,.18); backdrop-filter: blur(20px); }
+.slash-menu header { grid-column: 1 / -1; display: flex; justify-content: space-between; padding: 8px 10px 10px; color: #a17650; font-size: 9px; letter-spacing: .14em; }
+.slash-menu header kbd { color: #9b968d; font: inherit; letter-spacing: .05em; }
+.slash-menu button { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; border: 0; border-radius: 7px; padding: 9px; background: transparent; color: #292a26; text-align: left; cursor: pointer; }
+.slash-menu button:hover { background: #eee9e0; }
+.slash-menu button > b { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #ded8cd; border-radius: 6px; color: #8d6345; font: 600 10px/1 Consolas, monospace; }
+.slash-menu button span { display: grid; gap: 3px; font-size: 11px; }
+.slash-menu button small { color: #9b968d; font-size: 9px; }
+.typora-prose img { display: block; max-width: 100%; height: auto; margin: 2em auto; border-radius: 5px; box-shadow: 0 15px 45px rgba(50,42,31,.12); }
+.typora-prose .tiptap-mathematics-render { border-radius: 5px; color: #2e2d29; }
+.typora-prose .tiptap-mathematics-render--editable { cursor: pointer; transition: background .2s ease, box-shadow .2s ease; }
+.typora-prose .tiptap-mathematics-render--editable:hover { background: #f1ece3; box-shadow: 0 0 0 5px #f1ece3; }
+.typora-prose .tiptap-mathematics-render[data-type='block-math'] { overflow-x: auto; margin: 2em 0; padding: 20px; text-align: center; }
 .note-statusbar { position: fixed; z-index: 11; bottom: 0; display: flex; gap: 18px; width: calc(100% - 512px); padding: 9px 24px; border-top: 1px solid #ece8df; background: rgba(255,254,251,.92); color: #9b968d; font-size: 9px; backdrop-filter: blur(15px); }
 .note-error { position: fixed; z-index: 20; right: 240px; bottom: 45px; max-width: 420px; padding: 11px 16px; border-radius: 7px; background: #a74943; color: white; box-shadow: 0 12px 35px rgba(0,0,0,.16); font-size: 12px; }
 .note-welcome { display: grid; place-items: center; align-content: center; height: 100%; text-align: center; }
@@ -500,6 +522,20 @@ a { color: inherit; text-decoration: none; }
 .outline-note { margin-top: 38px; border-top: 1px solid var(--studio-line); padding-top: 20px; color: var(--studio-muted); font-size: 11px; line-height: 1.75; }
 .outline-note b { color: var(--studio-ink); font-weight: 500; }
 .outline-note code { color: #986847; }
+.attachment-panel { margin-top: 28px; border-top: 1px solid var(--studio-line); padding-top: 18px; }
+.attachment-panel > header { display: flex; justify-content: space-between; color: var(--studio-ink); font-size: 11px; }
+.attachment-panel > header b { font-weight: 500; }
+.attachment-panel > header span, .attachment-panel > p { color: var(--studio-muted); font-size: 10px; }
+.attachment-panel > p { line-height: 1.65; }
+.attachment-panel article { display: grid; grid-template-columns: 37px minmax(0, 1fr) auto auto; gap: 7px; align-items: center; margin-top: 8px; padding: 6px; border-radius: 6px; transition: background .2s ease; }
+.attachment-panel article:hover { background: rgba(255,255,255,.58); }
+.attachment-panel img { width: 37px; height: 37px; border-radius: 4px; object-fit: cover; }
+.attachment-panel article div { min-width: 0; }
+.attachment-panel article strong, .attachment-panel article small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-panel article strong { font-size: 9px; font-weight: 500; }
+.attachment-panel article small { margin-top: 3px; color: var(--studio-muted); font-size: 8px; }
+.attachment-panel article button { border: 0; padding: 3px; background: none; color: var(--studio-muted); cursor: pointer; font-size: 8px; }
+.attachment-panel article button.danger { color: #ad514c; font-size: 14px; }
 .notes-studio.focus-mode { grid-template-columns: 1fr; padding-top: 88px; }
 .notes-studio.focus-mode .notes-library, .notes-studio.focus-mode .note-outline { display: none; }
 .notes-studio.focus-mode .note-statusbar { width: 100%; }
@@ -551,11 +587,12 @@ a { color: inherit; text-decoration: none; }
   .note-save-state { display: none; }
   .note-top-actions button:not(.save-note) { display: none; }
   .manuscript { width: calc(100% - 32px); padding-top: 38px; }
-  .typora-toolbar { top: 55px; overflow-x: auto; }
+  .typora-toolbar { top: 92px; overflow-x: auto; }
   .typora-toolbar .tool-group:nth-of-type(3), .typora-toolbar .tool-history { display: none; }
   .note-statusbar { width: 100%; gap: 12px; }
   .note-statusbar span:last-child { display: none; }
   .note-error { right: 16px; left: 16px; }
+  .slash-menu { position: fixed; top: auto; right: 10px; bottom: 42px; left: 10px; grid-template-columns: 1fr 1fr; width: auto; max-height: 55vh; overflow-y: auto; }
   .notes-page { padding-top: 100px; }
   .notes-page-head { grid-template-columns: 1fr; gap: 28px; }
   .public-notes-layout { grid-template-columns: 1fr; gap: 35px; }

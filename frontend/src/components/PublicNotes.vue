@@ -5,6 +5,9 @@ import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { TableKit } from '@tiptap/extension-table'
+import Image from '@tiptap/extension-image'
+import { Mathematics } from '@tiptap/extension-mathematics'
+import 'katex/dist/katex.min.css'
 import { fetchPublishedNotes } from '../api/content'
 import type { AdminNote } from '../api/admin'
 
@@ -24,7 +27,8 @@ const editor = useEditor({
   contentType: 'markdown',
   extensions: [
     StarterKit,
-    Markdown, TaskList, TaskItem.configure({ nested: true }), TableKit,
+    Markdown, TaskList, TaskItem.configure({ nested: true }), TableKit, Image,
+    Mathematics.configure({ katexOptions: { throwOnError: false } }),
   ],
   editorProps: { attributes: { class: 'typora-prose public-note-prose' } },
 })
