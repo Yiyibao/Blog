@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { fetchPosts, fetchProjects } from './api/content'
 import AdminDashboard from './components/AdminDashboard.vue'
 import AdminLogin from './components/AdminLogin.vue'
+const NotesWorkspace = defineAsyncComponent(() => import('./components/NotesWorkspace.vue'))
+const PublicNotes = defineAsyncComponent(() => import('./components/PublicNotes.vue'))
 import { posts as seedPosts, projects as seedProjects, type Post, type Project } from './data'
 
 const route = useRoute()
@@ -165,7 +167,7 @@ watch(isDark, (value) => document.documentElement.classList.toggle('dark', value
 watch(() => route.fullPath, () => {
   menuOpen.value = false
   searchOpen.value = false
-  const title = currentPost.value?.title ?? ({ home: '首页', articles: '文章', projects: '项目', about: '关于', admin: '内容工作台', 'admin-login': '管理员登录' }[String(route.name)] || '余白')
+  const title = currentPost.value?.title ?? ({ home: '首页', articles: '文章', projects: '项目', notes: '学习笔记', about: '关于', admin: '内容工作台', 'admin-notes': '学习笔记', 'admin-login': '管理员登录' }[String(route.name)] || '余白')
   document.title = `${title} · 余白`
   void nextTick(setupReveals)
 })
@@ -200,6 +202,7 @@ onBeforeUnmount(() => {
         <RouterLink to="/">首页</RouterLink>
         <RouterLink to="/articles">文章</RouterLink>
         <RouterLink to="/projects">项目</RouterLink>
+        <RouterLink to="/notes">学习笔记</RouterLink>
         <RouterLink to="/about">关于</RouterLink>
       </nav>
       <div class="header-actions">
@@ -213,7 +216,8 @@ onBeforeUnmount(() => {
       <RouterLink to="/">首页 <span>01</span></RouterLink>
       <RouterLink to="/articles">文章 <span>02</span></RouterLink>
       <RouterLink to="/projects">项目 <span>03</span></RouterLink>
-      <RouterLink to="/about">关于 <span>04</span></RouterLink>
+      <RouterLink to="/notes">学习笔记 <span>04</span></RouterLink>
+      <RouterLink to="/about">关于 <span>05</span></RouterLink>
     </nav>
 
     <main>
@@ -223,6 +227,10 @@ onBeforeUnmount(() => {
 
       <template v-else-if="route.name === 'admin'">
         <AdminDashboard />
+      </template>
+
+      <template v-else-if="route.name === 'admin-notes'">
+        <NotesWorkspace />
       </template>
 
       <template v-else-if="route.name === 'home'">
@@ -340,6 +348,10 @@ onBeforeUnmount(() => {
         </section>
       </template>
 
+      <template v-else-if="route.name === 'notes'">
+        <PublicNotes />
+      </template>
+
       <template v-else-if="route.name === 'about'">
         <section class="about-hero section-wrap">
           <div><p class="eyebrow"><span /> HELLO / 关于我</p><h1>你好，我是一个<br><em>喜欢把事情想清楚的构建者。</em></h1><p>目前生活在上海，关注前端工程、产品设计与写作。我喜欢把复杂问题拆开，也喜欢在周末带着相机漫无目的地走路。</p><p>这个博客是我的数字花园：没有固定更新频率，但每篇文章都希望经得起再次阅读。</p><a class="button primary" href="mailto:hello@yubai.dev">和我聊聊 ↗</a></div>
@@ -354,7 +366,7 @@ onBeforeUnmount(() => {
       <form @submit.prevent="subscribe"><label for="email">你的邮箱</label><div><input id="email" v-model="email" type="email" placeholder="hello@example.com"><button type="submit">订阅月报 ↗</button></div><small>不追踪、不打扰，随时可以离开。</small></form>
     </section>
 
-    <footer v-if="!String(route.name).startsWith('admin')" class="site-footer section-wrap"><div class="footer-brand"><span class="brand-stamp">余</span><strong>余白</strong><p>BUILD · WRITE · REFLECT</p></div><div><RouterLink to="/articles">文章</RouterLink><RouterLink to="/projects">项目</RouterLink><RouterLink to="/about">关于</RouterLink><RouterLink to="/admin/login">管理</RouterLink></div><p>© 2026 YUBAI<br>MADE WITH CURIOSITY</p><button type="button" @click="scrollToTop">回到顶部 ↑</button></footer>
+    <footer v-if="!String(route.name).startsWith('admin')" class="site-footer section-wrap"><div class="footer-brand"><span class="brand-stamp">余</span><strong>余白</strong><p>BUILD · WRITE · REFLECT</p></div><div><RouterLink to="/articles">文章</RouterLink><RouterLink to="/projects">项目</RouterLink><RouterLink to="/notes">学习笔记</RouterLink><RouterLink to="/about">关于</RouterLink><RouterLink to="/admin/login">管理</RouterLink></div><p>© 2026 YUBAI<br>MADE WITH CURIOSITY</p><button type="button" @click="scrollToTop">回到顶部 ↑</button></footer>
 
     <div v-if="searchOpen" class="search-overlay" role="dialog" aria-modal="true" aria-label="搜索文章" @click.self="searchOpen = false">
       <div class="search-panel"><div class="search-input-wrap"><span>⌕</span><input id="global-search" v-model="query" type="search" placeholder="搜索文章、标签或关键词…"><button type="button" @click="searchOpen = false">ESC</button></div><p>搜索结果</p><button v-for="post in searchResults" :key="post.slug" class="search-result" type="button" @click="goToResult(post)"><span :style="{ background: post.color }">{{ post.number }}</span><div><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong></div><b>↗</b></button><div v-if="!searchResults.length" class="search-empty">没有匹配的文章</div></div>

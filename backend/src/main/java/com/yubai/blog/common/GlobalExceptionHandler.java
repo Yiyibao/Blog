@@ -12,6 +12,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.yubai.blog.note.InvalidNoteFileException;
+import com.yubai.blog.note.NoteVersionConflictException;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
@@ -47,6 +50,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleConflict() {
         return error(HttpStatus.CONFLICT, "数据与现有记录冲突，请检查唯一字段");
+    }
+
+    @ExceptionHandler(InvalidNoteFileException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidFile(InvalidNoteFileException exception) {
+        return error(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    @ExceptionHandler(NoteVersionConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleNoteConflict(NoteVersionConflictException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

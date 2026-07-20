@@ -135,7 +135,7 @@ onMounted(load)
   <section class="admin-workspace section-wrap">
     <header class="admin-workspace-head">
       <div><p class="eyebrow"><span /> CONTENT OPERATIONS</p><h1>内容工作台</h1><p>{{ username }}，欢迎回来。今天也留下一些值得再次阅读的内容。</p></div>
-      <div class="admin-head-actions"><RouterLink class="button secondary" to="/">查看博客 ↗</RouterLink><button class="button secondary" type="button" @click="logout">退出</button></div>
+      <div class="admin-head-actions"><RouterLink class="button primary" to="/admin/notes">学习笔记 ✦</RouterLink><RouterLink class="button secondary" to="/">查看博客 ↗</RouterLink><button class="button secondary" type="button" @click="logout">退出</button></div>
     </header>
 
     <div class="admin-metrics"><article><span>ALL CONTENT</span><strong>{{ posts.length + projects.length }}</strong><small>全部记录</small></article><article><span>POSTS</span><strong>{{ posts.length }}</strong><small>已发布文章</small></article><article><span>PROJECTS</span><strong>{{ projects.length }}</strong><small>项目档案</small></article></div>

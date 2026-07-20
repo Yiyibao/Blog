@@ -53,6 +53,7 @@ mvn spring-boot:run
 - `GET /api/v1/posts/{slug}`
 - `GET /api/v1/categories`
 - `GET /api/v1/projects`
+- `GET /api/v1/notes`（仅返回公开学习笔记）
 
 管理接口：
 
@@ -61,6 +62,10 @@ mvn spring-boot:run
 - `PUT|DELETE /api/v1/admin/posts/{id}`
 - `GET|POST /api/v1/admin/projects`
 - `PUT|DELETE /api/v1/admin/projects/{id}`
+- `GET|POST /api/v1/admin/notes`：笔记列表与新建
+- `GET|PUT|DELETE /api/v1/admin/notes/{id}`：笔记读取、自动保存与删除
+- `POST /api/v1/admin/notes/import`：上传 `.md`、`.markdown` 或 `.txt`（最大 2 MB）
+- `GET /api/v1/admin/notes/{id}/export`：导出 UTF-8 Markdown
 
 除登录外，所有管理接口都必须携带有效的管理员 Bearer Token。
 
@@ -77,6 +82,8 @@ npm run dev
 前端默认地址为 `http://localhost:5173`，开发代理会把 `/api` 请求转发到 Spring Boot。后端暂未启动时，页面会使用内置内容作为安全回退，不影响现有公开站点。
 
 后台入口为 `http://localhost:5173/admin/login`。登录令牌仅保存在当前浏览器会话中，关闭该会话后需要重新登录。
+
+登录后从内容工作台进入 `http://localhost:5173/admin/notes`。学习笔记工作室支持所见即所得与 Markdown 源码双模式、标题大纲、任务清单、表格、代码块、标签/目录/状态管理、本地 Markdown 导入、导出和 1 秒防抖自动保存。`Ctrl/Cmd + S` 可立即保存，`Ctrl/Cmd + Shift + F` 切换专注模式。
 
 ## 构建
 

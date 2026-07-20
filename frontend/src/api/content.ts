@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Post, Project } from '../data'
+import type { AdminNote } from './admin'
 
 interface ApiEnvelope<T> {
   data: T
@@ -23,4 +24,8 @@ export function fetchPosts() {
 
 export function fetchProjects() {
   return unwrap<Project[]>(api.get('/projects'))
+}
+
+export function fetchPublishedNotes() {
+  return unwrap<AdminNote[]>(api.get('/notes'))
 }

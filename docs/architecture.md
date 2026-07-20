@@ -4,8 +4,8 @@
 
 - `frontend` owns presentation, routing and browser-only preferences.
 - `backend` owns content, validation, persistence and future authentication.
-- PostgreSQL is the authoritative store for posts, projects and future learning notes.
-- Uploaded note files will live under `storage` in local development and behind a storage adapter in production.
+- PostgreSQL is the authoritative store for posts, projects and learning-note Markdown.
+- Imported Markdown is validated and stored as text; the original upload is never executed or retained as an arbitrary server file.
 
 ## API conventions
 
@@ -18,8 +18,16 @@
 
 1. Public content: posts, categories, tags and projects.
 2. Administration: login, JWT, content CRUD and audit metadata.
-3. Learning notes: note library, Markdown upload, attachment storage and editor autosave.
-4. Publishing: draft, preview, publish and export workflows.
+3. Learning notes: note library, Markdown upload/export, Typora-style editor, optimistic locking and autosave.
+4. Publishing: draft, public reading, archive and Markdown export workflows.
+
+## Learning notes
+
+- `learning_notes.version` uses JPA optimistic locking so a stale browser tab cannot overwrite a newer edit.
+- `/api/v1/admin/notes/**` requires an administrator JWT; `/api/v1/notes` returns published notes only.
+- The Vue editor uses Tiptap 3 to convert between a ProseMirror document and Markdown source.
+- Editing is saved after a one-second debounce. The server-returned version becomes the precondition for the next save.
+- Imports accept `.md`, `.markdown` and `.txt` up to 2 MB. Exports use UTF-8 `text/markdown` downloads.
 
 ## Administration security
 
