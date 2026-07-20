@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { categories, posts, projects, type Post } from './data'
 
@@ -16,6 +16,7 @@ const isDark = ref(false)
 const readingProgress = ref(0)
 const favorites = ref<string[]>([])
 let toastTimer: number | undefined
+let revealObserver: IntersectionObserver | undefined
 
 const currentPost = computed(() => posts.find((post) => post.slug === route.params.slug))
 const featuredPost = computed(() => posts.find((post) => post.featured) ?? posts[0])
@@ -104,12 +105,53 @@ function updateProgress() {
   readingProgress.value = Math.min(100, Math.max(0, (-rect.top + 130) / distance * 100))
 }
 
+function setupReveals() {
+  revealObserver?.disconnect()
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return
+      entry.target.classList.add('is-visible')
+      revealObserver?.unobserve(entry.target)
+    })
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px' })
+
+  document.querySelectorAll('main section, .post-card, .archive-row, .project-card, .related-grid > a')
+    .forEach((element) => {
+      element.classList.add('reveal-item')
+      revealObserver?.observe(element)
+    })
+}
+
+function handlePointerMove(event: PointerEvent) {
+  if (event.pointerType === 'touch') return
+  const target = (event.target as HTMLElement).closest<HTMLElement>('.featured-card, .post-card, .project-card, .about-card, .related-grid > a, .values article')
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  const x = (event.clientX - rect.left) / rect.width
+  const y = (event.clientY - rect.top) / rect.height
+  target.style.setProperty('--mx', `${x * 100}%`)
+  target.style.setProperty('--my', `${y * 100}%`)
+  target.style.setProperty('--rx', `${(0.5 - y) * 2.2}deg`)
+  target.style.setProperty('--ry', `${(x - 0.5) * 2.2}deg`)
+  target.classList.add('is-pointed')
+}
+
+function handlePointerOut(event: PointerEvent) {
+  const target = (event.target as HTMLElement).closest<HTMLElement>('.is-pointed')
+  if (!target || target.contains(event.relatedTarget as Node | null)) return
+  target.classList.remove('is-pointed')
+  target.style.removeProperty('--rx')
+  target.style.removeProperty('--ry')
+}
+
 watch(isDark, (value) => document.documentElement.classList.toggle('dark', value), { immediate: true })
 watch(() => route.fullPath, () => {
   menuOpen.value = false
   searchOpen.value = false
   const title = currentPost.value?.title ?? ({ home: '首页', articles: '文章', projects: '项目', about: '关于' }[String(route.name)] || '余白')
   document.title = `${title} · 余白`
+  void nextTick(setupReveals)
 })
 
 onMounted(() => {
@@ -118,17 +160,19 @@ onMounted(() => {
   try { favorites.value = JSON.parse(localStorage.getItem('yubai-reading-list') ?? '[]') as string[] } catch { favorites.value = [] }
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('scroll', updateProgress, { passive: true })
+  void nextTick(setupReveals)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('scroll', updateProgress)
+  revealObserver?.disconnect()
   window.clearTimeout(toastTimer)
 })
 </script>
 
 <template>
-  <div class="site-shell">
+  <div class="site-shell" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
     <div class="reading-progress" :style="{ width: `${readingProgress}%` }" aria-hidden="true" />
     <header class="site-header">
       <RouterLink class="brand" to="/" aria-label="余白首页">
