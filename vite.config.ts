@@ -4,6 +4,8 @@ import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   plugins: [vue()],
   build: {
+    outDir: 'dist/client',
+    emptyOutDir: true,
     target: 'es2022',
     sourcemap: true,
   },
