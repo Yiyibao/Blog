@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up the Yubai Blog PostgreSQL database
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/yubai-blog-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

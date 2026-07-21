@@ -1,0 +1,26 @@
+[Unit]
+Description=Yubai Blog Spring Boot API
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=yubai
+Group=yubai
+WorkingDirectory=/opt/yubai-blog
+EnvironmentFile=/etc/yubai-blog/app.env
+ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/blog-backend.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

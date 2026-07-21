@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKUP_DIR="/var/backups/yubai-blog"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TARGET="${BACKUP_DIR}/yubai_blog-${STAMP}.dump"
+TEMP_TARGET="${TARGET}.tmp"
+
+install -d -o postgres -g postgres -m 0700 "${BACKUP_DIR}"
+sudo -u postgres pg_dump --format=custom --file="${TEMP_TARGET}" yubai_blog
+chown postgres:postgres "${TEMP_TARGET}"
+chmod 0600 "${TEMP_TARGET}"
+mv "${TEMP_TARGET}" "${TARGET}"
+find "${BACKUP_DIR}" -type f -name 'yubai_blog-*.dump' -mtime +14 -delete
