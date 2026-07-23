@@ -1,5 +1,7 @@
 # 余白 · 前后端分离博客
 
+[![CI](https://github.com/Yiyibao/Blog/actions/workflows/ci.yml/badge.svg)](https://github.com/Yiyibao/Blog/actions/workflows/ci.yml)
+
 一个由 Vue 3 + TypeScript 前端与 Spring Boot + PostgreSQL 后端组成的个人博客。前后端拥有独立的依赖、构建和运行流程，通过 REST API 通信。
 
 ## 项目结构

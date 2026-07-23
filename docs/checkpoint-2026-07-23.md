@@ -48,5 +48,19 @@
 ## 后续建议
 
 1. 配置 Git 远端并推送本检查点。
-2. 建立基础 CI，在每次推送时运行前端测试、测试类型检查、构建和后端测试。
+2. ~~建立基础 CI，在每次推送时运行前端测试、测试类型检查、构建和后端测试。~~ ✅ 已完成
 3. 再开始下一批功能扩展，避免继续积累未提交的大范围改动。
+
+---
+
+### 2026-07-23 补充 — 已建立 CI
+
+- 在 `.github/workflows/ci.yml` 中配置了 GitHub Actions CI 质量门禁。
+- 触发条件：`push` 到 `main`、`pull_request` 指向 `main`、`workflow_dispatch` 手动执行。
+- **前端 Job**：Node.js 22 + npm 缓存，执行 `npm ci` → `npm test` → `npm run test:typecheck` → `npm run build` → `npm audit --audit-level=high`。
+- **后端 Job**：Java 21 Temurin + Maven 缓存 + PostgreSQL 17 service（健康检查），测试凭据 `yubai_blog_it / yubai_app / ci-test-password`，执行 `mvn --batch-mode test`。
+  - CI 环境变量（`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`）通过 workflow 传递，不读取本地 `.env.properties`。
+  - `BlogApiIntegrationTest.loadEnv()` 已增加环境变量回退支持。
+- **仓库质量检查**：检查提交中的行尾空格和冲突标记（对 PR 和首次提交适配）。
+- 所有步骤均不使用 `continue-on-error`。`npm audit` 未使用 `--force`。
+- 最小权限：`permissions: contents: read`。

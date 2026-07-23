@@ -573,6 +573,13 @@ class BlogApiIntegrationTest {
                 // fall through to defaults
             }
         }
+        if (properties.isEmpty()) {
+            var env = System.getenv();
+            for (var key : new String[]{"DB_URL", "DB_USERNAME", "DB_PASSWORD"}) {
+                var val = env.get(key);
+                if (val != null) properties.setProperty(key, val);
+            }
+        }
         return properties;
     }
 }
