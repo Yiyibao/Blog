@@ -4,7 +4,7 @@
 
 - `frontend` owns presentation, routing and browser-only preferences.
 - `backend` owns content, validation, persistence and future authentication.
-- PostgreSQL is the authoritative store for posts, projects and learning-note Markdown.
+- PostgreSQL is the authoritative store for posts, dishes and learning-note Markdown.
 - Imported Markdown is validated and stored as text; the original upload is never executed or retained as an arbitrary server file.
 
 ## API conventions
@@ -14,12 +14,14 @@
 - Errors use an HTTP status plus `{ status, message, timestamp }`.
 - Database changes are applied only through Flyway migrations.
 
-## Planned modules
+## Modules
 
-1. Public content: posts, categories, tags and projects.
-2. Administration: login, JWT, content CRUD and audit metadata.
+1. Public content: posts, categories and published dishes (posts support `DRAFT` / `PUBLISHED`).
+2. Administration: login, JWT, post/dish CRUD and audit metadata.
 3. Learning notes: note library, Markdown upload/export, Typora-style editor, optimistic locking and autosave.
-4. Publishing: draft, public reading, archive and Markdown export workflows.
+4. Publishing: draft/public reading for posts and notes, Markdown export for notes.
+5. Pagination: public and admin lists for posts, dishes and notes return `PageResponse` (`items`, `page`, `size`, `totalElements`, `totalPages`); page size is clamped to 1–50.
+6. Food: `dishes` stores presentation metadata and image attribution; ordered child tables store ingredients and preparation steps.
 
 ## Learning notes
 

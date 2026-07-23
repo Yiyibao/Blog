@@ -1,7 +1,5 @@
 package com.yubai.blog.admin;
 
-import java.util.List;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,13 +8,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostResponse;
 import com.yubai.blog.post.PostService;
+import com.yubai.blog.post.PostStatus;
 
 import jakarta.validation.Valid;
 
@@ -30,8 +31,17 @@ public class AdminPostController {
     }
 
     @GetMapping
-    public ApiResponse<List<PostResponse>> findAll() {
-        return ApiResponse.ok(service.findAll());
+    public ApiResponse<PageResponse<PostResponse>> findAll(
+        @RequestParam(required = false) PostStatus status,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) {
+        return ApiResponse.ok(service.findAdmin(status, page, size));
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<PostResponse> findOne(@PathVariable long id) {
+        return ApiResponse.ok(service.findOne(id));
     }
 
     @PostMapping

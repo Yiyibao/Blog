@@ -22,6 +22,7 @@ public record PostRequest(
     @NotBlank @Pattern(regexp = "^#[0-9a-fA-F]{6}$") String color,
     @NotBlank @Size(max = 10) String number,
     boolean featured,
+    @NotNull PostStatus status,
     @NotBlank String content
 ) {
 }

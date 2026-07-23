@@ -29,8 +29,18 @@ public class NoteAttachmentService {
         return attachments.findAllByNoteIdOrderByCreatedAtDesc(noteId).stream().map(NoteAttachmentResponse::from).toList();
     }
 
+    public NoteAttachmentEntity findForNote(long noteId, long attachmentId) {
+        requireNote(noteId);
+        var attachment = attachments.findById(attachmentId).orElseThrow(() -> new NotFoundException("图片不存在"));
+        if (attachment.getNoteId() != noteId) throw new NotFoundException("图片不存在");
+        return attachment;
+    }
+
     public NoteAttachmentEntity findPublic(UUID publicId) {
-        return attachments.findByPublicId(publicId).orElseThrow(() -> new NotFoundException("图片不存在"));
+        var attachment = attachments.findByPublicId(publicId).orElseThrow(() -> new NotFoundException("图片不存在"));
+        var note = notes.findById(attachment.getNoteId()).orElseThrow(() -> new NotFoundException("图片不存在"));
+        if (note.getStatus() != NoteStatus.PUBLISHED) throw new NotFoundException("图片不存在");
+        return attachment;
     }
 
     @Transactional
@@ -51,10 +61,7 @@ public class NoteAttachmentService {
 
     @Transactional
     public void delete(long noteId, long attachmentId) {
-        requireNote(noteId);
-        var attachment = attachments.findById(attachmentId).orElseThrow(() -> new NotFoundException("图片不存在"));
-        if (attachment.getNoteId() != noteId) throw new NotFoundException("图片不存在");
-        attachments.delete(attachment);
+        attachments.delete(findForNote(noteId, attachmentId));
     }
 
     private void requireNote(long noteId) {

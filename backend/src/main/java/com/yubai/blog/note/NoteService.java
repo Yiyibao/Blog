@@ -1,7 +1,6 @@
 package com.yubai.blog.note;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -10,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.yubai.blog.common.NotFoundException;
+import com.yubai.blog.common.PageResponse;
+import com.yubai.blog.common.PageRequests;
 
 @Service
 @Transactional(readOnly = true)
@@ -20,15 +21,26 @@ public class NoteService {
 
     public NoteService(NoteRepository repository) { this.repository = repository; }
 
-    public List<NoteResponse> findAll() {
-        return repository.findAllByOrderByUpdatedAtDesc().stream().map(NoteResponse::from).toList();
+    public PageResponse<NoteResponse> findAll(NoteStatus status, int page, int size) {
+        var pageable = PageRequests.of(page, size);
+        var result = status == null
+            ? repository.findAllByOrderByUpdatedAtDesc(pageable)
+            : repository.findAllByStatusOrderByUpdatedAtDesc(status, pageable);
+        return PageResponse.from(result.map(NoteResponse::from));
     }
 
-    public List<NoteResponse> findPublished() {
-        return repository.findAllByStatusOrderByUpdatedAtDesc(NoteStatus.PUBLISHED).stream().map(NoteResponse::from).toList();
+    public PageResponse<NoteResponse> findPublished(int page, int size) {
+        return PageResponse.from(repository.findAllByStatusOrderByUpdatedAtDesc(
+            NoteStatus.PUBLISHED, PageRequests.of(page, size)).map(NoteResponse::from));
     }
 
     public NoteResponse findOne(long id) { return NoteResponse.from(entity(id)); }
+
+    public NoteResponse findPublishedOne(long id) {
+        var note = entity(id);
+        if (note.getStatus() != NoteStatus.PUBLISHED) throw new NotFoundException("笔记不存在：" + id);
+        return NoteResponse.from(note);
+    }
 
     @Transactional
     public NoteResponse create(NoteRequest request) { return NoteResponse.from(repository.saveAndFlush(NoteEntity.create(request))); }
@@ -39,6 +51,21 @@ public class NoteService {
         if (note.getVersion() != request.version()) throw new NoteVersionConflictException();
         note.update(request);
         return NoteResponse.from(repository.saveAndFlush(note));
+    }
+
+    @Transactional
+    public NoteResponse publish(long id, long version) {
+        return changeStatus(id, version, NoteStatus.PUBLISHED);
+    }
+
+    @Transactional
+    public NoteResponse unpublish(long id, long version) {
+        return changeStatus(id, version, NoteStatus.DRAFT);
+    }
+
+    @Transactional
+    public NoteResponse archive(long id, long version) {
+        return changeStatus(id, version, NoteStatus.ARCHIVED);
     }
 
     @Transactional
@@ -63,6 +90,13 @@ public class NoteService {
 
     @Transactional
     public void delete(long id) { repository.delete(entity(id)); }
+
+    private NoteResponse changeStatus(long id, long version, NoteStatus status) {
+        var note = entity(id);
+        if (note.getVersion() != version) throw new NoteVersionConflictException();
+        note.changeStatus(status);
+        return NoteResponse.from(repository.saveAndFlush(note));
+    }
 
     private NoteEntity entity(long id) {
         return repository.findById(id).orElseThrow(() -> new NotFoundException("笔记不存在：" + id));

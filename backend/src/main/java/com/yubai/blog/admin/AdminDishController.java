@@ -1,7 +1,5 @@
 package com.yubai.blog.admin;
 
-import java.util.List;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,38 +8,48 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
-import com.yubai.blog.project.ProjectRequest;
-import com.yubai.blog.project.ProjectResponse;
-import com.yubai.blog.project.ProjectService;
+import com.yubai.blog.common.PageResponse;
+import com.yubai.blog.dish.DishRequest;
+import com.yubai.blog.dish.DishResponse;
+import com.yubai.blog.dish.DishService;
 
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/admin/projects")
-public class AdminProjectController {
-    private final ProjectService service;
+@RequestMapping("/api/v1/admin/dishes")
+public class AdminDishController {
+    private final DishService service;
 
-    public AdminProjectController(ProjectService service) {
+    public AdminDishController(DishService service) {
         this.service = service;
     }
 
     @GetMapping
-    public ApiResponse<List<ProjectResponse>> findAll() {
-        return ApiResponse.ok(service.findAll());
+    public ApiResponse<PageResponse<DishResponse>> findAll(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) {
+        return ApiResponse.ok(service.findAll(page, size));
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<DishResponse> findOne(@PathVariable long id) {
+        return ApiResponse.ok(service.findOne(id));
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<ProjectResponse> create(@Valid @RequestBody ProjectRequest request) {
+    public ApiResponse<DishResponse> create(@Valid @RequestBody DishRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<ProjectResponse> update(@PathVariable long id, @Valid @RequestBody ProjectRequest request) {
+    public ApiResponse<DishResponse> update(@PathVariable long id, @Valid @RequestBody DishRequest request) {
         return ApiResponse.ok(service.update(id, request));
     }
 

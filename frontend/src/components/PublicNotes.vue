@@ -15,6 +15,9 @@ const notes = ref<AdminNote[]>([])
 const selectedId = ref<number | null>(null)
 const query = ref('')
 const loading = ref(true)
+const notePage = ref(0)
+const noteTotal = ref(0)
+const noteTotalPages = ref(1)
 const selected = computed(() => notes.value.find(note => note.id === selectedId.value) ?? notes.value[0])
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
@@ -37,11 +40,20 @@ watch(selected, note => {
   if (note && editor.value) editor.value.commands.setContent(note.markdownContent, { contentType: 'markdown' })
 }, { immediate: true })
 
-onMounted(async () => {
-  try { notes.value = await fetchPublishedNotes(); selectedId.value = notes.value[0]?.id ?? null }
+async function load() {
+  loading.value = true
+  try {
+    const result = await fetchPublishedNotes(notePage.value, 20)
+    notes.value = result.items
+    noteTotal.value = result.totalElements
+    noteTotalPages.value = Math.max(1, result.totalPages)
+    selectedId.value = notes.value[0]?.id ?? null
+  }
   catch { notes.value = [] }
   finally { loading.value = false }
-})
+}
+
+onMounted(load)
 onBeforeUnmount(() => editor.value?.destroy())
 </script>
 
@@ -51,10 +63,11 @@ onBeforeUnmount(() => editor.value?.destroy())
     <div class="public-notes-layout">
       <aside>
         <label class="search-field"><span>检索笔记</span><input v-model="query" type="search" placeholder="标题、目录或标签…"></label>
-        <p>{{ filtered.length.toString().padStart(2, '0') }} PUBLIC NOTES</p>
+        <p>{{ noteTotal.toString().padStart(2, '0') }} PUBLIC NOTES</p>
         <div class="public-note-list">
           <button v-for="note in filtered" :key="note.id" :class="{ active: selected?.id === note.id }" @click="selectedId = note.id"><small>{{ note.folder }} · {{ new Date(note.updatedAt).toLocaleDateString('zh-CN') }}</small><strong>{{ note.title }}</strong><span>{{ note.wordCount }} 字 · {{ note.tags.slice(0, 2).join(' / ') || '学习记录' }}</span></button>
         </div>
+        <nav v-if="noteTotalPages > 1" class="pagination" aria-label="公开笔记分页"><button type="button" :disabled="notePage <= 0" @click="notePage -= 1; load()">上一页</button><span>{{ notePage + 1 }} / {{ noteTotalPages }}</span><button type="button" :disabled="notePage >= noteTotalPages - 1" @click="notePage += 1; load()">下一页</button></nav>
       </aside>
       <article v-if="selected" class="public-note-paper"><header><p>{{ selected.folder }} / {{ selected.status === 'PUBLISHED' ? '公开笔记' : '' }}</p><h2>{{ selected.title }}</h2><div><span v-for="tag in selected.tags" :key="tag"># {{ tag }}</span></div></header><EditorContent :editor="editor" /></article>
       <div v-else class="public-notes-empty"><span>✦</span><h2>{{ loading ? '正在翻阅笔记…' : '公开笔记正在整理中' }}</h2><p>管理员将笔记状态设为“公开”后，会在这里出现。</p></div>

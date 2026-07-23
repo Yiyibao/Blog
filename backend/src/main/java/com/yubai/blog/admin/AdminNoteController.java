@@ -1,8 +1,6 @@
 package com.yubai.blog.admin;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -21,9 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.note.NoteRequest;
 import com.yubai.blog.note.NoteResponse;
 import com.yubai.blog.note.NoteService;
+import com.yubai.blog.note.NoteStatus;
+import com.yubai.blog.note.NoteStatusChangeRequest;
 
 import jakarta.validation.Valid;
 
@@ -33,7 +34,11 @@ public class AdminNoteController {
     private final NoteService service;
     public AdminNoteController(NoteService service) { this.service = service; }
 
-    @GetMapping public ApiResponse<List<NoteResponse>> findAll() { return ApiResponse.ok(service.findAll()); }
+    @GetMapping public ApiResponse<PageResponse<NoteResponse>> findAll(
+        @RequestParam(required = false) NoteStatus status,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) { return ApiResponse.ok(service.findAll(status, page, size)); }
     @GetMapping("/{id}") public ApiResponse<NoteResponse> findOne(@PathVariable long id) { return ApiResponse.ok(service.findOne(id)); }
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
@@ -41,6 +46,21 @@ public class AdminNoteController {
 
     @PutMapping("/{id}")
     public ApiResponse<NoteResponse> update(@PathVariable long id, @Valid @RequestBody NoteRequest request) { return ApiResponse.ok(service.update(id, request)); }
+
+    @PutMapping("/{id}/publish")
+    public ApiResponse<NoteResponse> publish(@PathVariable long id, @Valid @RequestBody NoteStatusChangeRequest request) {
+        return ApiResponse.ok(service.publish(id, request.version()));
+    }
+
+    @PutMapping("/{id}/unpublish")
+    public ApiResponse<NoteResponse> unpublish(@PathVariable long id, @Valid @RequestBody NoteStatusChangeRequest request) {
+        return ApiResponse.ok(service.unpublish(id, request.version()));
+    }
+
+    @PutMapping("/{id}/archive")
+    public ApiResponse<NoteResponse> archive(@PathVariable long id, @Valid @RequestBody NoteStatusChangeRequest request) {
+        return ApiResponse.ok(service.archive(id, request.version()));
+    }
 
     @PostMapping(path = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)

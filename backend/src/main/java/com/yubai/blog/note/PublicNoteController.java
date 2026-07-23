@@ -1,12 +1,13 @@
 package com.yubai.blog.note;
 
-import java.util.List;
-
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.common.PageResponse;
 
 @RestController
 @RequestMapping("/api/v1/notes")
@@ -15,5 +16,13 @@ public class PublicNoteController {
     public PublicNoteController(NoteService service) { this.service = service; }
 
     @GetMapping
-    public ApiResponse<List<NoteResponse>> findPublished() { return ApiResponse.ok(service.findPublished()); }
+    public ApiResponse<PageResponse<NoteResponse>> findPublished(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) { return ApiResponse.ok(service.findPublished(page, size)); }
+
+    @GetMapping("/{id}")
+    public ApiResponse<NoteResponse> findPublishedOne(@PathVariable long id) {
+        return ApiResponse.ok(service.findPublishedOne(id));
+    }
 }

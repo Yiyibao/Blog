@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import axios from 'axios'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { login } from '../api/admin'
+import { hasValidAdminSession, login, saveAdminSession } from '../api/admin'
 
 const router = useRouter()
 const username = ref('')
@@ -14,19 +15,23 @@ async function submit() {
   submitting.value = true
   try {
     const result = await login(username.value.trim(), password.value)
-    sessionStorage.setItem('yubai-admin-token', result.token)
-    sessionStorage.setItem('yubai-admin-name', result.username)
-    sessionStorage.setItem('yubai-admin-expiry', result.expiresAt)
+    saveAdminSession(result)
     await router.replace('/admin')
-  } catch {
-    error.value = '登录失败，请检查用户名和密码。'
+  } catch (cause) {
+    if (axios.isAxiosError(cause) && cause.response?.status === 401) {
+      error.value = '用户名或密码不正确。'
+    } else if (axios.isAxiosError(cause) && cause.response) {
+      error.value = `登录服务暂时不可用（${cause.response.status}），请稍后重试。`
+    } else {
+      error.value = '无法连接本地后端，请确认 8080 服务正在运行。'
+    }
   } finally {
     submitting.value = false
   }
 }
 
 onMounted(() => {
-  if (sessionStorage.getItem('yubai-admin-token')) void router.replace('/admin')
+  if (hasValidAdminSession()) void router.replace('/admin')
 })
 </script>
 
@@ -35,7 +40,7 @@ onMounted(() => {
     <div class="admin-login-copy">
       <p class="eyebrow"><span /> PRIVATE STUDIO</p>
       <h1>回到你的<br><em>内容工作台。</em></h1>
-      <p>管理文章与项目，让每一次发布都保持清晰、可靠和可追溯。</p>
+      <p>管理文章、菜品与学习笔记，让每一次发布都保持清晰、可靠和可追溯。</p>
       <RouterLink class="back-link" to="/">← 返回博客</RouterLink>
     </div>
     <form class="admin-login-card" @submit.prevent="submit">

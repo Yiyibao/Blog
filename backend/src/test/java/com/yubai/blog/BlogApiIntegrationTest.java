@@ -1,0 +1,578 @@
+package com.yubai.blog;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.sql.DriverManager;
+import java.util.Properties;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.mock.web.MockMultipartFile;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+class BlogApiIntegrationTest {
+    private static final String TEST_DB = "yubai_blog_it";
+    private static final Properties ENV = loadEnv();
+
+    @BeforeAll
+    static void prepareDatabase() {
+        var url = ENV.getProperty("DB_URL", "jdbc:postgresql://localhost:5432/yubai_blog");
+        var username = ENV.getProperty("DB_USERNAME", "yubai_app");
+        var password = ENV.getProperty("DB_PASSWORD", "");
+        var testUrl = url.replaceAll("/[^/]+$", "/" + TEST_DB);
+        // Prefer connecting to the dedicated IT database. Create it outside tests if missing:
+        // psql -U postgres -c "CREATE DATABASE yubai_blog_it OWNER yubai_app;"
+        try (var connection = DriverManager.getConnection(testUrl, username, password);
+             var statement = connection.createStatement()) {
+            statement.execute("drop schema if exists public cascade");
+            statement.execute("create schema public");
+            statement.execute("grant all on schema public to " + username);
+            statement.execute("grant all on schema public to public");
+        } catch (Exception exception) {
+            throw new IllegalStateException(
+                "Integration database is unavailable. Create PostgreSQL database '" + TEST_DB
+                    + "' for user '" + username + "' before running the test suite.",
+                exception
+            );
+        }
+    }
+
+    @DynamicPropertySource
+    static void registerProperties(DynamicPropertyRegistry registry) {
+        var baseUrl = ENV.getProperty("DB_URL", "jdbc:postgresql://localhost:5432/yubai_blog");
+        var testUrl = baseUrl.replaceAll("/[^/]+$", "/" + TEST_DB);
+        registry.add("spring.datasource.url", () -> testUrl);
+        registry.add("spring.datasource.username", () -> ENV.getProperty("DB_USERNAME", "yubai_app"));
+        registry.add("spring.datasource.password", () -> ENV.getProperty("DB_PASSWORD", ""));
+        registry.add("spring.flyway.clean-disabled", () -> "false");
+        registry.add("app.jwt.secret", () -> "integration-test-secret-key-32chars!");
+        registry.add("app.admin.username", () -> "admin");
+        registry.add("app.admin.password", () -> "admin-pass-12345");
+        registry.add("app.cors.allowed-origins", () -> "http://localhost:5173");
+    }
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
+    @Test
+    @Order(1)
+    void publicPostsArePaginatedAndHideDrafts() throws Exception {
+        String token = login();
+
+        mockMvc.perform(get("/api/v1/posts").param("page", "0").param("size", "2"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items").isArray())
+            .andExpect(jsonPath("$.data.size").value(2))
+            .andExpect(jsonPath("$.data.totalElements").value(5))
+            .andExpect(jsonPath("$.data.totalPages").value(3));
+
+        String draftBody = """
+            {
+              "slug":"draft-only-post",
+              "title":"草稿文章",
+              "excerpt":"不会出现在公开列表",
+              "date":"2026-07-22",
+              "readTime":3,
+              "category":"测试",
+              "tags":["draft"],
+              "color":"#123456",
+              "number":"99",
+              "featured":false,
+              "status":"DRAFT",
+              "content":"<p>draft</p>"
+            }
+            """;
+
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(draftBody))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andReturn();
+
+        long draftId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/posts/draft-only-post"))
+            .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/posts").param("page", "0").param("size", "50"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(5));
+
+        mockMvc.perform(get("/api/v1/admin/posts").param("status", "DRAFT")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(1))
+            .andExpect(jsonPath("$.data.items[0].slug").value("draft-only-post"));
+
+        String publishBody = """
+            {
+              "slug":"draft-only-post",
+              "title":"已发布文章",
+              "excerpt":"现在会出现在公开列表",
+              "date":"2026-07-22",
+              "readTime":3,
+              "category":"测试",
+              "tags":["published"],
+              "color":"#123456",
+              "number":"99",
+              "featured":false,
+              "status":"PUBLISHED",
+              "content":"<p>published</p>"
+            }
+            """;
+
+        mockMvc.perform(put("/api/v1/admin/posts/" + draftId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(publishBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
+
+        mockMvc.perform(get("/api/v1/posts/draft-only-post"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("已发布文章"));
+
+        mockMvc.perform(delete("/api/v1/admin/posts/" + draftId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(2)
+    void adminEndpointsRequireAuth() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/posts"))
+            .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"admin\",\"password\":\"wrong\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(3)
+    void dishesUseDatabaseAndSupportAdminCrud() throws Exception {
+        String token = login();
+
+        mockMvc.perform(get("/api/v1/dishes"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(6))
+            .andExpect(jsonPath("$.data.items[0].slug").value("authentic-mapo-tofu"))
+            .andExpect(jsonPath("$.data.items[0].ingredients").isArray())
+            .andExpect(jsonPath("$.data.items[0].imageCredit").isNotEmpty());
+
+        String draftDish = """
+            {
+              "slug":"test-scallion-noodles",
+              "name":"葱油拌面",
+              "summary":"集成测试菜品",
+              "category":"面点主食",
+              "imageUrl":"https://example.com/noodles.jpg",
+              "imageAlt":"一碗葱油拌面",
+              "imageCredit":"Test · CC0",
+              "imageSourceUrl":"https://example.com/source",
+              "prepMinutes":15,
+              "difficulty":"简单",
+              "rating":4.5,
+              "featured":false,
+              "published":false,
+              "displayOrder":99,
+              "ingredients":["面条 200 克","葱适量"],
+              "steps":["煮面。","拌入葱油。"]
+            }
+            """;
+
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/dishes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(draftDish))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.published").value(false))
+            .andReturn();
+
+        long dishId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/admin/dishes/" + dishId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.slug").value("test-scallion-noodles"));
+
+        mockMvc.perform(get("/api/v1/admin/dishes").param("page", "0").param("size", "2")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.size").value(2))
+            .andExpect(jsonPath("$.data.totalElements").value(7));
+
+        mockMvc.perform(get("/api/v1/dishes/test-scallion-noodles"))
+            .andExpect(status().isNotFound());
+
+        String publishedDish = draftDish.replace("\"published\":false", "\"published\":true")
+            .replace("集成测试菜品", "已经发布的测试菜品");
+
+        mockMvc.perform(put("/api/v1/admin/dishes/" + dishId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(publishedDish))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.summary").value("已经发布的测试菜品"));
+
+        mockMvc.perform(get("/api/v1/dishes/test-scallion-noodles"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.ingredients.length()").value(2));
+
+        mockMvc.perform(delete("/api/v1/admin/dishes/" + dishId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(4)
+    void removedProjectEndpointsReturnNotFound() throws Exception {
+        String token = login();
+
+        mockMvc.perform(get("/api/v1/projects").header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/admin/projects").header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/admin/projects")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @Order(5)
+    void notesSupportCrudFilteringPaginationAndDatabaseAttachments() throws Exception {
+        String token = login();
+        String draftBody = """
+            {"title":"Draft note","markdownContent":"# Draft\\n\\nDatabase content","folder":"Tests","status":"DRAFT","tags":["postgres"],"version":0}
+            """;
+        MvcResult draftCreated = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(draftBody))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("DRAFT")).andReturn();
+        JsonNode draft = objectMapper.readTree(draftCreated.getResponse().getContentAsString()).path("data");
+        long draftId = draft.path("id").asLong();
+
+        String publishedBody = """
+            {"title":"Public note","markdownContent":"# Public\\n\\nVisible content","folder":"Tests","status":"PUBLISHED","tags":["api"],"version":0}
+            """;
+        MvcResult publishedCreated = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(publishedBody))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andReturn();
+        JsonNode publicDraft = objectMapper.readTree(publishedCreated.getResponse().getContentAsString()).path("data");
+        long publishedId = publicDraft.path("id").asLong();
+        mockMvc.perform(put("/api/v1/admin/notes/" + publishedId + "/publish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + publicDraft.path("version").asLong() + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
+
+        mockMvc.perform(get("/api/v1/admin/notes").param("page", "0").param("size", "1")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2))
+            .andExpect(jsonPath("$.data.totalPages").value(2));
+        mockMvc.perform(get("/api/v1/admin/notes").param("status", "DRAFT")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
+        mockMvc.perform(get("/api/v1/notes"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
+        mockMvc.perform(get("/api/v1/notes/" + draftId)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/notes/" + publishedId)).andExpect(status().isOk());
+
+        long version = draft.path("version").asLong();
+        String updatedDraft = draftBody.replace("Draft note", "Updated draft").replace("\"version\":0", "\"version\":" + version);
+        MvcResult updated = mockMvc.perform(put("/api/v1/admin/notes/" + draftId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(updatedDraft))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.title").value("Updated draft"))
+            .andReturn();
+        long updatedVersion = objectMapper.readTree(updated.getResponse().getContentAsString()).path("data").path("version").asLong();
+        mockMvc.perform(put("/api/v1/admin/notes/" + draftId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(updatedDraft))
+            .andExpect(status().isConflict());
+
+        var image = new MockMultipartFile("file", "pixel.png", "image/png", new byte[] {1, 2, 3, 4});
+        MvcResult uploaded = mockMvc.perform(multipart("/api/v1/admin/notes/" + draftId + "/attachments")
+                .file(image).header("Authorization", "Bearer " + token))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.data.byteSize").value(4)).andReturn();
+        JsonNode attachment = objectMapper.readTree(uploaded.getResponse().getContentAsString()).path("data");
+        long attachmentId = attachment.path("id").asLong();
+        String publicId = attachment.path("publicId").asText();
+        mockMvc.perform(get("/api/v1/admin/notes/" + draftId + "/attachments/" + attachmentId + "/content")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(result -> {
+                if (result.getResponse().getContentAsByteArray().length != 4) {
+                    throw new AssertionError("authenticated draft preview did not return attachment bytes");
+                }
+            });
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId)).andExpect(status().isNotFound());
+        MvcResult attachmentPublished = mockMvc.perform(put("/api/v1/admin/notes/" + draftId + "/publish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + updatedVersion + "}"))
+            .andExpect(status().isOk())
+            .andReturn();
+        long attachmentPublishedVersion = objectMapper.readTree(attachmentPublished.getResponse().getContentAsString())
+            .path("data").path("version").asLong();
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId))
+            .andExpect(status().isOk())
+            .andExpect(result -> {
+                if (!"no-store".equals(result.getResponse().getHeader("Cache-Control"))) {
+                    throw new AssertionError("revocable note attachments must not be cached");
+                }
+                if (result.getResponse().getContentAsByteArray().length != 4) throw new AssertionError("attachment bytes were not read from database");
+            });
+        mockMvc.perform(put("/api/v1/admin/notes/" + draftId + "/unpublish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + attachmentPublishedVersion + "}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId)).andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/admin/notes/" + draftId + "/attachments/" + attachmentId)
+                .header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId)).andExpect(status().isNotFound());
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + draftId).header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/v1/admin/notes/" + publishedId).header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(6)
+    void categoriesValidationPageBoundsAndMarkdownRoundTripWork() throws Exception {
+        String token = login();
+
+        mockMvc.perform(get("/api/v1/categories"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray())
+            .andExpect(jsonPath("$.data.length()").value(3));
+
+        mockMvc.perform(get("/api/v1/posts").param("page", "-9").param("size", "999"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.page").value(0))
+            .andExpect(jsonPath("$.data.size").value(50))
+            .andExpect(jsonPath("$.data.items.length()").value(5));
+
+        mockMvc.perform(get("/api/v1/admin/dishes"))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/notes"))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isBadRequest());
+
+        byte[] markdown = "# Imported note\n\nStored in PostgreSQL.".getBytes(StandardCharsets.UTF_8);
+        var markdownFile = new MockMultipartFile("file", "integration.md", "text/markdown", markdown);
+        MvcResult imported = mockMvc.perform(multipart("/api/v1/admin/notes/import")
+                .file(markdownFile).header("Authorization", "Bearer " + token))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.sourceFileName").value("integration.md"))
+            .andReturn();
+        long importedId = objectMapper.readTree(imported.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/admin/notes/" + importedId + "/export")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(result -> {
+                if (!java.util.Arrays.equals(markdown, result.getResponse().getContentAsByteArray())) {
+                    throw new AssertionError("exported Markdown does not match the imported database content");
+                }
+            });
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + importedId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(7)
+    void postHtmlIsSanitizedBeforeItReachesPublicReaders() throws Exception {
+        String token = login();
+        String unsafeBody = """
+            {
+              "slug":"sanitizer-regression",
+              "title":"Sanitizer regression",
+              "excerpt":"HTML policy test",
+              "date":"2026-07-23",
+              "readTime":2,
+              "category":"测试",
+              "tags":["security"],
+              "color":"#123456",
+              "number":"98",
+              "featured":false,
+              "status":"PUBLISHED",
+              "content":"<p>safe</p><script>alert(1)</script><a href=\\\"javascript:alert(2)\\\" onclick=\\\"alert(3)\\\">link</a><img src=\\\"javascript:alert(4)\\\" onerror=\\\"alert(5)\\\">"
+            }
+            """;
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(unsafeBody))
+            .andExpect(status().isCreated())
+            .andReturn();
+        long id = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        MvcResult publicRead = mockMvc.perform(get("/api/v1/posts/sanitizer-regression"))
+            .andExpect(status().isOk())
+            .andReturn();
+        String content = objectMapper.readTree(publicRead.getResponse().getContentAsString()).path("data").path("content").asText();
+        if (content.contains("<script") || content.contains("onclick") || content.contains("javascript:")) {
+            throw new AssertionError("unsafe HTML reached the public post response: " + content);
+        }
+        if (!content.contains("<p>safe</p>")) {
+            throw new AssertionError("safe article markup was unexpectedly removed: " + content);
+        }
+
+        mockMvc.perform(delete("/api/v1/admin/posts/" + id).header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(8)
+    void notesCanBePublishedAndWithdrawnExplicitly() throws Exception {
+        String token = login();
+        String draftBody = objectMapper.writeValueAsString(java.util.Map.of(
+            "title", "Publish workflow",
+            "markdownContent", "# Publish workflow\n\nVisible after publish.",
+            "folder", "Tests",
+            "status", "DRAFT",
+            "tags", java.util.List.of("publish"),
+            "version", 0
+        ));
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(draftBody))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andReturn();
+        JsonNode draft = objectMapper.readTree(created.getResponse().getContentAsString()).path("data");
+        long id = draft.path("id").asLong();
+        long version = draft.path("version").asLong();
+
+        mockMvc.perform(get("/api/v1/notes/" + id)).andExpect(status().isNotFound());
+
+        String attemptedImplicitPublish = draftBody.replace("\"status\":\"DRAFT\"", "\"status\":\"PUBLISHED\"")
+            .replace("\"version\":0", "\"version\":" + version);
+        MvcResult contentUpdated = mockMvc.perform(put("/api/v1/admin/notes/" + id)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(attemptedImplicitPublish))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andReturn();
+        version = objectMapper.readTree(contentUpdated.getResponse().getContentAsString()).path("data").path("version").asLong();
+
+        MvcResult published = mockMvc.perform(put("/api/v1/admin/notes/" + id + "/publish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + version + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+            .andReturn();
+        long publishedVersion = objectMapper.readTree(published.getResponse().getContentAsString()).path("data").path("version").asLong();
+
+        mockMvc.perform(get("/api/v1/notes/" + id))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("Publish workflow"));
+
+        MvcResult unpublished = mockMvc.perform(put("/api/v1/admin/notes/" + id + "/unpublish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + publishedVersion + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andReturn();
+        long unpublishedVersion = objectMapper.readTree(unpublished.getResponse().getContentAsString()).path("data").path("version").asLong();
+
+        mockMvc.perform(get("/api/v1/notes/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/admin/notes/" + id + "/publish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + publishedVersion + "}"))
+            .andExpect(status().isConflict());
+
+        MvcResult archived = mockMvc.perform(put("/api/v1/admin/notes/" + id + "/archive")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + unpublishedVersion + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("ARCHIVED"))
+            .andReturn();
+        long archivedVersion = objectMapper.readTree(archived.getResponse().getContentAsString()).path("data").path("version").asLong();
+        mockMvc.perform(put("/api/v1/admin/notes/" + id + "/unpublish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + archivedVersion + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("DRAFT"));
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + id).header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    private String login() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"admin\",\"password\":\"admin-pass-12345\"}"))
+            .andExpect(status().isOk())
+            .andReturn();
+        JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
+        return root.path("data").path("token").asText();
+    }
+
+    private static Properties loadEnv() {
+        var properties = new Properties();
+        var candidates = new Path[] {
+            Path.of(".env.properties"),
+            Path.of("backend/.env.properties")
+        };
+        for (var candidate : candidates) {
+            if (!Files.isRegularFile(candidate)) continue;
+            try (var reader = Files.newBufferedReader(candidate)) {
+                properties.load(reader);
+                break;
+            } catch (Exception ignored) {
+                // fall through to defaults
+            }
+        }
+        return properties;
+    }
+}

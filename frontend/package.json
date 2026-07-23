@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && node scripts/clean-build.mjs && vite build && node scripts/prepare-sites-build.mjs",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:typecheck": "vue-tsc --noEmit -p tsconfig.vitest.json"
   },
   "dependencies": {
     "@tiptap/extension-file-handler": "^3.28.0",
@@ -29,8 +32,11 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.8",
+    "@vue/test-utils": "^2.4.11",
+    "jsdom": "^29.1.1",
     "typescript": "5.9.3",
     "vite": "8.1.5",
+    "vitest": "^4.1.10",
     "vue-tsc": "3.1.1"
   }
 }

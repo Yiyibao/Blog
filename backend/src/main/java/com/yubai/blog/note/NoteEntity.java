@@ -65,6 +65,7 @@ public class NoteEntity {
 
     public static NoteEntity create(NoteRequest request) {
         var note = new NoteEntity();
+        note.status = NoteStatus.DRAFT;
         note.update(request);
         return note;
     }
@@ -84,10 +85,13 @@ public class NoteEntity {
         title = request.title().trim();
         markdownContent = request.markdownContent();
         folder = request.folder().trim();
-        status = request.status();
         tags.clear();
         tags.addAll(request.tags().stream().map(String::trim).filter(tag -> !tag.isBlank()).distinct().toList());
         wordCount = countWords(markdownContent);
+    }
+
+    public void changeStatus(NoteStatus nextStatus) {
+        status = nextStatus;
     }
 
     private static int countWords(String markdown) {

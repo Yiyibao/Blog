@@ -1,3 +1,5 @@
+export type PostStatus = 'DRAFT' | 'PUBLISHED'
+
 export interface Post {
   id?: number
   slug: string
@@ -10,17 +12,38 @@ export interface Post {
   color: string
   number: string
   featured?: boolean
+  status?: PostStatus
   content: string
 }
 
-export interface Project {
-  id?: number
-  title: string
-  description: string
-  stack: string[]
-  year: string
-  status: string
-  color: string
+export interface PageResult<T> {
+  items: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+export interface Dish {
+  id: number
+  slug: string
+  name: string
+  summary: string
+  category: string
+  imageUrl: string
+  imageAlt: string
+  imageCredit: string
+  imageSourceUrl: string
+  prepMinutes: number
+  difficulty: '简单' | '家常' | '进阶'
+  rating: number
+  featured: boolean
+  published: boolean
+  displayOrder: number
+  ingredients: string[]
+  steps: string[]
+  createdAt: string
+  updatedAt: string
 }
 
 export const posts: Post[] = [
@@ -35,6 +58,7 @@ export const posts: Post[] = [
     color: '#1649d8',
     number: '01',
     featured: true,
+    status: 'PUBLISHED',
     content: `
       <p class="lead">复杂从来不会真正消失。好的设计，只是把它安放到了更合适的位置。</p>
       <h2 id="start">清晰不是删减，而是排序</h2>
@@ -62,6 +86,7 @@ export const posts: Post[] = [
     tags: ['Vue', 'TypeScript'],
     color: '#ff6b35',
     number: '02',
+    status: 'PUBLISHED',
     content: `<p class="lead">抽象的目标不是减少文件，而是让变化发生在正确的位置。</p><h2 id="signal">先寻找稳定信号</h2><p>当一段逻辑跨越多个组件，并且拥有清楚的输入、输出与生命周期，它才开始具备成为 composable 的条件。</p><h2 id="contract">用类型写下契约</h2><p>TypeScript 让边界变得可见：参数表达依赖，返回值表达能力，而命名表达意图。</p><pre><code>export function useReadingList(storage: Storage) {
   const items = ref&lt;string[]&gt;([])
   const toggle = (slug: string) =&gt; { /* ... */ }
@@ -78,6 +103,7 @@ export const posts: Post[] = [
     tags: ['体验', '生活'],
     color: '#d7ef63',
     number: '03',
+    status: 'PUBLISHED',
     content: `<p class="lead">速度是一种能力，但从来不是体验的唯一尺度。</p><h2 id="pause">允许停顿发生</h2><p>一个页面不必在首屏解释一切。空白可以建立期待，过渡可以帮助理解，适当的延迟甚至能让动作显得更有重量。</p><blockquote>克制不是缺少表达，而是知道什么值得被放大。</blockquote><h2 id="quiet">安静的产品</h2><p>关闭不必要的通知、减少竞争性的按钮、把阅读进度交还给用户。安静不是消极，它是一种对注意力的尊重。</p>`,
   },
   {
@@ -90,6 +116,7 @@ export const posts: Post[] = [
     tags: ['TypeScript', '内容系统'],
     color: '#8c7bff',
     number: '04',
+    status: 'PUBLISHED',
     content: `<p class="lead">内容与代码的边界越清楚，网站就越容易继续生长。</p><h2 id="model">先建立内容模型</h2><p>标题、摘要、日期、标签与正文不仅是字段，更是页面能力的来源。可靠的模型能驱动筛选、推荐与 SEO。</p><h2 id="future">为未来留接口</h2><p>今天的数据来自本地文件，明天也可以替换成 Markdown 或 CMS，而展示层无需推倒重来。</p>`,
   },
   {
@@ -102,14 +129,9 @@ export const posts: Post[] = [
     tags: ['摄影', '城市'],
     color: '#f2c94c',
     number: '05',
+    status: 'PUBLISHED',
     content: `<p class="lead">散步是一种低速的搜索方式。</p><h2 id="light">下午四点的光</h2><p>阳光沿着旧楼的边缘落下，橱窗、树影和路人的衣角暂时拥有同一种颜色。</p><h2 id="collect">收集而不占有</h2><p>按下快门不是为了证明到过，而是提醒自己：平常的一天也有值得认真观看的部分。</p>`,
   },
-]
-
-export const projects: Project[] = [
-  { title: 'Mori 阅读器', description: '一款强调专注与批注关系的长文阅读原型。', stack: ['Vue 3', 'TypeScript', 'IndexedDB'], year: '2026', status: '进行中', color: '#1649d8' },
-  { title: 'Tiny Metrics', description: '为独立创作者设计的轻量、隐私友好数据看板。', stack: ['Vite', 'ECharts', 'Cloudflare'], year: '2025', status: '已发布', color: '#ff6b35' },
-  { title: '微光计划', description: '收集日常微小灵感的离线优先网页应用。', stack: ['PWA', 'Vue', 'CSS'], year: '2025', status: '实验', color: '#d7ef63' },
 ]
 
 export const categories = ['全部', ...new Set(posts.map((post) => post.category))]

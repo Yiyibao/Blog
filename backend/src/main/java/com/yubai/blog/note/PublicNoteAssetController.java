@@ -1,6 +1,5 @@
 package com.yubai.blog.note;
 
-import java.time.Duration;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 
@@ -25,7 +24,7 @@ public class PublicNoteAssetController {
         var attachment = service.findPublic(publicId);
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(attachment.getMediaType()))
-            .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic().immutable())
+            .cacheControl(CacheControl.noStore())
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                 .filename(attachment.getFileName(), StandardCharsets.UTF_8).build().toString())
             .body(attachment.getContent());

@@ -8,6 +8,8 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -56,19 +58,23 @@ public class PostEntity {
     @Column(nullable = false)
     private boolean featured;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PostStatus status = PostStatus.DRAFT;
+
     @Column(nullable = false, columnDefinition = "text")
     private String content;
 
     protected PostEntity() {
     }
 
-    public static PostEntity create(PostRequest request) {
+    public static PostEntity create(PostRequest request, PostContentSanitizer sanitizer) {
         var post = new PostEntity();
-        post.update(request);
+        post.update(request, sanitizer);
         return post;
     }
 
-    public void update(PostRequest request) {
+    public void update(PostRequest request, PostContentSanitizer sanitizer) {
         this.slug = request.slug();
         this.title = request.title();
         this.excerpt = request.excerpt();
@@ -80,7 +86,8 @@ public class PostEntity {
         this.color = request.color();
         this.number = request.number();
         this.featured = request.featured();
-        this.content = request.content();
+        this.status = request.status();
+        this.content = sanitizer.sanitize(request.content());
     }
 
     public Long getId() { return id; }
@@ -94,5 +101,6 @@ public class PostEntity {
     public String getColor() { return color; }
     public String getNumber() { return number; }
     public boolean isFeatured() { return featured; }
+    public PostStatus getStatus() { return status; }
     public String getContent() { return content; }
 }
