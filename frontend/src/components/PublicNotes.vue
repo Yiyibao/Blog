@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
@@ -8,9 +9,10 @@ import { TableKit } from '@tiptap/extension-table'
 import Image from '@tiptap/extension-image'
 import { Mathematics } from '@tiptap/extension-mathematics'
 import 'katex/dist/katex.min.css'
-import { fetchPublishedNotes } from '../api/content'
+import { fetchPublishedNote, fetchPublishedNotes } from '../api/content'
 import type { AdminNote } from '../api/admin'
 
+const route = useRoute()
 const notes = ref<AdminNote[]>([])
 const selectedId = ref<number | null>(null)
 const query = ref('')
@@ -18,6 +20,7 @@ const loading = ref(true)
 const notePage = ref(0)
 const noteTotal = ref(0)
 const noteTotalPages = ref(1)
+
 const selected = computed(() => notes.value.find(note => note.id === selectedId.value) ?? notes.value[0])
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
@@ -47,11 +50,34 @@ async function load() {
     notes.value = result.items
     noteTotal.value = result.totalElements
     noteTotalPages.value = Math.max(1, result.totalPages)
-    selectedId.value = notes.value[0]?.id ?? null
+    await selectRouteNote()
   }
   catch { notes.value = [] }
   finally { loading.value = false }
 }
+
+async function selectRouteNote() {
+  const rawId = Array.isArray(route.query.note) ? route.query.note[0] : route.query.note
+  const id = Number(rawId)
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    selectedId.value = notes.value[0]?.id ?? null
+    return
+  }
+  const loaded = notes.value.find(note => note.id === id)
+  if (loaded) {
+    selectedId.value = loaded.id
+    return
+  }
+  try {
+    const note = await fetchPublishedNote(id)
+    notes.value = [note, ...notes.value.filter(item => item.id !== note.id)]
+    selectedId.value = note.id
+  } catch {
+    selectedId.value = notes.value[0]?.id ?? null
+  }
+}
+
+watch(() => route.query.note, () => void selectRouteNote())
 
 onMounted(load)
 onBeforeUnmount(() => editor.value?.destroy())

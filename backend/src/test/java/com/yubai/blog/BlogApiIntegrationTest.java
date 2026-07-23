@@ -548,6 +548,95 @@ class BlogApiIntegrationTest {
             .andExpect(status().isNoContent());
     }
 
+    @Test
+    @Order(9)
+    void searchIsPublicGroupedLimitedAndExcludesDrafts() throws Exception {
+        String token = login();
+        String draftBody = """
+            {
+              "slug":"search-hidden-draft",
+              "title":"private-search-sentinel",
+              "excerpt":"private-search-sentinel",
+              "date":"2026-07-23",
+              "readTime":2,
+              "category":"Tests",
+              "tags":["private-search-sentinel"],
+              "color":"#123456",
+              "number":"98",
+              "featured":false,
+              "status":"DRAFT",
+              "content":"<p>private-search-sentinel</p>"
+            }
+            """;
+        MvcResult draftCreated = mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(draftBody))
+            .andExpect(status().isCreated())
+            .andReturn();
+        long draftId = objectMapper.readTree(draftCreated.getResponse().getContentAsString())
+            .path("data").path("id").asLong();
+
+        String noteBody = """
+            {"title":"Public search sentinel","markdownContent":"# Search\\n\\npublic-note-sentinel","folder":"Search","status":"DRAFT","tags":["public-note-sentinel"],"version":0}
+            """;
+        MvcResult noteCreated = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(noteBody))
+            .andExpect(status().isCreated())
+            .andReturn();
+        JsonNode noteDraft = objectMapper.readTree(noteCreated.getResponse().getContentAsString()).path("data");
+        long noteId = noteDraft.path("id").asLong();
+        mockMvc.perform(put("/api/v1/admin/notes/" + noteId + "/publish")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":" + noteDraft.path("version").asLong() + "}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/search").param("q", "设计"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.articles").isArray())
+            .andExpect(jsonPath("$.data.notes").isArray())
+            .andExpect(jsonPath("$.data.dishes").isArray())
+            .andExpect(jsonPath("$.data.articles[0].type").value("POST"))
+            .andExpect(jsonPath("$.data.articles[0].url").value("/articles/clarity-by-design"));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "public-note-sentinel"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.notes[0].type").value("NOTE"))
+            .andExpect(jsonPath("$.data.notes[0].url").value("/notes?note=" + noteId));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "菠萝"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.dishes[0].type").value("DISH"))
+            .andExpect(jsonPath("$.data.dishes[0].url").value("/recipes?dish=sweet-sour-pork"));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "private-search-sentinel"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(0));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "的").param("limit", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.articles.length()").value(1))
+            .andExpect(jsonPath("$.data.dishes.length()").value(1));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "  "))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(0))
+            .andExpect(jsonPath("$.data.articles.length()").value(0))
+            .andExpect(jsonPath("$.data.notes.length()").value(0))
+            .andExpect(jsonPath("$.data.dishes.length()").value(0));
+
+        mockMvc.perform(delete("/api/v1/admin/posts/" + draftId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
     private String login() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)

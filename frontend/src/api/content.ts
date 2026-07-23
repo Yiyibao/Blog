@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Dish, PageResult, Post } from '../data'
+import type { Dish, PageResult, Post, SearchHit } from '../data'
 import type { AdminNote } from './admin'
 
 interface ApiEnvelope<T> {
@@ -54,4 +54,33 @@ export async function fetchDishes(page = 0, size = 12) {
 export async function fetchPublishedNotes(page = 0, size = 20) {
   const data = await unwrap<PageResult<AdminNote> | AdminNote[]>(api.get('/notes', { params: { page, size } }))
   return asPage(data, page, size)
+}
+
+export function fetchPublishedNote(id: number) {
+  return unwrap<AdminNote>(api.get(`/notes/${id}`))
+}
+
+export function fetchDish(slug: string) {
+  return unwrap<Dish>(api.get(`/dishes/${encodeURIComponent(slug)}`))
+}
+
+export interface SearchGroup {
+  articles: SearchHit[]
+  notes: SearchHit[]
+  dishes: SearchHit[]
+  total: number
+}
+
+export async function searchContent(q: string, limit = 10, signal?: AbortSignal): Promise<SearchGroup> {
+  if (!q.trim()) return { articles: [], notes: [], dishes: [], total: 0 }
+  const data = await unwrap<SearchGroup>(api.get('/search', {
+    params: { q: q.trim(), limit },
+    signal,
+  }))
+  return {
+    articles: data.articles ?? [],
+    notes: data.notes ?? [],
+    dishes: data.dishes ?? [],
+    total: data.total ?? 0,
+  }
 }

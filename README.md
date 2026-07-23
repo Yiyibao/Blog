@@ -48,6 +48,12 @@ mvn spring-boot:run
 
 后端默认地址为 `http://localhost:8080`，健康检查为 `http://localhost:8080/actuator/health`。
 
+### 全站搜索
+
+`Ctrl/Cmd + K`（或点击搜索按钮）打开全站搜索面板。输入关键词后 300ms 防抖自动向 `/api/v1/search` 发起请求，结果按文章、美食、学习笔记分组展示，支持键盘上下导航、Enter 跳转和 Escape 关闭。搜索面板使用独立 `AbortController` 取消过期请求，加载/错误/空状态均有对应 UI。
+
+搜索结果使用 `?note={id}` 直接打开指定公开笔记，使用 `?dish={slug}` 直接打开指定菜品。文章归档的本地搜索与全局搜索状态完全独立。
+
 首批只读接口：
 
 - `GET /api/v1/posts?page=0&size=10`：仅返回 `PUBLISHED` 文章，分页字段为 `items/page/size/totalElements/totalPages`
@@ -57,6 +63,7 @@ mvn spring-boot:run
 - `GET /api/v1/dishes/{slug}`：读取菜品、食材、步骤和图片署名
 - `GET /api/v1/notes?page=0&size=20`、`GET /api/v1/notes/{id}`（仅返回公开学习笔记）
 - `GET /api/v1/note-assets/{publicId}`（仅当所属笔记已公开时读取笔记内图片）
+- `GET /api/v1/search?q=关键词&limit=5`：按 `articles/notes/dishes` 分组返回公开内容，每组最多 1–10 条
 
 管理接口：
 

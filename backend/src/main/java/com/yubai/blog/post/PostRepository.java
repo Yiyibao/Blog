@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface PostRepository extends JpaRepository<PostEntity, Long> {
     Page<PostEntity> findAllByOrderByDateDesc(Pageable pageable);
@@ -23,4 +24,26 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     @Query("select distinct p.category from PostEntity p where p.status = com.yubai.blog.post.PostStatus.PUBLISHED order by p.category")
     List<String> findDistinctPublishedCategories();
+
+    @Query(value = """
+        SELECT DISTINCT p FROM PostEntity p
+        LEFT JOIN p.tags tag
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (LOWER(p.title) LIKE LOWER(:query)
+            OR LOWER(p.excerpt) LIKE LOWER(:query)
+            OR LOWER(p.category) LIKE LOWER(:query)
+            OR LOWER(p.content) LIKE LOWER(:query)
+            OR LOWER(tag) LIKE LOWER(:query))
+        ORDER BY p.date DESC
+        """, countQuery = """
+        SELECT COUNT(DISTINCT p) FROM PostEntity p
+        LEFT JOIN p.tags tag
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (LOWER(p.title) LIKE LOWER(:query)
+            OR LOWER(p.excerpt) LIKE LOWER(:query)
+            OR LOWER(p.category) LIKE LOWER(:query)
+            OR LOWER(p.content) LIKE LOWER(:query)
+            OR LOWER(tag) LIKE LOWER(:query))
+        """)
+    Page<PostEntity> searchPublished(@Param("query") String query, Pageable pageable);
 }

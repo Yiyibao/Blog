@@ -5,6 +5,8 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface DishRepository extends JpaRepository<DishEntity, Long> {
     Page<DishEntity> findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(Pageable pageable);
@@ -12,4 +14,28 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
     Optional<DishEntity> findBySlugAndPublishedTrue(String slug);
     boolean existsBySlug(String slug);
     boolean existsBySlugAndIdNot(String slug, long id);
+
+    @Query(value = """
+        SELECT DISTINCT d FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        ORDER BY d.featured DESC, d.displayOrder ASC
+        """, countQuery = """
+        SELECT COUNT(DISTINCT d) FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        """)
+    Page<DishEntity> searchPublished(@Param("query") String query, Pageable pageable);
 }

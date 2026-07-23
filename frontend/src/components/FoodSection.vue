@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { fetchDishes } from '../api/content'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { fetchDish, fetchDishes } from '../api/content'
 import type { Dish } from '../data'
 
+const route = useRoute()
 const dishes = ref<Dish[]>([])
 const dishPage = ref(0)
 const dishTotal = ref(0)
@@ -30,12 +32,32 @@ async function load() {
     dishes.value = result.items
     dishTotal.value = result.totalElements
     dishTotalPages.value = Math.max(1, result.totalPages)
+    await openRouteDish()
     requestAnimationFrame(() => { ready.value = true })
   } catch {
     loadError.value = '菜谱暂时没有准备好，请稍后再来看看。'
   } finally {
     loading.value = false
   }
+}
+
+async function openRouteDish() {
+  const rawSlug = Array.isArray(route.query.dish) ? route.query.dish[0] : route.query.dish
+  const slug = typeof rawSlug === 'string' ? rawSlug.trim() : ''
+  if (!slug) {
+    if (selectedDish.value) closeDish()
+    return
+  }
+  let dish = dishes.value.find(item => item.slug === slug)
+  if (!dish) {
+    try {
+      dish = await fetchDish(slug)
+      dishes.value = [dish, ...dishes.value.filter(item => item.id !== dish?.id)]
+    } catch {
+      return
+    }
+  }
+  await openDish(dish)
 }
 
 async function openDish(dish: Dish, event?: Event) {
@@ -51,6 +73,8 @@ function closeDish() {
   document.body.style.removeProperty('overflow')
   nextTick(() => lastTrigger?.focus())
 }
+
+watch(() => route.query.dish, () => void openRouteDish())
 
 onMounted(load)
 onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
@@ -74,7 +98,7 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 
       <nav class="food-filter" aria-label="菜谱分类">
         <strong>{{ dishTotal }} 道家常菜</strong>
-        <div>
+        <div class="food-filter-tabs">
           <button
             v-for="category in categories"
             :key="category"
@@ -207,7 +231,7 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 .food-stats dd { margin: 7px 0 0; color: var(--faint); font: 500 .58rem/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .13em; }
 .food-filter { position: sticky; z-index: 20; top: 74px; display: flex; justify-content: space-between; align-items: center; gap: 28px; margin: 0 -12px 36px; padding: 14px 12px; background: color-mix(in srgb, var(--paper) 88%, transparent); border-top: 1px solid var(--food-line); border-bottom: 1px solid var(--food-line); backdrop-filter: blur(18px) saturate(130%); }
 .food-filter strong { white-space: nowrap; font-size: .8rem; font-weight: 520; }
-.food-filter > div { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.food-filter-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .food-filter button { flex: 0 0 auto; padding: 8px 13px; color: var(--food-muted); background: transparent; border: 0; border-radius: 8px; font-size: .78rem; cursor: pointer; transition: color .15s, background .15s, transform .15s; }
 .food-filter button:hover { color: var(--food-text); }
 .food-filter button:active { transform: scale(.97); }

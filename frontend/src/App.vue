@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { fetchPost, fetchPosts } from './api/content'
 import AdminDashboard from './components/AdminDashboard.vue'
 import AdminLogin from './components/AdminLogin.vue'
 const NotesWorkspace = defineAsyncComponent(() => import('./components/NotesWorkspace.vue'))
 const PublicNotes = defineAsyncComponent(() => import('./components/PublicNotes.vue'))
 const FoodSection = defineAsyncComponent(() => import('./components/FoodSection.vue'))
+import GlobalSearch from './components/GlobalSearch.vue'
 import { posts as seedPosts, type Post } from './data'
 
 const route = useRoute()
-const router = useRouter()
 const menuOpen = ref(false)
 const searchOpen = ref(false)
 const query = ref('')
@@ -18,6 +18,7 @@ const category = ref('全部')
 const sortOrder = ref<'newest' | 'oldest'>('newest')
 const toast = ref('')
 const isDark = ref(false)
+
 const readingProgress = ref(0)
 const heroProgress = ref(0)
 const showBackToTop = ref(false)
@@ -51,11 +52,7 @@ const pagedPosts = computed(() => {
   const start = page * archivePageSize
   return filteredPosts.value.slice(start, start + archivePageSize)
 })
-const searchResults = computed(() => {
-  const normalized = query.value.trim().toLowerCase()
-  if (!normalized) return posts.value.slice(0, 3)
-  return posts.value.filter((post) => [post.title, post.excerpt, ...post.tags].join(' ').toLowerCase().includes(normalized)).slice(0, 5)
-})
+
 const relatedPosts = computed(() => {
   if (!currentPost.value) return []
   return posts.value.filter((post) => post.slug !== currentPost.value?.slug && post.tags.some((tag) => currentPost.value?.tags.includes(tag))).slice(0, 2)
@@ -152,13 +149,6 @@ function scrollToTop() {
 function openSearch() {
   searchOpen.value = true
   menuOpen.value = false
-  requestAnimationFrame(() => document.querySelector<HTMLInputElement>('#global-search')?.focus())
-}
-
-function goToResult(post: Post) {
-  searchOpen.value = false
-  query.value = ''
-  void router.push(`/articles/${post.slug}`)
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -166,7 +156,6 @@ function onKeydown(event: KeyboardEvent) {
     event.preventDefault()
     openSearch()
   }
-  if (event.key === 'Escape') searchOpen.value = false
 }
 
 function updateProgress() {
@@ -346,7 +335,7 @@ onBeforeUnmount(() => {
         <RouterLink to="/about"><i>○</i>关于</RouterLink>
       </nav>
       <div class="header-actions">
-        <button class="icon-button search-trigger" type="button" aria-label="搜索文章" @click="openSearch">⌕ <kbd>⌘K</kbd></button>
+        <button class="icon-button search-trigger" type="button" aria-label="全站搜索" @click="openSearch">⌕ <kbd>⌘K</kbd></button>
         <button class="icon-button" type="button" :aria-label="isDark ? '切换浅色模式' : '切换深色模式'" @click="toggleTheme">{{ isDark ? '☀' : '◐' }}</button>
         <button class="menu-button" type="button" :aria-expanded="menuOpen" aria-label="打开导航" @click="menuOpen = !menuOpen">{{ menuOpen ? '关闭' : '菜单' }}</button>
       </div>
@@ -539,9 +528,7 @@ onBeforeUnmount(() => {
       <small>回到顶部</small>
     </button>
 
-    <div v-if="searchOpen" class="search-overlay" role="dialog" aria-modal="true" aria-label="搜索文章" @click.self="searchOpen = false">
-      <div class="search-panel"><div class="search-input-wrap"><span>⌕</span><input id="global-search" v-model="query" type="search" placeholder="搜索文章、标签或关键词…"><button type="button" @click="searchOpen = false">ESC</button></div><p>搜索结果</p><button v-for="post in searchResults" :key="post.slug" class="search-result" type="button" @click="goToResult(post)"><span :style="{ background: post.color }">{{ post.number }}</span><div><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong></div><b>↗</b></button><div v-if="!searchResults.length" class="search-empty">没有匹配的文章</div></div>
-    </div>
+    <GlobalSearch :open="searchOpen" @close="searchOpen = false" />
     <div class="toast" :class="{ visible: toast }" role="status" aria-live="polite">{{ toast }}</div>
   </div>
 </template>

@@ -1,3 +1,16 @@
+export type SearchType = 'POST' | 'DISH' | 'NOTE'
+
+export interface SearchHit {
+  type: SearchType
+  id: number
+  title: string
+  excerpt: string
+  category: string | null
+  url: string
+  color: string | null
+  number: string | null
+}
+
 export type PostStatus = 'DRAFT' | 'PUBLISHED'
 
 export interface Post {
