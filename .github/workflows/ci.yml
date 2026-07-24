@@ -54,6 +54,15 @@ jobs:
           distribution: temurin
           java-version: 21
           cache: maven
+      - name: Verify PostgreSQL connection
+        run: |
+          echo "Checking PostgreSQL..."
+          PGPASSWORD=ci-test-password psql -h localhost -U yubai_app -d yubai_blog_it -c "SELECT 1 AS ok;"
+          echo "PostgreSQL is ready."
+      - name: Debug Maven and Java versions
+        run: |
+          java -version
+          mvn --version 2>&1 | head -3
       - run: mvn --batch-mode test
         env:
           DB_URL: jdbc:postgresql://localhost:5432/yubai_blog_it
