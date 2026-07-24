@@ -45,6 +45,7 @@ public class SitemapService {
         entries.add(new SitemapEntry(base + "/articles", null));
         entries.add(new SitemapEntry(base + "/notes", null));
         entries.add(new SitemapEntry(base + "/recipes", null));
+        entries.add(new SitemapEntry(base + "/archive", null));
         entries.add(new SitemapEntry(base + "/about", null));
 
         for (var post : postRepository.findPublishedSitemap()) {

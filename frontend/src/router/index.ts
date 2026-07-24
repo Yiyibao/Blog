@@ -9,6 +9,7 @@ const ArticlesPage = defineAsyncComponent(() => import('../pages/ArticlesPage.vu
 const ArticlePage = defineAsyncComponent(() => import('../pages/ArticlePage.vue'))
 const AboutPage = defineAsyncComponent(() => import('../pages/AboutPage.vue'))
 const NotesPage = defineAsyncComponent(() => import('../pages/NotesPage.vue'))
+const ArchivePage = defineAsyncComponent(() => import('../pages/ArchivePage.vue'))
 const RecipesPage = defineAsyncComponent(() => import('../pages/RecipesPage.vue'))
 const AdminDashboardPage = defineAsyncComponent(() => import('../pages/AdminDashboardPage.vue'))
 const AdminNotesPage = defineAsyncComponent(() => import('../pages/AdminNotesPage.vue'))
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
     { path: '/admin', name: 'admin', component: AdminDashboardPage },
     { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage },
+    { path: '/archive', name: 'archive', component: ArchivePage },
     { path: '/recipes', name: 'recipes', component: RecipesPage },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
   ],

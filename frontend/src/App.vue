@@ -161,6 +161,7 @@ watch(() => route.fullPath, () => {
       notes: { title: '学习笔记', description: '公开学习笔记，持续更新的认知地图', canonicalPath: '/notes' },
       recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
       about: { title: '关于', description: '关于作者和这个博客', canonicalPath: '/about' },
+      archive: { title: '内容归档', description: '按时间浏览所有公开的文章、学习笔记和菜谱', canonicalPath: '/archive' },
     }
     const pm = pageMeta[name] || { title: '', description: '', canonicalPath: '' }
     apply({
@@ -229,6 +230,7 @@ onBeforeUnmount(() => {
       <nav class="desktop-nav" aria-label="主导航">
         <RouterLink to="/"><i>⌂</i>首页</RouterLink>
         <RouterLink to="/articles"><i>✎</i>文章</RouterLink>
+        <RouterLink to="/archive"><i>☰</i>归档</RouterLink>
         <RouterLink to="/recipes"><i>♨</i>美食</RouterLink>
         <RouterLink to="/notes"><i>☘</i>学习笔记</RouterLink>
         <RouterLink to="/about"><i>○</i>关于</RouterLink>
@@ -243,9 +245,10 @@ onBeforeUnmount(() => {
     <nav v-if="menuOpen" class="mobile-nav" aria-label="移动端导航">
       <RouterLink to="/">首页 <span>01</span></RouterLink>
       <RouterLink to="/articles">文章 <span>02</span></RouterLink>
-      <RouterLink to="/recipes">美食 <span>03</span></RouterLink>
-      <RouterLink to="/notes">学习笔记 <span>04</span></RouterLink>
-      <RouterLink to="/about">关于 <span>05</span></RouterLink>
+      <RouterLink to="/archive">归档 <span>03</span></RouterLink>
+      <RouterLink to="/recipes">美食 <span>04</span></RouterLink>
+      <RouterLink to="/notes">学习笔记 <span>05</span></RouterLink>
+      <RouterLink to="/about">关于 <span>06</span></RouterLink>
     </nav>
 
     <main>
@@ -256,6 +259,7 @@ onBeforeUnmount(() => {
       <div class="footer-brand"><span class="brand-stamp">余</span><strong>余白</strong><p>BUILD · WRITE · REFLECT</p></div>
       <div>
         <RouterLink to="/articles">文章</RouterLink>
+        <RouterLink to="/archive">归档</RouterLink>
         <RouterLink to="/recipes">美食</RouterLink>
         <RouterLink to="/notes">学习笔记</RouterLink>
         <RouterLink to="/about">关于</RouterLink>
