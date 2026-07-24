@@ -2,6 +2,7 @@ package com.yubai.blog.dish;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,5 +30,18 @@ public class DishController {
     @GetMapping("/{slug}")
     public ApiResponse<DishResponse> findBySlug(@PathVariable String slug) {
         return ApiResponse.ok(service.findPublishedBySlug(slug));
+    }
+
+    @PostMapping("/{slug}/favorite")
+    public ApiResponse<DishFavoriteResponse> toggleFavorite(@PathVariable String slug) {
+        return ApiResponse.ok(service.toggleFavorite(slug));
+    }
+
+    @GetMapping("/favorites")
+    public ApiResponse<PageResponse<DishFavoriteItem>> findFavorites(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size
+    ) {
+        return ApiResponse.ok(service.findFavorites(page, size));
     }
 }

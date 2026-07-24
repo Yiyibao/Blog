@@ -12,6 +12,14 @@ import org.springframework.data.repository.query.Param;
 
 public interface DishRepository extends JpaRepository<DishEntity, Long> {
 
+    interface DishFavoriteProjection {
+        String getSlug();
+        String getName();
+        String getSummary();
+        String getImageUrl();
+        int getFavoriteCount();
+    }
+
     interface DishSitemapProjection {
         String getSlug();
         Instant getUpdatedAt();
@@ -24,6 +32,10 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
     Optional<DishEntity> findBySlugAndPublishedTrue(String slug);
     boolean existsBySlug(String slug);
     boolean existsBySlugAndIdNot(String slug, long id);
+
+    Optional<DishEntity> findBySlug(String slug);
+
+    Page<DishEntity> findAllByPublishedTrueOrderByFavoriteCountDesc(Pageable pageable);
 
     @Query(value = """
         SELECT DISTINCT d FROM DishEntity d

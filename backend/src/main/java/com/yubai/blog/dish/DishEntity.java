@@ -68,6 +68,9 @@ public class DishEntity {
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
+    @Column(name = "favorite_count", nullable = false)
+    private int favoriteCount;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "dish_ingredients", joinColumns = @JoinColumn(name = "dish_id"))
     @OrderColumn(name = "sort_order")
@@ -143,6 +146,8 @@ public class DishEntity {
     public boolean isFeatured() { return featured; }
     public boolean isPublished() { return published; }
     public int getDisplayOrder() { return displayOrder; }
+    public int getFavoriteCount() { return favoriteCount; }
+    public void setFavoriteCount(int favoriteCount) { this.favoriteCount = favoriteCount; }
     public List<String> getIngredients() { return List.copyOf(ingredients); }
     public List<String> getSteps() { return List.copyOf(steps); }
     public Instant getCreatedAt() { return createdAt; }

@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -31,6 +33,9 @@ class SearchServiceTest {
 
     @InjectMocks
     SearchService service;
+
+    @Captor
+    ArgumentCaptor<Pageable> pageableCaptor;
 
     @Test
     void emptyQueryReturnsEmptyResponse() {
@@ -86,5 +91,72 @@ class SearchServiceTest {
             });
 
         service.search("test", 3);
+    }
+
+    @Test
+    void postSearchOnlyQueriesPostRepository() {
+        when(postRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var request = new SearchRequest("test", SearchType.POST, 0, 10);
+        var result = service.search(request);
+
+        assertThat(result.type()).isEqualTo("POST");
+        assertThat(result.results()).isEmpty();
+    }
+
+    @Test
+    void dishSearchOnlyQueriesDishRepository() {
+        when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var request = new SearchRequest("test", SearchType.DISH, 0, 10);
+        var result = service.search(request);
+
+        assertThat(result.type()).isEqualTo("DISH");
+        assertThat(result.results()).isEmpty();
+    }
+
+    @Test
+    void noteSearchOnlyQueriesNoteRepository() {
+        when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var request = new SearchRequest("test", SearchType.NOTE, 0, 10);
+        var result = service.search(request);
+
+        assertThat(result.type()).isEqualTo("NOTE");
+        assertThat(result.results()).isEmpty();
+    }
+
+    @Test
+    void allSearchQueriesAllRepositories() {
+        when(postRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var request = new SearchRequest("test", SearchType.ALL, 0, 10);
+        var result = service.search(request);
+
+        assertThat(result.type()).isEqualTo("ALL");
+        assertThat(result.results()).isEmpty();
+    }
+
+    @Test
+    void emptyQueryInPostSearchReturnsEmptyResponse() {
+        var request = new SearchRequest("   ", SearchType.POST, 0, 10);
+        var result = service.search(request);
+
+        assertThat(result.type()).isEqualTo("POST");
+        assertThat(result.totalElements()).isZero();
+    }
+
+    @Test
+    void postSearchPassesPaginationCorrectly() {
+        when(postRepository.searchPublished(anyString(), pageableCaptor.capture())).thenReturn(Page.empty());
+
+        var request = new SearchRequest("test", SearchType.POST, 2, 5);
+        service.search(request);
+
+        var captured = pageableCaptor.getValue();
+        assertThat(captured.getPageNumber()).isEqualTo(2);
+        assertThat(captured.getPageSize()).isEqualTo(5);
     }
 }

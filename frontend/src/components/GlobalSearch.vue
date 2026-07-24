@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSearch } from '../composables/useSearch'
 import type { SearchHit } from '../data'
@@ -9,12 +9,40 @@ const emit = defineEmits<{ close: [] }>()
 
 const router = useRouter()
 const query = ref('')
+const selectedTab = ref<'ALL' | 'POST' | 'NOTE' | 'DISH'>('ALL')
+const searchHistory = ref<string[]>([])
 const inputRef = ref<HTMLInputElement | null>(null)
 const listboxRef = ref<HTMLDivElement | null>(null)
 const activeIndex = ref(0)
 let lastActiveElement: HTMLElement | null = null
 
 const { results, loading, error, retry } = useSearch(query)
+
+function loadSearchHistory() {
+  try {
+    const raw = localStorage.getItem('yubai_search_history')
+    searchHistory.value = raw ? JSON.parse(raw) : []
+  } catch {
+    searchHistory.value = []
+  }
+}
+
+function saveSearchHistory(term: string) {
+  const trimmed = term.trim()
+  if (!trimmed) return
+  const set = new Set([trimmed, ...searchHistory.value])
+  searchHistory.value = Array.from(set).slice(0, 6)
+  try {
+    localStorage.setItem('yubai_search_history', JSON.stringify(searchHistory.value))
+  } catch {}
+}
+
+function clearSearchHistory() {
+  searchHistory.value = []
+  try {
+    localStorage.removeItem('yubai_search_history')
+  } catch {}
+}
 
 interface ListItem {
   type: 'group' | 'result'
@@ -24,15 +52,17 @@ interface ListItem {
 
 const flatItems = computed<ListItem[]>(() => {
   const items: ListItem[] = []
-  if (results.value.articles.length) {
+  const showAll = selectedTab.value === 'ALL'
+
+  if ((showAll || selectedTab.value === 'POST') && results.value.articles.length) {
     items.push({ type: 'group', label: '文章' })
     results.value.articles.forEach(h => items.push({ type: 'result', hit: h }))
   }
-  if (results.value.notes.length) {
+  if ((showAll || selectedTab.value === 'NOTE') && results.value.notes.length) {
     items.push({ type: 'group', label: '学习笔记' })
     results.value.notes.forEach(h => items.push({ type: 'result', hit: h }))
   }
-  if (results.value.dishes.length) {
+  if ((showAll || selectedTab.value === 'DISH') && results.value.dishes.length) {
     items.push({ type: 'group', label: '美食' })
     results.value.dishes.forEach(h => items.push({ type: 'result', hit: h }))
   }
@@ -52,10 +82,15 @@ const resultCount = computed(() => flatItems.value.filter(i => i.type === 'resul
 const hasResults = computed(() => resultCount.value > 0)
 
 function goToHit(hit: SearchHit) {
+  if (query.value) saveSearchHistory(query.value)
   const url = hit.url
   emit('close')
   query.value = ''
   if (url) router.push(url)
+}
+
+function selectHistoryTerm(term: string) {
+  query.value = term
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -96,12 +131,18 @@ watch(() => props.open, (val) => {
   if (val) {
     lastActiveElement = document.activeElement as HTMLElement
     query.value = ''
+    selectedTab.value = 'ALL'
     activeIndex.value = 0
+    loadSearchHistory()
     nextTick(() => inputRef.value?.focus())
   } else {
     query.value = ''
     lastActiveElement?.focus()
   }
+})
+
+onMounted(() => {
+  loadSearchHistory()
 })
 
 onBeforeUnmount(() => {
@@ -140,6 +181,34 @@ onBeforeUnmount(() => {
           @keydown="onKeydown"
         >
         <button type="button" @click="emit('close')">ESC</button>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div v-if="query.trim()" class="search-tabs">
+        <button
+          type="button"
+          class="search-tab"
+          :class="{ active: selectedTab === 'ALL' }"
+          @click="selectedTab = 'ALL'"
+        >全部</button>
+        <button
+          type="button"
+          class="search-tab"
+          :class="{ active: selectedTab === 'POST' }"
+          @click="selectedTab = 'POST'"
+        >文章</button>
+        <button
+          type="button"
+          class="search-tab"
+          :class="{ active: selectedTab === 'NOTE' }"
+          @click="selectedTab = 'NOTE'"
+        >笔记</button>
+        <button
+          type="button"
+          class="search-tab"
+          :class="{ active: selectedTab === 'DISH' }"
+          @click="selectedTab = 'DISH'"
+        >美食</button>
       </div>
 
       <p v-if="loading">搜索中…</p>
@@ -202,7 +271,25 @@ onBeforeUnmount(() => {
         没有匹配的结果
       </div>
       <div v-else-if="!query.trim()" class="search-empty">
-        输入关键词搜索全站内容
+        <!-- Search History Pills -->
+        <div v-if="searchHistory.length" class="search-history-container">
+          <div class="search-history-head">
+            <span>最近搜索</span>
+            <button type="button" class="search-history-clear" @click="clearSearchHistory">清空历史</button>
+          </div>
+          <div class="search-history-pills">
+            <button
+              v-for="term in searchHistory"
+              :key="term"
+              type="button"
+              class="search-history-pill"
+              @click="selectHistoryTerm(term)"
+            >
+              {{ term }}
+            </button>
+          </div>
+        </div>
+        <span>输入关键词搜索全站内容</span>
       </div>
     </div>
   </div>

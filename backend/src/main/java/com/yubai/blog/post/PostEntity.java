@@ -68,6 +68,12 @@ public class PostEntity {
     @Column(nullable = false, columnDefinition = "text")
     private String content;
 
+    @Column(name = "like_count", nullable = false)
+    private int likeCount;
+
+    @Column(name = "views_count", nullable = false)
+    private int viewsCount;
+
     protected PostEntity() {
     }
 
@@ -108,4 +114,8 @@ public class PostEntity {
     public boolean isFeatured() { return featured; }
     public PostStatus getStatus() { return status; }
     public String getContent() { return content; }
+    public int getLikeCount() { return likeCount; }
+    public void setLikeCount(int likeCount) { this.likeCount = likeCount; }
+    public int getViewsCount() { return viewsCount; }
+    public void setViewsCount(int viewsCount) { this.viewsCount = viewsCount; }
 }

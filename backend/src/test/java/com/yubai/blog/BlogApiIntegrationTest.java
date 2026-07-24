@@ -703,6 +703,86 @@ class BlogApiIntegrationTest {
 
     @Test
     @Order(11)
+    void dishFavoriteIncrementsAndReturnsCount() throws Exception {
+        mockMvc.perform(post("/api/v1/dishes/authentic-mapo-tofu/favorite"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.message").value("success"))
+            .andExpect(jsonPath("$.data.slug").value("authentic-mapo-tofu"))
+            .andExpect(jsonPath("$.data.isFavorite").value(true))
+            .andExpect(jsonPath("$.data.favoriteCount").isNumber());
+
+        mockMvc.perform(get("/api/v1/dishes/favorites"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].slug").value("authentic-mapo-tofu"))
+            .andExpect(jsonPath("$.data.items[0].favoriteCount").isNumber());
+    }
+
+    @Test
+    @Order(12)
+    void postLikeIncrementsCount() throws Exception {
+        mockMvc.perform(post("/api/v1/posts/clarity-by-design/like"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.slug").value("clarity-by-design"))
+            .andExpect(jsonPath("$.data.likeCount").isNumber());
+    }
+
+    @Test
+    @Order(13)
+    void postStatsReturnsCurrentViewsAndLikes() throws Exception {
+        mockMvc.perform(get("/api/v1/posts/clarity-by-design/stats"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.slug").value("clarity-by-design"))
+            .andExpect(jsonPath("$.data.viewsCount").isNumber())
+            .andExpect(jsonPath("$.data.likeCount").isNumber());
+    }
+
+    @Test
+    @Order(14)
+    void postSearchWithTypeReturnsFilteredResults() throws Exception {
+        String postSearchBody = """
+            {"query":"设计","type":"POST","page":0,"size":5}
+            """;
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(postSearchBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.type").value("POST"))
+            .andExpect(jsonPath("$.data.results").isArray());
+
+        String dishSearchBody = """
+            {"query":"菠萝","type":"DISH","page":0,"size":5}
+            """;
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(dishSearchBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.type").value("DISH"))
+            .andExpect(jsonPath("$.data.results[0].slug").value("sweet-sour-pork"));
+
+        String allSearchBody = """
+            {"query":"设计","type":"ALL","page":0,"size":5}
+            """;
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(allSearchBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.type").value("ALL"))
+            .andExpect(jsonPath("$.data.results").isArray());
+
+        String emptyBody = """
+            {"query":"  ","type":"POST","page":0,"size":5}
+            """;
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(emptyBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(0));
+    }
+
+    @Test
+    @Order(15)
     void robotsTxtIsPublicAndContainsExpectedDirectives() throws Exception {
         var result = mockMvc.perform(get("/robots.txt"))
             .andExpect(status().isOk())

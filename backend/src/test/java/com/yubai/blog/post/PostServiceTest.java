@@ -155,4 +155,40 @@ class PostServiceTest {
         when(repository.existsById(99L)).thenReturn(false);
         assertThatThrownBy(() -> service.delete(99L)).isInstanceOf(NotFoundException.class);
     }
+
+    @Test
+    void likePostIncrementsCount() {
+        var post = samplePost();
+        post.setLikeCount(10);
+        when(repository.findBySlugAndStatus("test-slug", PostStatus.PUBLISHED)).thenReturn(Optional.of(post));
+
+        var result = service.likePost("test-slug");
+        assertThat(result.slug()).isEqualTo("test-slug");
+        assertThat(result.likeCount()).isEqualTo(11);
+    }
+
+    @Test
+    void likePostThrowsWhenNotFound() {
+        when(repository.findBySlugAndStatus("missing", PostStatus.PUBLISHED)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.likePost("missing")).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void getStatsReturnsCurrentCounts() {
+        var post = samplePost();
+        post.setLikeCount(7);
+        post.setViewsCount(100);
+        when(repository.findBySlugAndStatus("test-slug", PostStatus.PUBLISHED)).thenReturn(Optional.of(post));
+
+        var result = service.getStats("test-slug");
+        assertThat(result.slug()).isEqualTo("test-slug");
+        assertThat(result.likeCount()).isEqualTo(7);
+        assertThat(result.viewsCount()).isEqualTo(100);
+    }
+
+    @Test
+    void getStatsThrowsWhenNotFound() {
+        when(repository.findBySlugAndStatus("missing", PostStatus.PUBLISHED)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.getStats("missing")).isInstanceOf(NotFoundException.class);
+    }
 }

@@ -28,6 +28,21 @@ public class DishService {
             .orElseThrow(() -> new NotFoundException("菜品不存在：" + slug));
     }
 
+    @Transactional
+    public DishFavoriteResponse toggleFavorite(String slug) {
+        var dish = repository.findBySlugAndPublishedTrue(slug)
+            .orElseThrow(() -> new NotFoundException("菜品不存在：" + slug));
+        dish.setFavoriteCount(dish.getFavoriteCount() + 1);
+        return DishFavoriteResponse.from(dish, true);
+    }
+
+    public PageResponse<DishFavoriteItem> findFavorites(int page, int size) {
+        return PageResponse.from(
+            repository.findAllByPublishedTrueOrderByFavoriteCountDesc(PageRequests.of(page, size))
+                .map(DishFavoriteItem::from)
+        );
+    }
+
     public PageResponse<DishResponse> findAll(int page, int size) {
         return PageResponse.from(repository.findAllByOrderByDisplayOrderAsc(PageRequests.of(page, size)).map(DishResponse::from));
     }

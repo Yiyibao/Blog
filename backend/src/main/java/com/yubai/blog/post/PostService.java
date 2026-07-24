@@ -37,9 +37,23 @@ public class PostService {
     }
 
     public PostResponse findPublishedBySlug(String slug) {
-        return repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
-            .map(post -> PostResponse.from(post, sanitizer))
+        var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
             .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
+        return PostResponse.from(post, sanitizer);
+    }
+
+    @Transactional
+    public PostLikeResponse likePost(String slug) {
+        var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
+            .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
+        post.setLikeCount(post.getLikeCount() + 1);
+        return PostLikeResponse.from(post);
+    }
+
+    public PostStatsResponse getStats(String slug) {
+        var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
+            .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
+        return PostStatsResponse.from(post);
     }
 
     public PostResponse findOne(long id) {

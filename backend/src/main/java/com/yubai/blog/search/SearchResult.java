@@ -8,6 +8,7 @@ public record SearchResult(
     String category,
     String url,
     String color,
-    String number
+    String number,
+    String slug
 ) {
 }

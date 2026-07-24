@@ -2,6 +2,7 @@ package com.yubai.blog.post;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,5 +30,15 @@ public class PostController {
     @GetMapping({"/posts/{slug}"})
     public ApiResponse<PostResponse> findBySlug(@PathVariable String slug) {
         return ApiResponse.ok(service.findPublishedBySlug(slug));
+    }
+
+    @PostMapping({"/posts/{slug}/like"})
+    public ApiResponse<PostLikeResponse> likePost(@PathVariable String slug) {
+        return ApiResponse.ok(service.likePost(slug));
+    }
+
+    @GetMapping({"/posts/{slug}/stats"})
+    public ApiResponse<PostStatsResponse> getStats(@PathVariable String slug) {
+        return ApiResponse.ok(service.getStats(slug));
     }
 }

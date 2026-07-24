@@ -6,7 +6,6 @@ import type { Dish } from '../data'
 import { createSiteConfig, resolveUrl } from '../config/site'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
 import { recipe, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
-
 const route = useRoute()
 const dishes = ref<Dish[]>([])
 const dishPage = ref(0)
@@ -40,6 +39,16 @@ const visibleDishes = computed(() => {
 })
 const rankedDishes = computed(() => [...dishes.value].sort((a, b) => b.rating - a.rating).slice(0, 5))
 
+// Favorite bookmark (localStorage)
+const favoriteDishes = ref<string[]>([])
+function loadFavoriteDishes() {
+  try {
+    const raw = localStorage.getItem('yubai_dish_favorites')
+    favoriteDishes.value = raw ? JSON.parse(raw) : []
+  } catch {
+    favoriteDishes.value = []
+  }
+}
 const servings = ref(2)
 const originalServings = ref(2)
 function setServings(n: number) {
@@ -155,7 +164,10 @@ function closeDish() {
 
 watch(() => route.query.dish, () => void openRouteDish())
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadFavoriteDishes()
+})
 onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 </script>
 

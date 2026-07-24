@@ -149,4 +149,35 @@ class DishServiceTest {
         when(repository.existsById(99L)).thenReturn(false);
         assertThatThrownBy(() -> service.delete(99L)).isInstanceOf(NotFoundException.class);
     }
+
+    @Test
+    void toggleFavoriteIncrementsCount() {
+        var dish = mockDish(1L, "mapo-tofu", true);
+        dish.setFavoriteCount(5);
+        when(repository.findBySlugAndPublishedTrue("mapo-tofu")).thenReturn(Optional.of(dish));
+
+        var result = service.toggleFavorite("mapo-tofu");
+        assertThat(result.slug()).isEqualTo("mapo-tofu");
+        assertThat(result.isFavorite()).isTrue();
+        assertThat(result.favoriteCount()).isEqualTo(6);
+    }
+
+    @Test
+    void toggleFavoriteThrowsWhenNotFound() {
+        when(repository.findBySlugAndPublishedTrue("missing")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.toggleFavorite("missing")).isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void findFavoritesReturnsByPopularity() {
+        var dish = mockDish(1L, "mapo-tofu", true);
+        dish.setFavoriteCount(42);
+        when(repository.findAllByPublishedTrueOrderByFavoriteCountDesc(PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(List.of(dish)));
+
+        var result = service.findFavorites(0, 10);
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).slug()).isEqualTo("mapo-tofu");
+        assertThat(result.items().get(0).favoriteCount()).isEqualTo(42);
+    }
 }

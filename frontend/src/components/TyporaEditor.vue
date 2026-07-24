@@ -140,6 +140,22 @@ function chooseImages(event: Event) {
   input.value = ''
 }
 
+const charCount = computed(() => {
+  const text = source.value || ''
+  return text.replace(/\s+/g, '').length
+})
+
+const wordCount = computed(() => {
+  const text = source.value || ''
+  const cn = (text.match(/[\u4e00-\u9fa5]/g) || []).length
+  const en = (text.replace(/[\u4e00-\u9fa5]/g, ' ').match(/[a-zA-Z0-9]+/g) || []).length
+  return cn + en
+})
+
+const readMinutes = computed(() => {
+  return Math.max(1, Math.ceil(wordCount.value / 300))
+})
+
 defineExpose({ toggleSource })
 function onGlobalShortcut(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'm') {
@@ -200,5 +216,15 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
     </div>
     <textarea v-if="sourceMode" class="markdown-source" :value="source" spellcheck="false" @input="updateSource(($event.target as HTMLTextAreaElement).value)" />
     <EditorContent v-else :editor="editor" />
+    <div class="editor-status-bar">
+      <div class="editor-status-info">
+        <span>字数：{{ wordCount }} 字</span>
+        <span>字符：{{ charCount }}</span>
+        <span>预计阅读：{{ readMinutes }} 分钟</span>
+      </div>
+      <div class="editor-status-sync">
+        <span>● 草稿已实时同步</span>
+      </div>
+    </div>
   </div>
 </template>

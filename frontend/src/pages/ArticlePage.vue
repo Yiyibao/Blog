@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
 import { useUiStore } from '../stores/uiStore'
@@ -13,9 +13,72 @@ const ui = useUiStore()
 const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
+const scrollProgress = ref(0)
+const activeTocId = ref('')
+const lightboxImageUrl = ref<string | null>(null)
+let observer: IntersectionObserver | null = null
+
+function updateScrollProgress() {
+  const totalHeight = document.documentElement.scrollHeight - window.innerHeight
+  if (totalHeight > 0) {
+    scrollProgress.value = Math.min(100, Math.max(0, Math.round((window.scrollY / totalHeight) * 100)))
+  } else {
+    scrollProgress.value = 0
+  }
+}
+
 async function copyCurrentLink() {
   await navigator.clipboard.writeText(window.location.href)
   ui.showToast('链接已复制')
+}
+
+function initArticleEnhancements() {
+  nextTick(() => {
+    // 1. ScrollSpy IntersectionObserver
+    const headings = document.querySelectorAll('.article-body h1, .article-body h2, .article-body h3')
+    if (observer) observer.disconnect()
+    observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          activeTocId.value = entry.target.id
+        }
+      })
+    }, { rootMargin: '-80px 0px -70% 0px' })
+    headings.forEach((h) => observer?.observe(h))
+
+    // 2. Image Click Lightbox
+    const images = document.querySelectorAll('.article-body img')
+    images.forEach((img) => {
+      const htmlImg = img as HTMLImageElement
+      htmlImg.style.cursor = 'zoom-in'
+      htmlImg.onclick = () => {
+        lightboxImageUrl.value = htmlImg.src
+      }
+    })
+
+    // 3. Code Block Copy Buttons
+    const codeBlocks = document.querySelectorAll('.article-body pre')
+    codeBlocks.forEach((pre) => {
+      if (pre.querySelector('.code-copy-btn')) return
+      const wrapper = document.createElement('div')
+      wrapper.className = 'code-block-wrapper'
+      pre.parentNode?.insertBefore(wrapper, pre)
+      wrapper.appendChild(pre)
+
+      const btn = document.createElement('button')
+      btn.className = 'code-copy-btn'
+      btn.type = 'button'
+      btn.innerText = '复制'
+      btn.onclick = async () => {
+        const text = pre.textContent || ''
+        await navigator.clipboard.writeText(text)
+        btn.innerText = '已复制!'
+        ui.showToast('代码已复制到剪贴板')
+        setTimeout(() => { btn.innerText = '复制' }, 2000)
+      }
+      wrapper.appendChild(btn)
+    })
+  })
 }
 
 watch(() => content.currentPost, (post) => {
@@ -53,6 +116,7 @@ watch(() => content.currentPost, (post) => {
         image: post.color ? undefined : '/og.png',
       },
     })
+    initArticleEnhancements()
   } else if (content.contentReady) {
     apply({
       title: '页面不存在',
@@ -67,10 +131,21 @@ onMounted(() => {
   content.initFavorites()
   const slug = String(route.params.slug || '')
   content.ensureArticleDetail(slug)
+  window.addEventListener('scroll', updateScrollProgress, { passive: true })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', updateScrollProgress)
+  if (observer) observer.disconnect()
 })
 </script>
 
 <template>
+  <!-- Reading Progress Bar -->
+  <div v-if="content.currentPost" class="reading-progress-bar">
+    <div class="reading-progress-fill" :style="{ width: `${scrollProgress}%` }" />
+  </div>
+
   <template v-if="content.currentPost">
     <article class="article-page">
       <header class="article-header section-wrap">
@@ -83,7 +158,17 @@ onMounted(() => {
       <div class="article-cover section-wrap" :style="{ '--post-color': content.currentPost.color }"><b>{{ content.currentPost.number }}</b><span>YUBAI / FIELD NOTE</span><i /></div>
       <div class="article-layout section-wrap">
         <aside class="article-aside">
-          <div v-if="content.articleOutline.length" class="article-toc"><p>文章目录</p><a v-for="item in content.articleOutline" :key="item.id" :href="`#${item.id}`">{{ item.title }}</a></div>
+          <div v-if="content.articleOutline.length" class="article-toc">
+            <p>文章目录</p>
+            <a
+              v-for="item in content.articleOutline"
+              :key="item.id"
+              :href="`#${item.id}`"
+              :class="{ 'is-active': item.id === activeTocId }"
+            >
+              {{ item.title }}
+            </a>
+          </div>
           <div class="article-share"><p>分享文章</p><button type="button" @click="copyCurrentLink">复制链接</button><RouterLink to="/about">关于作者</RouterLink></div>
         </aside>
         <div class="article-body" v-html="content.currentPost.content" />
@@ -99,4 +184,16 @@ onMounted(() => {
       <RouterLink v-if="content.contentReady" class="button primary" to="/articles">返回文章归档 ↗</RouterLink>
     </section>
   </template>
+
+  <!-- Image Lightbox Modal Preview -->
+  <Teleport to="body">
+    <div
+      v-if="lightboxImageUrl"
+      class="image-lightbox-overlay"
+      @click="lightboxImageUrl = null"
+      @keydown.esc="lightboxImageUrl = null"
+    >
+      <img :src="lightboxImageUrl" alt="大图预览" class="image-lightbox-img">
+    </div>
+  </Teleport>
 </template>
