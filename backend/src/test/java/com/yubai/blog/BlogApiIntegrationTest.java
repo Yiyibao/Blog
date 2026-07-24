@@ -777,8 +777,7 @@ class BlogApiIntegrationTest {
         mockMvc.perform(post("/api/v1/search")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(emptyBody))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.totalElements").value(0));
+            .andExpect(status().isBadRequest());
     }
 
     @Test
