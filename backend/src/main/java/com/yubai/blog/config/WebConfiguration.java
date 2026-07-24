@@ -45,6 +45,6 @@ public class WebConfiguration implements WebMvcConfigurer {
                 }
                 return true;
             }
-        }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories", "/api/v1/search");
+        }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories/**", "/api/v1/search");
     }
 }

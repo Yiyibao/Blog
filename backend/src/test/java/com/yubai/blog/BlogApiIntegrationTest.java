@@ -388,7 +388,20 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/categories"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data").isArray())
-            .andExpect(jsonPath("$.data.length()").value(3));
+            .andExpect(jsonPath("$.data.length()").value(3))
+            .andExpect(jsonPath("$.data[0].name").isString())
+            .andExpect(jsonPath("$.data[0].slug").isString())
+            .andExpect(jsonPath("$.data[0].publishedPostCount").isNumber());
+
+        mockMvc.perform(get("/api/v1/categories/" + java.net.URLEncoder.encode("\u8bbe\u8ba1\u672d\u8bb0", java.nio.charset.StandardCharsets.UTF_8)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.name").value("\u8bbe\u8ba1\u672d\u8bb0"))
+            .andExpect(jsonPath("$.data.slug").value("\u8bbe\u8ba1\u672d\u8bb0"))
+            .andExpect(jsonPath("$.data.total").isNumber())
+            .andExpect(jsonPath("$.data.posts").isArray());
+
+        mockMvc.perform(get("/api/v1/categories/nonexistent-slug"))
+            .andExpect(status().isNotFound());
 
         mockMvc.perform(get("/api/v1/posts").param("page", "-9").param("size", "999"))
             .andExpect(status().isOk())
@@ -664,9 +677,13 @@ class BlogApiIntegrationTest {
 
         assertTrue(locs.contains("http://localhost:5173/"), "home");
         assertTrue(locs.contains("http://localhost:5173/articles"), "articles list");
+        assertTrue(locs.contains("http://localhost:5173/categories"), "categories index");
         assertTrue(locs.contains("http://localhost:5173/notes"), "notes list");
         assertTrue(locs.contains("http://localhost:5173/recipes"), "recipes list");
         assertTrue(locs.contains("http://localhost:5173/about"), "about");
+
+        assertTrue(locs.contains("http://localhost:5173/categories/\u8bbe\u8ba1\u672d\u8bb0"),
+            "category detail should appear for category with published posts");
 
         assertTrue(locs.contains("http://localhost:5173/articles/clarity-by-design"),
             "published post clarity-by-design should appear");

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Dish, PageResult, Post, SearchHit } from '../data'
+import type { CategoryDetail, CategorySummary, Dish, PageResult, Post, SearchHit } from '../data'
 import type { AdminNote } from './admin'
 
 interface ApiEnvelope<T> {
@@ -69,6 +69,14 @@ export interface SearchGroup {
   notes: SearchHit[]
   dishes: SearchHit[]
   total: number
+}
+
+export function fetchCategories() {
+  return unwrap<CategorySummary[]>(api.get('/categories'))
+}
+
+export function fetchCategoryDetail(slug: string, page = 0, size = 10) {
+  return unwrap<CategoryDetail>(api.get(`/categories/${encodeURIComponent(slug)}`, { params: { page, size } }))
 }
 
 export async function searchContent(q: string, limit = 10, signal?: AbortSignal): Promise<SearchGroup> {

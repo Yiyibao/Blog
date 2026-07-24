@@ -1,7 +1,5 @@
 package com.yubai.blog.post;
 
-import java.util.List;
-
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,7 +10,7 @@ import com.yubai.blog.common.ApiResponse;
 import com.yubai.blog.common.PageResponse;
 
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping({"/api/v1"})
 public class PostController {
     private final PostService service;
 
@@ -20,7 +18,7 @@ public class PostController {
         this.service = service;
     }
 
-    @GetMapping("/posts")
+    @GetMapping({"/posts"})
     public ApiResponse<PageResponse<PostResponse>> findPublished(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int size
@@ -28,13 +26,8 @@ public class PostController {
         return ApiResponse.ok(service.findPublished(page, size));
     }
 
-    @GetMapping("/posts/{slug}")
+    @GetMapping({"/posts/{slug}"})
     public ApiResponse<PostResponse> findBySlug(@PathVariable String slug) {
         return ApiResponse.ok(service.findPublishedBySlug(slug));
-    }
-
-    @GetMapping("/categories")
-    public ApiResponse<List<String>> findCategories() {
-        return ApiResponse.ok(service.findPublishedCategories());
     }
 }

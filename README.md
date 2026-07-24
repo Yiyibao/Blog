@@ -58,7 +58,8 @@ mvn spring-boot:run
 
 - `GET /api/v1/posts?page=0&size=10`：仅返回 `PUBLISHED` 文章，分页字段为 `items/page/size/totalElements/totalPages`
 - `GET /api/v1/posts/{slug}`：仅返回已发布文章
-- `GET /api/v1/categories`
+- `GET /api/v1/categories`：返回所有至少关联一篇已发布文章的分类（CategorySummary[]，含 name、slug、publishedPostCount）
+- `GET /api/v1/categories/{slug}?page=0&size=10`：返回指定分类详情及已发布文章（CategoryDetail，含 name、slug、description、total、posts 分页列表）
 - `GET /api/v1/dishes?page=0&size=20`：分页返回已发布菜品，并按精选和展示顺序排序
 - `GET /api/v1/dishes/{slug}`：读取菜品、食材、步骤和图片署名
 - `GET /api/v1/notes?page=0&size=20`、`GET /api/v1/notes/{id}`（仅返回公开学习笔记）

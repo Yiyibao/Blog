@@ -44,6 +44,7 @@ class SitemapServiceTest {
     @Test
     void staticPagesAreAlwaysIncluded() {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
         when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
@@ -53,6 +54,7 @@ class SitemapServiceTest {
         assertThat(locs).contains(
             "https://example.test/",
             "https://example.test/articles",
+            "https://example.test/categories",
             "https://example.test/notes",
             "https://example.test/recipes",
             "https://example.test/about");
@@ -65,6 +67,7 @@ class SitemapServiceTest {
                 public String getSlug() { return "test-post"; }
                 public LocalDate getDate() { return LocalDate.of(2026, 7, 1); }
             }));
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
         when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
@@ -77,6 +80,7 @@ class SitemapServiceTest {
     @Test
     void publishedDishesAreIncluded() {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of(
             new DishRepository.DishSitemapProjection() {
                 public String getSlug() { return "test-dish"; }
@@ -92,6 +96,7 @@ class SitemapServiceTest {
     @Test
     void publishedNotesAreIncluded() {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
         when(noteRepository.findPublishedSitemap()).thenReturn(List.of(
             new NoteRepository.NoteSitemapProjection() {
@@ -105,6 +110,24 @@ class SitemapServiceTest {
     }
 
     @Test
+    void publishedCategoriesAreIncluded() {
+        when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of(
+            new PostRepository.CategoryCountProjection() {
+                public String getCategory() { return "工程实践"; }
+                public String getCategorySlug() { return "e5b7a5e7a88be5ae9ee8b7b5"; }
+                public long getCnt() { return 2; }
+            }));
+        when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
+
+        var entries = service.collectEntries();
+
+        assertThat(entries).anyMatch(e -> e.loc().equals("https://example.test/categories"));
+        assertThat(entries).anyMatch(e -> e.loc().equals("https://example.test/categories/e5b7a5e7a88be5ae9ee8b7b5"));
+    }
+
+    @Test
     void lastmodUsesEntityTimestamps() {
         var postDate = LocalDate.of(2026, 6, 15);
         var dishTime = Instant.parse("2026-07-10T14:00:00Z");
@@ -115,6 +138,7 @@ class SitemapServiceTest {
                 public String getSlug() { return "p"; }
                 public LocalDate getDate() { return postDate; }
             }));
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of(
             new DishRepository.DishSitemapProjection() {
                 public String getSlug() { return "d"; }
@@ -141,6 +165,7 @@ class SitemapServiceTest {
     @Test
     void staticPagesHaveNoLastmod() {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
         when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
@@ -149,6 +174,7 @@ class SitemapServiceTest {
         var staticPages = entries.stream().filter(e ->
             e.loc().equals("https://example.test/") ||
             e.loc().equals("https://example.test/articles") ||
+            e.loc().equals("https://example.test/categories") ||
             e.loc().equals("https://example.test/notes") ||
             e.loc().equals("https://example.test/recipes") ||
             e.loc().equals("https://example.test/about")).toList();
@@ -159,6 +185,7 @@ class SitemapServiceTest {
     @Test
     void xmLUsesConfiguredSiteRoot() throws Exception {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
         when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
@@ -175,6 +202,12 @@ class SitemapServiceTest {
             new PostRepository.PostSitemapProjection() {
                 public String getSlug() { return "hello"; }
                 public LocalDate getDate() { return LocalDate.of(2026, 7, 4); }
+            }));
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of(
+            new PostRepository.CategoryCountProjection() {
+                public String getCategory() { return "工程实践"; }
+                public String getCategorySlug() { return "e5b7a5e7a88be5ae9ee8b7b5"; }
+                public long getCnt() { return 2; }
             }));
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of(
             new DishRepository.DishSitemapProjection() {
@@ -204,6 +237,7 @@ class SitemapServiceTest {
     @Test
     void urlQueryParamsAreCorrectlyEscaped() throws Exception {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of(
             new DishRepository.DishSitemapProjection() {
                 public String getSlug() { return "test-dish"; }

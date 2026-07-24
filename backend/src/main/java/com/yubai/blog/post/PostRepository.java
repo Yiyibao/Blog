@@ -17,8 +17,15 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         LocalDate getDate();
     }
 
+    public interface CategoryCountProjection {
+        String getCategory();
+        String getCategorySlug();
+        long getCnt();
+    }
+
     @Query("SELECT p.slug as slug, p.date as date FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
     List<PostSitemapProjection> findPublishedSitemap();
+
     Page<PostEntity> findAllByOrderByDateDesc(Pageable pageable);
 
     Page<PostEntity> findAllByStatusOrderByDateDesc(PostStatus status, Pageable pageable);
@@ -33,6 +40,23 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     @Query("select distinct p.category from PostEntity p where p.status = com.yubai.blog.post.PostStatus.PUBLISHED order by p.category")
     List<String> findDistinctPublishedCategories();
+
+    @Query("""
+        SELECT p.category as category, p.categorySlug as categorySlug, COUNT(p) as cnt
+        FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+        GROUP BY p.category, p.categorySlug
+        ORDER BY COUNT(p) DESC, p.category ASC
+        """)
+    List<CategoryCountProjection> findPublishedCategoriesWithCount();
+
+    Page<PostEntity> findByCategoryAndStatusOrderByDateDesc(String category, PostStatus status, Pageable pageable);
+
+    Page<PostEntity> findByCategorySlugAndStatusOrderByDateDesc(String categorySlug, PostStatus status, Pageable pageable);
+
+    long countByCategoryAndStatus(String category, PostStatus status);
+
+    long countByCategorySlugAndStatus(String categorySlug, PostStatus status);
 
     @Query(value = """
         SELECT DISTINCT p FROM PostEntity p

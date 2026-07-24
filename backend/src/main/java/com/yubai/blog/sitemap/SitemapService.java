@@ -47,6 +47,7 @@ public class SitemapService {
         entries.add(new SitemapEntry(base + "/recipes", null));
         entries.add(new SitemapEntry(base + "/archive", null));
         entries.add(new SitemapEntry(base + "/about", null));
+        entries.add(new SitemapEntry(base + "/categories", null));
 
         for (var post : postRepository.findPublishedSitemap()) {
             entries.add(new SitemapEntry(
@@ -64,6 +65,12 @@ public class SitemapService {
             entries.add(new SitemapEntry(
                 base + "/notes?note=" + note.getId(),
                 note.getUpdatedAt().toString()));
+        }
+
+        for (var cat : postRepository.findPublishedCategoriesWithCount()) {
+            entries.add(new SitemapEntry(
+                base + "/categories/" + cat.getCategorySlug(),
+                null));
         }
 
         return entries;

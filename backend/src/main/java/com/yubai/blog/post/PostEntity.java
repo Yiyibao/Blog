@@ -43,6 +43,9 @@ public class PostEntity {
     @Column(nullable = false, length = 80)
     private String category;
 
+    @Column(name = "category_slug", nullable = false, length = 255)
+    private String categorySlug;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "post_tags", joinColumns = @JoinColumn(name = "post_id"))
     @OrderColumn(name = "sort_order")
@@ -81,6 +84,7 @@ public class PostEntity {
         this.date = request.date();
         this.readTime = request.readTime();
         this.category = request.category();
+        this.categorySlug = CategorySlug.fromName(request.category());
         this.tags.clear();
         this.tags.addAll(request.tags());
         this.color = request.color();
@@ -97,6 +101,7 @@ public class PostEntity {
     public LocalDate getDate() { return date; }
     public int getReadTime() { return readTime; }
     public String getCategory() { return category; }
+    public String getCategorySlug() { return categorySlug; }
     public List<String> getTags() { return List.copyOf(tags); }
     public String getColor() { return color; }
     public String getNumber() { return number; }

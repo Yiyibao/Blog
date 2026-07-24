@@ -50,6 +50,24 @@ public class PostService {
         return repository.findDistinctPublishedCategories();
     }
 
+    public List<CategorySummary> findCategorySummaries() {
+        var projections = repository.findPublishedCategoriesWithCount();
+        return projections.stream()
+            .map(p -> new CategorySummary(p.getCategory(), p.getCategorySlug(), null, p.getCnt()))
+            .toList();
+    }
+
+    public CategoryDetail findCategoryBySlug(String slug, int page, int size) {
+        var pageable = pageRequest(page, size);
+        var postsPage = repository.findByCategorySlugAndStatusOrderByDateDesc(slug, PostStatus.PUBLISHED, pageable);
+        if (postsPage.getTotalElements() == 0) {
+            throw new NotFoundException("分类不存在：" + slug);
+        }
+        String categoryName = postsPage.getContent().isEmpty() ? slug : postsPage.getContent().get(0).getCategory();
+        var pageResponse = PageResponse.from(postsPage.map(PostSummary::from));
+        return CategoryDetail.from(categoryName, slug, null, pageResponse);
+    }
+
     @Transactional
     public PostResponse create(PostRequest request) {
         requireUniqueSlug(request.slug(), null);

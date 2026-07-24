@@ -11,6 +11,7 @@ public record PostResponse(
     LocalDate date,
     int readTime,
     String category,
+    String categorySlug,
     List<String> tags,
     String color,
     String number,
@@ -21,7 +22,7 @@ public record PostResponse(
     static PostResponse from(PostEntity post, PostContentSanitizer sanitizer) {
         return new PostResponse(
             post.getId(), post.getSlug(), post.getTitle(), post.getExcerpt(), post.getDate(), post.getReadTime(),
-            post.getCategory(), post.getTags(), post.getColor(), post.getNumber(), post.isFeatured(),
+            post.getCategory(), post.getCategorySlug(), post.getTags(), post.getColor(), post.getNumber(), post.isFeatured(),
             post.getStatus(), sanitizer.sanitize(post.getContent())
         );
     }
