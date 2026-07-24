@@ -1,10 +1,12 @@
 package com.yubai.blog;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -13,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import java.util.Properties;
+
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -74,6 +78,7 @@ class BlogApiIntegrationTest {
         registry.add("app.admin.username", () -> "admin");
         registry.add("app.admin.password", () -> "admin-pass-12345");
         registry.add("app.cors.allowed-origins", () -> "http://localhost:5173");
+        registry.add("app.site-url", () -> "http://localhost:5173");
     }
 
     @Autowired
@@ -635,6 +640,47 @@ class BlogApiIntegrationTest {
         mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(10)
+    void sitemapContainsStaticPagesAndPublishedContent() throws Exception {
+        var result = mockMvc.perform(get("/sitemap.xml"))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+            .andReturn();
+
+        var raw = result.getResponse().getContentAsString();
+        var factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        var doc = factory.newDocumentBuilder()
+            .parse(new org.xml.sax.InputSource(new java.io.StringReader(raw)));
+        var urls = doc.getDocumentElement().getElementsByTagNameNS("http://www.sitemaps.org/schemas/sitemap/0.9", "loc");
+        var locs = new java.util.ArrayList<String>();
+        for (var i = 0; i < urls.getLength(); i++) {
+            locs.add(urls.item(i).getTextContent());
+        }
+
+        assertTrue(locs.contains("http://localhost:5173/"), "home");
+        assertTrue(locs.contains("http://localhost:5173/articles"), "articles list");
+        assertTrue(locs.contains("http://localhost:5173/notes"), "notes list");
+        assertTrue(locs.contains("http://localhost:5173/recipes"), "recipes list");
+        assertTrue(locs.contains("http://localhost:5173/about"), "about");
+
+        assertTrue(locs.contains("http://localhost:5173/articles/clarity-by-design"),
+            "published post clarity-by-design should appear");
+
+        assertTrue(locs.stream().anyMatch(l -> l.contains("/recipes?dish=")),
+            "published dish URLs should appear");
+
+        assertTrue(locs.stream().noneMatch(l -> l.contains("/admin")),
+            "no admin URLs in sitemap");
+
+        assertTrue(locs.stream().noneMatch(l -> l.contains("/api/")),
+            "no API URLs in sitemap");
+
+        assertTrue(locs.stream().allMatch(l -> l.startsWith("http://localhost:5173/")),
+            "all URLs use configured site root");
     }
 
     private String login() throws Exception {

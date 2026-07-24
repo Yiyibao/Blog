@@ -1,5 +1,6 @@
 package com.yubai.blog.post;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -10,6 +11,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface PostRepository extends JpaRepository<PostEntity, Long> {
+
+    interface PostSitemapProjection {
+        String getSlug();
+        LocalDate getDate();
+    }
+
+    @Query("SELECT p.slug as slug, p.date as date FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
+    List<PostSitemapProjection> findPublishedSitemap();
     Page<PostEntity> findAllByOrderByDateDesc(Pageable pageable);
 
     Page<PostEntity> findAllByStatusOrderByDateDesc(PostStatus status, Pageable pageable);

@@ -39,7 +39,7 @@ public class SecurityConfiguration {
             .cors(Customizer.withDefaults())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/sitemap.xml").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/note-assets/**", "/api/v1/search").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()

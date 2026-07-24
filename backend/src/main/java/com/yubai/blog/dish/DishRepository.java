@@ -1,5 +1,7 @@
 package com.yubai.blog.dish;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.domain.Page;
@@ -9,6 +11,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface DishRepository extends JpaRepository<DishEntity, Long> {
+
+    interface DishSitemapProjection {
+        String getSlug();
+        Instant getUpdatedAt();
+    }
+
+    @Query("SELECT d.slug as slug, d.updatedAt as updatedAt FROM DishEntity d WHERE d.published = true")
+    List<DishSitemapProjection> findPublishedSitemap();
     Page<DishEntity> findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(Pageable pageable);
     Page<DishEntity> findAllByOrderByDisplayOrderAsc(Pageable pageable);
     Optional<DishEntity> findBySlugAndPublishedTrue(String slug);

@@ -41,6 +41,56 @@
 - The SPA keeps its token in `sessionStorage`, not long-lived local storage.
 - Bootstrap credentials and signing secrets stay in the ignored `backend/.env.properties` file.
 
+## Sitemap
+
+The backend generates a dynamic XML Sitemap at `GET /sitemap.xml`.
+
+**Endpoint:** `/sitemap.xml`
+**Content-Type:** `application/xml`
+**Caching:** Not cached (regenerated on each request; database queries are lightweight projections).
+
+**Included pages:**
+- Static pages: `/`, `/articles`, `/notes`, `/recipes`, `/about`
+- All published posts (`PostStatus.PUBLISHED`)
+- All published dishes (`published = true`)
+- All public notes (`NoteStatus.PUBLISHED`)
+
+**Excluded content:**
+- Draft posts
+- Unpublished or archived dishes/notes
+- Admin or API paths
+
+**URL generation:**
+- All URLs are absolute using the configured `app.site-url` (default `http://localhost:5173`).
+- Post URLs: `{siteUrl}/articles/{slug}`
+- Dish URLs: `{siteUrl}/recipes?dish={slug}`
+- Note URLs: `{siteUrl}/notes?note={id}`
+
+**lastmod:**
+- Posts: `published_date` (LocalDate)
+- Dishes: `updatedAt` (Instant, ISO-8601)
+- Notes: `updatedAt` (Instant, ISO-8601)
+- Static pages: no lastmod
+
+**XML generation:** Uses `javax.xml.stream.XMLStreamWriter` (StAX) for proper namespace, encoding, and character escaping.
+
+**Configuration:**
+```yaml
+app:
+  site-url: ${APP_SITE_URL:http://localhost:5173}
+```
+
+**Source files:**
+- `sitemap/SitemapController.java` — endpoint
+- `sitemap/SitemapService.java` — logic and XML serialization
+- `sitemap/SitemapEntry.java` — record type
+- `config/SiteUrlConfig.java` — site URL config holder
+- Repository `findPublishedSitemap()` projection queries in `PostRepository`, `DishRepository`, `NoteRepository`
+
+**Tests:**
+- `sitemap/SitemapServiceTest.java` — unit tests (Mockito)
+- `BlogApiIntegrationTest.Order(10)` — integration test verifying live content filtering
+
 ## Page Meta management
 
 Page `<title>`, `<meta>`, `<link rel="canonical">`, Open Graph and Twitter Card
