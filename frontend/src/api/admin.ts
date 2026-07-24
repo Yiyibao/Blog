@@ -1,16 +1,12 @@
 import axios from 'axios'
 import type { Dish, PageResult, Post, PostStatus } from '../data'
+import type { LoginResult } from '../stores/auth'
+
+export type { LoginResult }
 
 interface ApiEnvelope<T> {
   data: T
   timestamp: string
-}
-
-export interface LoginResult {
-  token: string
-  tokenType: string
-  username: string
-  expiresAt: string
 }
 
 export interface AdminPost extends Post {
@@ -64,31 +60,27 @@ const api = axios.create({
   headers: { Accept: 'application/json' },
 })
 
-const memorySession = new Map<string, string>()
-
 function readSessionValue(key: string) {
   try {
-    return window.sessionStorage?.getItem(key) ?? memorySession.get(key) ?? null
+    return window.sessionStorage?.getItem(key) ?? null
   } catch {
-    return memorySession.get(key) ?? null
+    return null
   }
 }
 
 function writeSessionValue(key: string, value: string) {
-  memorySession.set(key, value)
   try {
     window.sessionStorage?.setItem(key, value)
   } catch {
-    // Some privacy modes disable sessionStorage; keep the session in memory.
+    // Some privacy modes disable sessionStorage.
   }
 }
 
 function removeSessionValue(key: string) {
-  memorySession.delete(key)
   try {
     window.sessionStorage?.removeItem(key)
   } catch {
-    // The in-memory session has already been cleared.
+    // ignore
   }
 }
 
@@ -281,4 +273,14 @@ export function uploadNoteAttachment(noteId: number, file: File) {
 
 export function deleteNoteAttachment(noteId: number, attachmentId: number) {
   return api.delete(`/admin/notes/${noteId}/attachments/${attachmentId}`, { headers: tokenHeader() })
+}
+
+export interface AdminStats {
+  posts: number
+  dishes: number
+  notes: number
+}
+
+export function fetchAdminStats() {
+  return unwrap<AdminStats>(api.get('/admin/stats', { headers: tokenHeader() }))
 }

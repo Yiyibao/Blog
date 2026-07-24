@@ -1,0 +1,112 @@
+import { computed, ref } from 'vue'
+import { defineStore } from 'pinia'
+import { fetchPost, fetchPosts } from '../api/content'
+import { posts as seedPosts, type Post } from '../data'
+
+export const useContentStore = defineStore('content', () => {
+  const posts = ref<Post[]>([...seedPosts])
+  const favorites = ref<string[]>([])
+  const query = ref('')
+  const category = ref('全部')
+  const sortOrder = ref<'newest' | 'oldest'>('newest')
+  const archivePage = ref(0)
+  const contentReady = ref(false)
+  const contentError = ref(false)
+  const articleDetail = ref<Post | null>(null)
+
+  const categories = computed(() => ['全部', ...new Set(posts.value.map((p) => p.category))])
+
+  const filteredPosts = computed(() => {
+    const normalized = query.value.trim().toLowerCase()
+    return posts.value
+      .filter((p) => category.value === '全部' || p.category === category.value)
+      .filter((p) => !normalized || [p.title, p.excerpt, p.category, ...p.tags].join(' ').toLowerCase().includes(normalized))
+      .sort((a, b) => sortOrder.value === 'newest' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date))
+  })
+
+  const featuredPost = computed(() => posts.value.find((p) => p.featured) ?? posts.value[0] ?? null)
+
+  const currentPost = computed(() => {
+    const slug = window.location.pathname.match(/\/articles\/(.+)/)?.[1] ?? ''
+    return posts.value.find((p) => p.slug === slug) ?? (articleDetail.value?.slug === slug ? articleDetail.value : null)
+  })
+
+  const archivePageSize = 6
+  const archiveTotalPages = computed(() => Math.max(1, Math.ceil(filteredPosts.value.length / archivePageSize)))
+
+  const pagedPosts = computed(() => {
+    const page = Math.min(archivePage.value, archiveTotalPages.value - 1)
+    const start = page * archivePageSize
+    return filteredPosts.value.slice(start, start + archivePageSize)
+  })
+
+  const relatedPosts = computed(() => {
+    if (!currentPost.value) return []
+    return posts.value
+      .filter((p) => p.slug !== currentPost.value?.slug && p.tags.some((tag) => currentPost.value?.tags.includes(tag)))
+      .slice(0, 2)
+  })
+
+  const articleOutline = computed(() => {
+    if (!currentPost.value?.content) return []
+    return [...currentPost.value.content.matchAll(/<h2\s+id=["']([^"']+)["'][^>]*>(.*?)<\/h2>/gi)]
+      .map((m) => ({ id: m[1], title: m[2].replace(/<[^>]+>/g, '') }))
+  })
+
+  async function loadRemoteContent() {
+    const allowBundledFallback = import.meta.env.DEV || import.meta.env.VITE_ALLOW_BUNDLED_CONTENT === 'true'
+    try {
+      contentError.value = false
+      const remotePage = await fetchPosts(0, 50)
+      if (remotePage?.items?.length) posts.value = remotePage.items
+    } catch (error) {
+      contentError.value = true
+      if (!allowBundledFallback) {
+        posts.value = []
+        console.error('Backend API is unavailable; bundled content fallback is disabled.', error)
+      } else {
+        console.info('Backend API is unavailable; using bundled content in development.', error)
+      }
+    } finally {
+      contentReady.value = true
+    }
+  }
+
+  async function ensureArticleDetail(slug: string) {
+    if (!slug || posts.value.some((p) => p.slug === slug)) {
+      articleDetail.value = null
+      return
+    }
+    try {
+      articleDetail.value = await fetchPost(slug)
+    } catch {
+      articleDetail.value = null
+    }
+  }
+
+  function toggleFavorite(slug: string) {
+    if (favorites.value.includes(slug)) {
+      favorites.value = favorites.value.filter((s) => s !== slug)
+    } else {
+      favorites.value = [...favorites.value, slug]
+    }
+    localStorage.setItem('yubai-reading-list', JSON.stringify(favorites.value))
+  }
+
+  function initFavorites() {
+    try {
+      favorites.value = JSON.parse(localStorage.getItem('yubai-reading-list') ?? '[]')
+    } catch {
+      favorites.value = []
+    }
+  }
+
+  return {
+    posts, favorites, query, category, sortOrder, archivePage,
+    contentReady, contentError, articleDetail,
+    categories, filteredPosts, featuredPost, currentPost,
+    archivePageSize, archiveTotalPages, pagedPosts,
+    relatedPosts, articleOutline,
+    loadRemoteContent, ensureArticleDetail, toggleFavorite, initFavorites,
+  }
+})

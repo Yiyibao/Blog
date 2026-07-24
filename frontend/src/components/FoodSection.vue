@@ -24,6 +24,21 @@ const visibleDishes = computed(() => selectedCategory.value === '全部'
   : dishes.value.filter((dish) => dish.category === selectedCategory.value))
 const rankedDishes = computed(() => [...dishes.value].sort((a, b) => b.rating - a.rating).slice(0, 5))
 
+const servings = ref(2)
+const originalServings = ref(2)
+function setServings(n: number) {
+  servings.value = Math.max(1, Math.min(20, n))
+}
+function scaledAmount(item: string): string {
+  const ratio = servings.value / originalServings.value
+  if (ratio === 1) return item
+  return item.replace(/(\d+(?:\.\d+)?)\s*(克|毫升|ml|g|kg|个|根|片|瓣|勺|汤匙|茶匙|小匙|大匙|碗|杯|只|条|块|包)/g, (_, num: string, unit: string) => {
+    const scaled = parseFloat(num) * ratio
+    const rounded = scaled >= 10 ? Math.round(scaled) : Math.round(scaled * 10) / 10
+    return `${rounded} ${unit}`
+  })
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -163,7 +178,7 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
             :aria-label="`查看榜首${rankedDishes[0].name}`"
             @click="openDish(rankedDishes[0], $event)"
           >
-            <span class="champion-media"><img :src="rankedDishes[0].imageUrl" :alt="rankedDishes[0].imageAlt"><i /><b>NO. 01</b></span>
+            <span class="champion-media"><img :src="rankedDishes[0].imageUrl" :alt="rankedDishes[0].imageAlt" loading="lazy"><i /><b>NO. 01</b></span>
             <span class="champion-copy"><small>本期味蕾冠军</small><strong>{{ rankedDishes[0].name }}</strong><span>{{ rankedDishes[0].category }} · {{ rankedDishes[0].prepMinutes }} 分钟</span><u>查看冠军菜谱 ↗</u></span>
             <span class="score-orbit"><b>{{ rankedDishes[0].rating.toFixed(1) }}</b><small>SCORE</small></span>
           </button>
@@ -191,14 +206,14 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
       <div v-if="selectedDish" class="dish-backdrop" @click.self="closeDish" @keydown.esc="closeDish">
         <article class="dish-panel" role="dialog" aria-modal="true" :aria-labelledby="`dish-title-${selectedDish.id}`">
           <header class="dish-panel-media">
-            <img :src="selectedDish.imageUrl" :alt="selectedDish.imageAlt">
+            <img :src="selectedDish.imageUrl" :alt="selectedDish.imageAlt" loading="lazy">
             <span />
             <button ref="closeButton" type="button" aria-label="关闭菜谱详情" @click="closeDish">关闭 ×</button>
             <div><small>{{ selectedDish.category }} · ★ {{ selectedDish.rating.toFixed(1) }}</small><h2 :id="`dish-title-${selectedDish.id}`">{{ selectedDish.name }}</h2><p>{{ selectedDish.summary }}</p></div>
           </header>
           <div class="dish-panel-body">
             <dl><div><dt>准备时间</dt><dd>{{ selectedDish.prepMinutes }} 分钟</dd></div><div><dt>难度</dt><dd>{{ selectedDish.difficulty }}</dd></div><div><dt>食材</dt><dd>{{ selectedDish.ingredients.length }} 项</dd></div></dl>
-            <section><p>01 / INGREDIENTS</p><h3>准备食材</h3><ul><li v-for="item in selectedDish.ingredients" :key="item">{{ item }}</li></ul></section>
+            <section><p>01 / INGREDIENTS</p><h3>准备食材</h3><div class="servings-bar"><button type="button" :disabled="servings <= 1" aria-label="减少份数" @click="setServings(servings - 1)">−</button><span>{{ servings }} 人份</span><button type="button" :disabled="servings >= 20" aria-label="增加份数" @click="setServings(servings + 1)">+</button></div><ul><li v-for="item in selectedDish.ingredients" :key="item">{{ scaledAmount(item) }}</li></ul></section>
             <section><p>02 / METHOD</p><h3>开始制作</h3><ol><li v-for="(step, index) in selectedDish.steps" :key="step"><span>{{ String(index + 1).padStart(2, '0') }}</span><p>{{ step }}</p></li></ol></section>
             <footer>图片：<a :href="selectedDish.imageSourceUrl" target="_blank" rel="noreferrer">{{ selectedDish.imageCredit }}</a></footer>
           </div>
@@ -337,6 +352,11 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 .dish-panel-body h3 { margin: 10px 0 24px; font-size: 2rem; font-weight: 520; letter-spacing: -.04em; }
 .dish-panel-body ul { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; padding: 0; list-style: none; }
 .dish-panel-body ul li { padding: 14px 0; color: #d4d4d8; border-top: 1px solid rgba(255,255,255,.1); }
+.servings-bar { display: flex; align-items: center; gap: 12px; margin: 0 0 20px; padding: 10px 0; }
+.servings-bar button { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 50%; background: transparent; color: #d4d4d8; font-size: 1.1rem; cursor: pointer; transition: border-color .2s, color .2s; }
+.servings-bar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.servings-bar button:disabled { opacity: .3; cursor: default; }
+.servings-bar span { min-width: 60px; color: #a1a1aa; font-size: .82rem; text-align: center; }
 .dish-panel-body ol { padding: 0; list-style: none; }
 .dish-panel-body ol li { display: grid; grid-template-columns: 42px 1fr; gap: 18px; padding: 22px 0; border-top: 1px solid rgba(255,255,255,.1); }
 .dish-panel-body ol span { color: #71717a; font-size: .72rem; }

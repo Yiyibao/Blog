@@ -4,7 +4,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   clearAdminSession, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPosts,
-  fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish, type AdminNote,
+  fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish, type AdminNote,
   type AdminPost, type DishPayload, type PostPayload,
 } from '../api/admin'
 import type { PostStatus } from '../data'
@@ -96,6 +96,9 @@ async function load() {
   } finally {
     loading.value = false
   }
+  fetchAdminStats()
+    .then(stats => { postTotal.value = stats.posts; dishTotal.value = stats.dishes; noteTotal.value = stats.notes })
+    .catch(() => {})
 }
 
 function logout() {
