@@ -44,6 +44,7 @@ class BlogApiIntegrationTest {
         var url = ENV.getProperty("DB_URL", "jdbc:postgresql://localhost:5432/yubai_blog");
         var username = ENV.getProperty("DB_USERNAME", "yubai_app");
         var password = ENV.getProperty("DB_PASSWORD", "");
+        System.out.println("CI_DEBUG: DB_URL=" + url + " DB_USERNAME=" + username + " DB_PASSWORD=" + (password.isEmpty() ? "EMPTY" : "SET"));
         var testUrl = url.replaceAll("/[^/]+$", "/" + TEST_DB);
         // Prefer connecting to the dedicated IT database. Create it outside tests if missing:
         // psql -U postgres -c "CREATE DATABASE yubai_blog_it OWNER yubai_app;"
