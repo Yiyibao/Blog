@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import SiteFooter from './components/SiteFooter.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
+import AmbientSound from './components/AmbientSound.vue'
 import { useUiStore } from './stores/uiStore'
 import { usePageMeta } from './composables/usePageMeta'
 import { useStructuredData, webSite } from './composables/useStructuredData'
@@ -291,6 +292,7 @@ onBeforeUnmount(() => {
     </button>
 
     <GlobalSearch :open="ui.searchOpen" @close="ui.closeSearch" />
+    <AmbientSound v-if="!isAdminRoute" />
     <div class="toast" :class="{ visible: !!ui.toast }" role="status" aria-live="polite">{{ ui.toast }}</div>
   </div>
 </template>

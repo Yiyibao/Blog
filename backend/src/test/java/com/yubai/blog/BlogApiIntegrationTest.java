@@ -805,6 +805,22 @@ class BlogApiIntegrationTest {
             "response must not be JSON");
     }
 
+    @Test
+    @Order(16)
+    void musicTracksArePublicAndReturnSeedData() throws Exception {
+        mockMvc.perform(get("/api/v1/music/tracks"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data").isArray())
+            .andExpect(jsonPath("$.data.length()").value(5))
+            .andExpect(jsonPath("$.data[0].id").value("track-1"))
+            .andExpect(jsonPath("$.data[0].title").value("雨的印记 (Kiss the Rain)"))
+            .andExpect(jsonPath("$.data[0].artist").value("钢琴纯音乐"))
+            .andExpect(jsonPath("$.data[0].duration").isNumber())
+            .andExpect(jsonPath("$.data[0].audioUrl").isString())
+            .andExpect(jsonPath("$.data[0].coverUrl").isString());
+    }
+
     private String login() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
