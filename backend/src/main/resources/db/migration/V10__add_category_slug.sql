@@ -1,5 +1,5 @@
-alter table posts add column category_slug varchar(255) not null default '';
+ALTER TABLE posts ADD COLUMN category_slug VARCHAR(255) NOT NULL DEFAULT '';
 
-update posts set category_slug = encode(convert_to(category, 'UTF8'), 'hex');
+UPDATE posts SET category_slug = LOWER(TRIM(category));
 
-alter table posts alter column category_slug drop default;
+ALTER TABLE posts ALTER COLUMN category_slug DROP DEFAULT;

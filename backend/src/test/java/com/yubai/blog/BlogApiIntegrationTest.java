@@ -393,7 +393,7 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data[0].slug").isString())
             .andExpect(jsonPath("$.data[0].publishedPostCount").isNumber());
 
-        mockMvc.perform(get("/api/v1/categories/" + java.net.URLEncoder.encode("\u8bbe\u8ba1\u672d\u8bb0", java.nio.charset.StandardCharsets.UTF_8)))
+        mockMvc.perform(get("/api/v1/categories/\u8bbe\u8ba1\u672d\u8bb0"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.name").value("\u8bbe\u8ba1\u672d\u8bb0"))
             .andExpect(jsonPath("$.data.slug").value("\u8bbe\u8ba1\u672d\u8bb0"))
