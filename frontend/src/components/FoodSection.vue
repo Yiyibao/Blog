@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchDish, fetchDishes } from '../api/content'
 import type { Dish } from '../data'
+import { usePageMeta, cleanText } from '../composables/usePageMeta'
 
 const route = useRoute()
 const dishes = ref<Dish[]>([])
@@ -51,6 +52,33 @@ function scaledAmount(item: string): string {
     return `${rounded} ${unit}`
   })
 }
+
+const { apply: applyMeta } = usePageMeta()
+
+watch(selectedDish, (dish) => {
+  if (dish) {
+    const excerpt = cleanText(dish.summary, 200)
+    const image = dish.imageUrl || '/og.png'
+    applyMeta({
+      title: dish.name,
+      description: excerpt,
+      canonicalPath: `/recipes?dish=${dish.slug}`,
+      openGraph: {
+        title: dish.name,
+        description: excerpt,
+        type: 'article',
+        image: image,
+        url: `/recipes?dish=${dish.slug}`,
+      },
+      twitter: {
+        title: dish.name,
+        description: excerpt,
+        card: 'summary_large_image',
+        image: image,
+      },
+    })
+  }
+})
 
 async function load() {
   loading.value = true

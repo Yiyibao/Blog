@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createSiteConfig, type SiteConfig } from '../config/site'
+import { createSiteConfig, resetSiteConfig, type SiteConfig } from '../config/site'
 
 describe('createSiteConfig', () => {
 
   beforeEach(() => {
+    resetSiteConfig()
     vi.stubEnv('VITE_SITE_NAME', '')
     vi.stubEnv('VITE_SITE_SUBTITLE', '')
     vi.stubEnv('VITE_SITE_DESCRIPTION', '')
@@ -21,6 +22,7 @@ describe('createSiteConfig', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
+    resetSiteConfig()
   })
 
   it('returns defaults when no env vars are set', () => {

@@ -1,17 +1,47 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
 import { useUiStore } from '../stores/uiStore'
+import { usePageMeta, cleanText } from '../composables/usePageMeta'
 
 const route = useRoute()
 const content = useContentStore()
 const ui = useUiStore()
+const { apply } = usePageMeta()
 
 async function copyCurrentLink() {
   await navigator.clipboard.writeText(window.location.href)
   ui.showToast('链接已复制')
 }
+
+watch(() => content.currentPost, (post) => {
+  if (post) {
+    apply({
+      title: post.title,
+      description: cleanText(post.excerpt, 200),
+      canonicalPath: `/articles/${post.slug}`,
+      openGraph: {
+        title: post.title,
+        description: cleanText(post.excerpt, 200),
+        type: 'article',
+        image: post.color ? undefined : '/og.png',
+        url: `/articles/${post.slug}`,
+      },
+      twitter: {
+        title: post.title,
+        description: cleanText(post.excerpt, 200),
+        image: post.color ? undefined : '/og.png',
+      },
+    })
+  } else if (content.contentReady) {
+    apply({
+      title: '页面不存在',
+      description: '文章不存在或已被归档',
+      robots: 'noindex, nofollow',
+    })
+  }
+}, { immediate: true })
 
 onMounted(() => {
   if (!content.contentReady) content.loadRemoteContent()

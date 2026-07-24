@@ -11,6 +11,7 @@ import { Mathematics } from '@tiptap/extension-mathematics'
 import 'katex/dist/katex.min.css'
 import { fetchPublishedNote, fetchPublishedNotes } from '../api/content'
 import type { AdminNote } from '../api/admin'
+import { usePageMeta, cleanText } from '../composables/usePageMeta'
 
 const route = useRoute()
 const notes = ref<AdminNote[]>([])
@@ -26,6 +27,31 @@ const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
   return notes.value.filter(note => !needle || [note.title, note.folder, ...note.tags].join(' ').toLowerCase().includes(needle))
 })
+
+const { apply } = usePageMeta()
+
+watch(selected, (note) => {
+  if (note) {
+    const excerpt = cleanText(note.markdownContent, 200)
+    apply({
+      title: note.title,
+      description: excerpt,
+      canonicalPath: `/notes?note=${note.id}`,
+      openGraph: {
+        title: note.title,
+        description: excerpt,
+        type: 'article',
+        image: '/og.png',
+        url: `/notes?note=${note.id}`,
+      },
+      twitter: {
+        title: note.title,
+        description: excerpt,
+        image: '/og.png',
+      },
+    })
+  }
+}, { immediate: true })
 
 const editor = useEditor({
   editable: false,

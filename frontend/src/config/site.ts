@@ -33,8 +33,16 @@ function readInt(key: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+let cached: SiteConfig | null = null
+
+/** Clear the cached config (used in tests to reset between cases). */
+export function resetSiteConfig() {
+  cached = null
+}
+
 export function createSiteConfig(): SiteConfig {
-  return {
+  if (cached) return cached
+  cached = {
     siteName: readStr('VITE_SITE_NAME', '余白'),
     siteSubtitle: readStr('VITE_SITE_SUBTITLE', ''),
     siteDescription: readStr('VITE_SITE_DESCRIPTION', '记录代码、设计与日常生活的个人博客'),
@@ -52,4 +60,14 @@ export function createSiteConfig(): SiteConfig {
     policeRecord: readStr('VITE_POLICE_RECORD', ''),
     policeLink: readStr('VITE_POLICE_LINK', ''),
   }
+  return cached
+}
+
+/** Resolve a relative path to an absolute URL using the configured site root. */
+export function resolveUrl(path: string): string {
+  if (!path) return ''
+  if (/^https?:\/\//i.test(path)) return path
+  const base = createSiteConfig().siteUrl.replace(/\/+$/, '')
+  const clean = path.replace(/^\/+/, '')
+  return `${base}/${clean}`
 }

@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import GlobalSearch from './components/GlobalSearch.vue'
 import { useUiStore } from './stores/uiStore'
+import { usePageMeta } from './composables/usePageMeta'
 
 const route = useRoute()
 const ui = useUiStore()
@@ -132,12 +133,47 @@ watch(() => ui.isDark, (value) => document.documentElement.classList.toggle('dar
 watch(() => route.fullPath, () => {
   menuOpen.value = false
   ui.closeSearch()
-  const title = ({
-    home: '首页', articles: '文章', recipes: '美食', notes: '学习笔记',
-    about: '关于', admin: '内容工作台', 'admin-notes': '学习笔记',
-    'admin-login': '管理员登录',
-  }[String(route.name)] || '余白')
-  document.title = `${title} · 余白`
+  const name = String(route.name)
+  const { apply } = usePageMeta()
+  if (name === 'not-found') {
+    apply({
+      title: '页面不存在',
+      description: '请求的页面不存在，可能链接已失效。',
+      robots: 'noindex, nofollow',
+    })
+  } else if (name.startsWith('admin') || name.startsWith('admin-')) {
+    apply({
+      title: ({ 'admin-login': '管理员登录', 'admin-notes': '学习笔记' } as Record<string, string>)[name] || '内容工作台',
+      robots: 'noindex, nofollow',
+    })
+  } else {
+    const pageMeta: Record<string, { title: string; description: string; canonicalPath: string }> = {
+      home: { title: '', description: '', canonicalPath: '' },
+      articles: { title: '文章', description: '阅读所有技术文章与日常随笔', canonicalPath: '/articles' },
+      article: { title: '文章', description: '', canonicalPath: '' },
+      notes: { title: '学习笔记', description: '公开学习笔记，持续更新的认知地图', canonicalPath: '/notes' },
+      recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
+      about: { title: '关于', description: '关于作者和这个博客', canonicalPath: '/about' },
+    }
+    const pm = pageMeta[name] || { title: '', description: '', canonicalPath: '' }
+    apply({
+      title: pm.title,
+      description: pm.description || undefined,
+      canonicalPath: pm.canonicalPath || undefined,
+      openGraph: {
+        title: pm.title || undefined,
+        description: pm.description || undefined,
+        type: name === 'article' ? 'article' : 'website',
+        image: '/og.png',
+        url: pm.canonicalPath || undefined,
+      },
+      twitter: {
+        title: pm.title || undefined,
+        description: pm.description || undefined,
+        image: '/og.png',
+      },
+    })
+  }
   void nextTick(setupReveals)
 })
 

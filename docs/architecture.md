@@ -40,3 +40,52 @@
 - Spring Security validates every bearer token server-side and requires the `ADMIN` role for write APIs.
 - The SPA keeps its token in `sessionStorage`, not long-lived local storage.
 - Bootstrap credentials and signing secrets stay in the ignored `backend/.env.properties` file.
+
+## Page Meta management
+
+Page `<title>`, `<meta>`, `<link rel="canonical">`, Open Graph and Twitter Card
+tags are managed centrally through `frontend/src/composables/usePageMeta.ts`.
+
+**Title format:**
+
+  content_title | site_name
+
+Home page shows only the site name (or `site_name | site_subtitle` when
+subtitle is set).
+
+**Entry point:**
+
+- `App.vue` watches `route.fullPath` and applies basic page meta (description,
+  canonical, OG) for every route change.
+- Detail pages (ArticlePage, PublicNotes, FoodSection) call `apply()` with
+  content-specific data when async data loads.
+
+**Canonical URL rules:**
+
+- Built from the configured `siteUrl` via `resolveUrl()` in `src/config/site.ts`.
+- Static pages: `/articles`, `/notes`, `/recipes`, `/about`.
+- Detail pages: `/articles/:slug`, `/notes?note=:id`, `/recipes?dish=:slug`.
+- Necessary query parameters for content identity are preserved.
+- Removed when switching between unrelated pages.
+- Never uses admin URLs.
+
+**Detail page metadata:**
+
+- Article: title + excerpt, OG type `article`.
+- Note: title + generated plain-text excerpt from Markdown body, OG type `article`.
+- Dish: name + summary, OG type `article`.
+
+**Admin pages** (all `/admin/*` routes): set `noindex, nofollow`.
+Admin pages never inherit public metadata from the previous route.
+
+**404 / not-found:** also set `noindex, nofollow`; clear all OG tags and canonical.
+
+**Async safety:** The composable uses a monotonic `applyId` counter. Stale
+responses from slow API calls do not override newer route meta.
+
+**Dependencies:** Reads `VITE_SITE_NAME`, `VITE_SITE_URL` and
+`VITE_SOCIAL_IMAGE` from the site config (`src/config/site.ts`).
+
+**Tests:** `src/test/usePageMeta.test.ts` covers title formatting, description
+cleanup, canonical generation, OG/Twitter tag lifecycle, route-switch
+cleanup, async ordering, and 404 handling.
