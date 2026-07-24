@@ -110,6 +110,39 @@ The backend generates a dynamic `robots.txt` at `GET /robots.txt`.
 - `sitemap/RobotsServiceTest.java` — 7 unit tests
 - `BlogApiIntegrationTest.Order(11)` — integration test
 
+## JSON-LD Structured Data
+
+The frontend injects JSON-LD structured data via `<script type="application/ld+json">` elements in `<head>`.
+
+**Module:** `frontend/src/composables/useStructuredData.ts`
+
+**Supported Schema types:**
+
+| Page | Schema type | Data source |
+|------|-------------|-------------|
+| Home | `WebSite` | `site.ts` config (name, description, siteUrl) |
+| Article detail | `BlogPosting` + `BreadcrumbList` | Post API fields (title, excerpt, slug, date) |
+| Note detail | `TechArticle` + `BreadcrumbList` | Note API fields (title, markdown, id, createdAt, updatedAt) |
+| Dish detail | `Recipe` + `BreadcrumbList` | Dish API fields (name, summary, slug, ingredients, steps, category, image) |
+
+**Lifecycle:**
+- `App.vue` clears JSON-LD on every route change and injects `WebSite` for the home page.
+- Detail page components inject their schema when content loads (via `watch` + `useStructuredData().apply()`).
+- Each `apply()` call removes all previous JSON-LD scripts before inserting new ones, preventing duplicates.
+- A monotonic counter (`applyId`) prevents stale async responses from overwriting current route data.
+- Admin pages receive no structured data (cleared by `App.vue`).
+
+**Data accuracy rules:**
+- Author name comes from `VITE_AUTHOR_NAME` config, not hardcoded.
+- `BlogPosting.datePublished`/`dateModified` use the post's `published_date`.
+- `Recipe` does NOT output `aggregateRating` — the admin-maintained rating does not satisfy Schema.org `AggregateRating` semantics.
+- Missing fields are omitted rather than guessed.
+- No fictional images, reviews, ratings, or timestamps.
+
+**`BreadcrumbList`** is included on detail pages with three levels: Home → List → Detail. All URLs are absolute using the configured site URL.
+
+**Tests:** `src/test/useStructuredData.test.ts` — 16 tests covering all schema types, DOM lifecycle, cleanup, image carry-over prevention, and JSON validity.
+
 ## Page Meta management
 
 Page `<title>`, `<meta>`, `<link rel="canonical">`, Open Graph and Twitter Card

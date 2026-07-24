@@ -12,6 +12,8 @@ import 'katex/dist/katex.min.css'
 import { fetchPublishedNote, fetchPublishedNotes } from '../api/content'
 import type { AdminNote } from '../api/admin'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
+import { createSiteConfig, resolveUrl } from '../config/site'
+import { techArticle, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
 
 const route = useRoute()
 const notes = ref<AdminNote[]>([])
@@ -29,10 +31,27 @@ const filtered = computed(() => {
 })
 
 const { apply } = usePageMeta()
+const { apply: applyLD } = useStructuredData()
 
 watch(selected, (note) => {
   if (note) {
     const excerpt = cleanText(note.markdownContent, 200)
+    const authorName = createSiteConfig().authorName
+    applyLD([
+      techArticle({
+        headline: note.title,
+        description: excerpt,
+        url: resolveUrl(`/notes?note=${note.id}`),
+        datePublished: note.createdAt,
+        dateModified: note.updatedAt,
+        authorName: authorName || 'Yubai',
+      }),
+      breadcrumbList([
+        { name: '首页', path: '/' },
+        { name: '学习笔记', path: '/notes' },
+        { name: note.title, path: `/notes?note=${note.id}` },
+      ]),
+    ])
     apply({
       title: note.title,
       description: excerpt,

@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import GlobalSearch from './components/GlobalSearch.vue'
 import { useUiStore } from './stores/uiStore'
 import { usePageMeta } from './composables/usePageMeta'
+import { useStructuredData, webSite } from './composables/useStructuredData'
 
 const route = useRoute()
 const ui = useUiStore()
@@ -134,6 +135,11 @@ watch(() => route.fullPath, () => {
   menuOpen.value = false
   ui.closeSearch()
   const name = String(route.name)
+  const { apply: applyLD, clear: clearLD } = useStructuredData()
+  clearLD()
+  if (name === 'home') {
+    applyLD(webSite())
+  }
   const { apply } = usePageMeta()
   if (name === 'not-found') {
     apply({

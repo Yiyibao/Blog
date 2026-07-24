@@ -3,12 +3,15 @@ import { onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
 import { useUiStore } from '../stores/uiStore'
+import { createSiteConfig, resolveUrl } from '../config/site'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
+import { blogPosting, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
 
 const route = useRoute()
 const content = useContentStore()
 const ui = useUiStore()
 const { apply } = usePageMeta()
+const { apply: applyLD } = useStructuredData()
 
 async function copyCurrentLink() {
   await navigator.clipboard.writeText(window.location.href)
@@ -17,6 +20,22 @@ async function copyCurrentLink() {
 
 watch(() => content.currentPost, (post) => {
   if (post) {
+    const authorName = createSiteConfig().authorName
+    applyLD([
+      blogPosting({
+        headline: post.title,
+        description: post.excerpt,
+        url: resolveUrl(`/articles/${post.slug}`),
+        datePublished: post.date,
+        dateModified: post.date,
+        authorName: authorName || 'Yubai',
+      }),
+      breadcrumbList([
+        { name: '首页', path: '/' },
+        { name: '文章', path: '/articles' },
+        { name: post.title, path: `/articles/${post.slug}` },
+      ]),
+    ])
     apply({
       title: post.title,
       description: cleanText(post.excerpt, 200),

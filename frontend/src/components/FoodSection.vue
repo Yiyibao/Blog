@@ -3,7 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchDish, fetchDishes } from '../api/content'
 import type { Dish } from '../data'
+import { createSiteConfig, resolveUrl } from '../config/site'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
+import { recipe, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
 
 const route = useRoute()
 const dishes = ref<Dish[]>([])
@@ -54,11 +56,32 @@ function scaledAmount(item: string): string {
 }
 
 const { apply: applyMeta } = usePageMeta()
+const { apply: applyLD } = useStructuredData()
 
 watch(selectedDish, (dish) => {
   if (dish) {
     const excerpt = cleanText(dish.summary, 200)
     const image = dish.imageUrl || '/og.png'
+    const authorName = createSiteConfig().authorName
+    applyLD([
+      recipe({
+        name: dish.name,
+        description: excerpt,
+        url: resolveUrl(`/recipes?dish=${dish.slug}`),
+        image: dish.imageUrl,
+        recipeIngredient: dish.ingredients,
+        recipeInstructions: dish.steps,
+        recipeCategory: dish.category,
+        authorName: authorName || 'Yubai',
+        datePublished: dish.createdAt,
+        dateModified: dish.updatedAt,
+      }),
+      breadcrumbList([
+        { name: '首页', path: '/' },
+        { name: '美食', path: '/recipes' },
+        { name: dish.name, path: `/recipes?dish=${dish.slug}` },
+      ]),
+    ])
     applyMeta({
       title: dish.name,
       description: excerpt,
