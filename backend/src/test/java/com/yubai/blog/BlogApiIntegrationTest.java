@@ -1,5 +1,6 @@
 package com.yubai.blog;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -681,6 +682,30 @@ class BlogApiIntegrationTest {
 
         assertTrue(locs.stream().allMatch(l -> l.startsWith("http://localhost:5173/")),
             "all URLs use configured site root");
+    }
+
+    @Test
+    @Order(11)
+    void robotsTxtIsPublicAndContainsExpectedDirectives() throws Exception {
+        var result = mockMvc.perform(get("/robots.txt"))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+            .andReturn();
+
+        var body = result.getResponse().getContentAsString();
+
+        assertTrue(body.contains("User-agent: *"), "User-agent directive");
+        assertTrue(body.contains("Allow: /"), "Allow root");
+        assertTrue(body.contains("Disallow: /admin"), "Disallow admin");
+        assertTrue(body.contains("Sitemap: http://localhost:5173/sitemap.xml"), "Sitemap URL");
+
+        assertFalse(body.contains("Disallow: /articles\n"), "articles should not be disallowed");
+        assertFalse(body.contains("Disallow: /notes\n"), "notes should not be disallowed");
+        assertFalse(body.contains("Disallow: /recipes\n"), "recipes should not be disallowed");
+        assertFalse(body.contains("Disallow: /\n"), "full-site disallow should not exist");
+
+        assertFalse(result.getResponse().getContentType().contains("json"),
+            "response must not be JSON");
     }
 
     private String login() throws Exception {

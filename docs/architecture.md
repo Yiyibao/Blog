@@ -91,6 +91,25 @@ app:
 - `sitemap/SitemapServiceTest.java` — unit tests (Mockito)
 - `BlogApiIntegrationTest.Order(10)` — integration test verifying live content filtering
 
+## Robots.txt
+
+The backend generates a dynamic `robots.txt` at `GET /robots.txt`.
+
+**Endpoint:** `/robots.txt`
+**Content-Type:** `text/plain;charset=UTF-8`
+**Implementation:** `sitemap/RobotsService.java` + `sitemap/RobotsController.java`
+
+**Crawl rules:**
+- `Allow: /` — allow crawling of all public paths
+- `Disallow: /admin` — block admin paths
+- `Sitemap: {siteUrl}/sitemap.xml` — site URL from `app.site-url` config
+
+**Note:** `robots.txt` is a crawl hint, not an access control mechanism. Admin API routes (`/api/v1/admin/**`) remain protected by JWT authentication regardless of robots.txt content.
+
+**Tests:**
+- `sitemap/RobotsServiceTest.java` — 7 unit tests
+- `BlogApiIntegrationTest.Order(11)` — integration test
+
 ## Page Meta management
 
 Page `<title>`, `<meta>`, `<link rel="canonical">`, Open Graph and Twitter Card
