@@ -296,7 +296,7 @@ a { color: inherit; text-decoration: none; }
 .compact-hero { display: grid; grid-template-columns: 1fr auto; align-items: end; }
 .compact-hero .eyebrow, .compact-hero h1 { grid-column: 1; }
 .compact-hero > p:last-child { grid-column: 2; grid-row: 2; max-width: 330px; margin: 0 0 12px 48px; color: var(--muted); line-height: 1.9; }
-.archive-tools { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; gap: 16px; align-items: end; }
+.archive-tools { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .search-field span, .sort-field { display: grid; gap: 8px; color: var(--faint); font: 600 10px ui-monospace, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
 .search-field input, .sort-field select { width: 100%; height: 46px; padding: 0 15px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); outline: none; transition: border-color .3s, box-shadow .3s, background .3s; }
 .search-field input:focus, .sort-field select:focus { border-color: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 8%, transparent); background: var(--surface-solid); }
@@ -305,6 +305,10 @@ a { color: inherit; text-decoration: none; }
 .category-tabs button:hover { color: var(--ink); transform: translateY(-2px); }
 .category-tabs button.active { color: #f4f0e8; border-color: #252622; background: #252622; box-shadow: 0 8px 22px rgba(30,30,25,.15); }
 .dark .category-tabs button.active { color: #1b1c19; border-color: #ede8de; background: #ede8de; }
+.archive-filter-tabs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fav-filter { height: 46px; padding: 0 15px; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent); background: transparent; font-size: .82rem; cursor: pointer; transition: all .3s; }
+.fav-filter.active { color: #f4f0e8; background: var(--accent); border-color: var(--accent); }
+.dark .fav-filter.active { color: #1b1c19; }
 .result-count { margin: 56px 0 14px; color: var(--faint); font: 600 10px ui-monospace, Consolas, monospace; letter-spacing: .14em; }
 .archive-list { border-top: 1px solid var(--line); }
 .archive-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 42px 50px; gap: 20px; align-items: center; padding: 38px 12px; border-bottom: 1px solid var(--line); transition: padding .45s cubic-bezier(.16,1,.3,1), background .35s; }

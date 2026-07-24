@@ -29,7 +29,7 @@ onMounted(() => {
         <div class="post-meta"><span>{{ content.currentPost.category }}</span><time>{{ content.currentPost.date }}</time><span>{{ content.currentPost.readTime }} MIN READ</span></div>
         <h1>{{ content.currentPost.title }}</h1>
         <p>{{ content.currentPost.excerpt }}</p>
-        <div class="article-header-actions"><div class="tag-row"><span v-for="tag in content.currentPost.tags" :key="tag"># {{ tag }}</span></div><button class="button secondary" type="button" @click="content.toggleFavorite(content.currentPost.slug); ui.showToast(content.favorites.includes(content.currentPost.slug) ? '已加入稍后阅读' : '已从阅读清单移除')">{{ content.favorites.includes(content.currentPost.slug) ? '★ 已收藏' : '☆ 稍后阅读' }}</button></div>
+        <div class="article-header-actions"><div class="tag-row"><span v-for="tag in content.currentPost.tags" :key="tag"># {{ tag }}</span></div><button class="button secondary" type="button" @click="content.toggleFavorite(content.currentPost.slug); ui.showToast(content.favorites.includes(content.currentPost.slug) ? '已收藏' : '已取消收藏')">{{ content.favorites.includes(content.currentPost.slug) ? '★ 已收藏' : '☆ 收藏' }}</button></div>
       </header>
       <div class="article-cover section-wrap" :style="{ '--post-color': content.currentPost.color }"><b>{{ content.currentPost.number }}</b><span>YUBAI / FIELD NOTE</span><i /></div>
       <div class="article-layout section-wrap">

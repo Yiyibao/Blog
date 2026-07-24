@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { fetchPost, fetchPosts } from '../api/content'
 import { posts as seedPosts, type Post } from '../data'
@@ -16,12 +16,24 @@ export const useContentStore = defineStore('content', () => {
 
   const categories = computed(() => ['全部', ...new Set(posts.value.map((p) => p.category))])
 
+  const showFavoritesOnly = ref(false)
+
+  watch([query, category, sortOrder, showFavoritesOnly], () => { archivePage.value = 0 })
+
   const filteredPosts = computed(() => {
-    const normalized = query.value.trim().toLowerCase()
-    return posts.value
+    let result = posts.value
       .filter((p) => category.value === '全部' || p.category === category.value)
-      .filter((p) => !normalized || [p.title, p.excerpt, p.category, ...p.tags].join(' ').toLowerCase().includes(normalized))
-      .sort((a, b) => sortOrder.value === 'newest' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date))
+    if (showFavoritesOnly.value) {
+      result = result.filter((p) => favorites.value.includes(p.slug))
+    }
+    const normalized = query.value.trim().toLowerCase()
+    if (normalized) {
+      result = result.filter((p) =>
+        p.title.toLowerCase().includes(normalized) ||
+        p.tags.some((tag) => tag.toLowerCase().includes(normalized))
+      )
+    }
+    return result.sort((a, b) => sortOrder.value === 'newest' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date))
   })
 
   const featuredPost = computed(() => posts.value.find((p) => p.featured) ?? posts.value[0] ?? null)
@@ -90,19 +102,19 @@ export const useContentStore = defineStore('content', () => {
     } else {
       favorites.value = [...favorites.value, slug]
     }
-    localStorage.setItem('yubai-reading-list', JSON.stringify(favorites.value))
+    localStorage.setItem('yubai-favorites', JSON.stringify(favorites.value))
   }
 
   function initFavorites() {
     try {
-      favorites.value = JSON.parse(localStorage.getItem('yubai-reading-list') ?? '[]')
+      favorites.value = JSON.parse(localStorage.getItem('yubai-favorites') ?? '[]')
     } catch {
       favorites.value = []
     }
   }
 
   return {
-    posts, favorites, query, category, sortOrder, archivePage,
+    posts, favorites, query, category, sortOrder, archivePage, showFavoritesOnly,
     contentReady, contentError, articleDetail,
     categories, filteredPosts, featuredPost, currentPost,
     archivePageSize, archiveTotalPages, pagedPosts,

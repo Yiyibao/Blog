@@ -18,10 +18,23 @@ const ready = ref(false)
 const closeButton = ref<HTMLButtonElement | null>(null)
 let lastTrigger: HTMLElement | null = null
 
+const dishQuery = ref('')
+
 const categories = computed(() => ['全部', ...new Set(dishes.value.map((dish) => dish.category))])
-const visibleDishes = computed(() => selectedCategory.value === '全部'
-  ? dishes.value
-  : dishes.value.filter((dish) => dish.category === selectedCategory.value))
+const visibleDishes = computed(() => {
+  let result = selectedCategory.value === '全部'
+    ? dishes.value
+    : dishes.value.filter((dish) => dish.category === selectedCategory.value)
+  const q = dishQuery.value.trim().toLowerCase()
+  if (q) {
+    result = result.filter((d) =>
+      d.name.toLowerCase().includes(q) ||
+      d.summary.toLowerCase().includes(q) ||
+      d.category.toLowerCase().includes(q)
+    )
+  }
+  return result
+})
 const rankedDishes = computed(() => [...dishes.value].sort((a, b) => b.rating - a.rating).slice(0, 5))
 
 const servings = ref(2)
@@ -112,7 +125,10 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
       </header>
 
       <nav class="food-filter" aria-label="菜谱分类">
-        <strong>{{ dishTotal }} 道家常菜</strong>
+        <strong>{{ visibleDishes.length }}/{{ dishTotal }} 道家常菜</strong>
+        <label class="food-search">
+          <input v-model="dishQuery" type="search" placeholder="搜索菜名、食材或分类…">
+        </label>
         <div class="food-filter-tabs">
           <button
             v-for="category in categories"
@@ -251,6 +267,10 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 .food-filter button:hover { color: var(--food-text); }
 .food-filter button:active { transform: scale(.97); }
 .food-filter button.active { color: var(--paper); background: var(--ink); box-shadow: 0 4px 14px rgba(40,32,22,.1); }
+.food-search { position: relative; flex-shrink: 0; }
+.food-search input { width: 180px; padding: 7px 12px; border: 1px solid var(--food-line); border-radius: 8px; background: transparent; color: var(--food-text); font-size: .78rem; outline: none; transition: border-color .2s; }
+.food-search input:focus { border-color: var(--accent); }
+.food-search input::placeholder { color: var(--food-muted); }
 .food-catalog-head { display: flex; justify-content: space-between; align-items: end; gap: 36px; margin: 52px 0 26px; }
 .food-catalog-head span { color: var(--accent); font: 650 .64rem/1 ui-monospace, "SF Mono", Consolas, monospace; letter-spacing: .16em; }
 .food-catalog-head h2 { margin: 9px 0 0; color: var(--ink); font: 400 clamp(2rem, 4vw, 3.4rem)/1.08 Georgia, "Songti SC", serif; letter-spacing: -.045em; }
