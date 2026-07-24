@@ -1,7 +1,7 @@
 # BlogDemo 项目报告与账号迁移记忆
 
-> 更新日期：2026-07-24  
-> 用途：更换 Codex/OpenCode/GitHub 操作账号或开启新会话后，快速恢复项目上下文。  
+> 更新日期：2026-07-24
+> 用途：更换 Codex/OpenCode/GitHub 操作账号或开启新会话后，快速恢复项目上下文。
 > 安全说明：本文不保存密码、Token、JWT 密钥、数据库口令、SSH 私钥或生产服务器凭据。
 
 ## 1. 一页摘要
@@ -232,7 +232,7 @@ cd backend
 & 'C:\Program Files\apache-maven-3.9.16\bin\mvn.cmd' spring-boot:run
 ```
 
-默认后端地址：`http://localhost:8080`  
+默认后端地址：`http://localhost:8080`
 健康检查：`http://localhost:8080/actuator/health`
 
 集成测试使用独立数据库 `yubai_blog_it`。不要让测试连接生产数据库。
