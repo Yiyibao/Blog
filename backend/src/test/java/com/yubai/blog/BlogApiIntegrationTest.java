@@ -820,6 +820,33 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data[0].coverUrl").isString());
     }
 
+    @Test
+    @Order(17)
+    void graphNodesArePublicAndReturnsConnectedData() throws Exception {
+        mockMvc.perform(get("/api/v1/graph/nodes"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data.nodes").isArray())
+            .andExpect(jsonPath("$.data.edges").isArray())
+            .andExpect(jsonPath("$.data.nodes[0].type").isString())
+            .andExpect(jsonPath("$.data.nodes[0].label").isString())
+            .andExpect(jsonPath("$.data.nodes[0].url").isString());
+    }
+
+    @Test
+    @Order(18)
+    void quotesDailyArePublicAndReturnsSeedData() throws Exception {
+        mockMvc.perform(get("/api/v1/quotes/daily"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(200))
+            .andExpect(jsonPath("$.data").isArray())
+            .andExpect(jsonPath("$.data.length()").value(6))
+            .andExpect(jsonPath("$.data[0].id").value("q-1"))
+            .andExpect(jsonPath("$.data[0].content").isString())
+            .andExpect(jsonPath("$.data[0].author").isString())
+            .andExpect(jsonPath("$.data[0].category").isString());
+    }
+
     private String login() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)

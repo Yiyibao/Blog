@@ -38,6 +38,9 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     boolean existsBySlugAndIdNot(String slug, long id);
 
+    @Query("SELECT p FROM PostEntity p LEFT JOIN FETCH p.tags WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
+    List<PostEntity> findAllPublishedWithTags();
+
     @Query("select distinct p.category from PostEntity p where p.status = com.yubai.blog.post.PostStatus.PUBLISHED order by p.category")
     List<String> findDistinctPublishedCategories();
 

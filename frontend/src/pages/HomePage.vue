@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
+import InspirationCard from '../components/InspirationCard.vue'
 
 const content = useContentStore()
 const heroProgress = ref(0)
@@ -108,6 +109,11 @@ onBeforeUnmount(() => {
           <RouterLink :to="`/articles/${post.slug}`" :aria-label="`阅读${post.title}`">阅读 ↗</RouterLink>
         </article>
       </div>
+    </section>
+
+    <section class="inspiration-section section-wrap" style="margin: 40px auto 20px;">
+      <div class="section-heading"><p><span>03</span> 一日一言 · 灵感撕历</p><span class="heading-note">DAILY INSPIRATION TEAR-OFF CALENDAR</span></div>
+      <InspirationCard />
     </section>
 
     <section class="manifesto section-wrap">

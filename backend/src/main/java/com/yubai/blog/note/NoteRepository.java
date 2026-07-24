@@ -18,6 +18,9 @@ public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
 
     @Query("SELECT n.id as id, n.updatedAt as updatedAt FROM NoteEntity n WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
     List<NoteSitemapProjection> findPublishedSitemap();
+    @Query("SELECT n FROM NoteEntity n LEFT JOIN FETCH n.tags WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
+    List<NoteEntity> findAllPublishedWithTags();
+
     Page<NoteEntity> findAllByOrderByUpdatedAtDesc(Pageable pageable);
     Page<NoteEntity> findAllByStatusOrderByUpdatedAtDesc(NoteStatus status, Pageable pageable);
 

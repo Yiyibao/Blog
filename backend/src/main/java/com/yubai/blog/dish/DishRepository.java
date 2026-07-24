@@ -27,6 +27,9 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
 
     @Query("SELECT d.slug as slug, d.updatedAt as updatedAt FROM DishEntity d WHERE d.published = true")
     List<DishSitemapProjection> findPublishedSitemap();
+    @Query("SELECT d FROM DishEntity d WHERE d.published = true ORDER BY d.featured DESC, d.displayOrder ASC")
+    List<DishEntity> findAllPublishedForGraph();
+
     Page<DishEntity> findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(Pageable pageable);
     Page<DishEntity> findAllByOrderByDisplayOrderAsc(Pageable pageable);
     Optional<DishEntity> findBySlugAndPublishedTrue(String slug);

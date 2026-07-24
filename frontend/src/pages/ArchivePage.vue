@@ -17,6 +17,8 @@ interface ArchiveEntry {
   tags: string[]
 }
 
+import KnowledgeGraph from '../components/KnowledgeGraph.vue'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -154,6 +156,8 @@ onMounted(load)
       <h1>从开始到现在，<br><em>所有记录都在这里。</em></h1>
       <p>按时间倒序浏览所有公开的文章、学习笔记和菜谱。</p>
     </header>
+
+    <KnowledgeGraph />
 
     <div class="archive-toolbar">
       <strong>{{ totalCount }} 条记录</strong>
