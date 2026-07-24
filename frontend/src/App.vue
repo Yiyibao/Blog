@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import SiteFooter from './components/SiteFooter.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import { useUiStore } from './stores/uiStore'
 import { usePageMeta } from './composables/usePageMeta'
@@ -260,7 +261,7 @@ onBeforeUnmount(() => {
         <RouterLink to="/about">关于</RouterLink>
         <RouterLink to="/admin/login">管理</RouterLink>
       </div>
-      <p>© 2026 YUBAI<br>MADE WITH CURIOSITY</p>
+      <SiteFooter />
       <button type="button" @click="scrollToTop">回到顶部 ↑</button>
     </footer>
 

@@ -143,6 +143,32 @@ The frontend injects JSON-LD structured data via `<script type="application/ld+j
 
 **Tests:** `src/test/useStructuredData.test.ts` — 16 tests covering all schema types, DOM lifecycle, cleanup, image carry-over prevention, and JSON validity.
 
+## Footer
+
+The public site footer is provided by a reusable `SiteFooter.vue` component.
+
+**Component:** `frontend/src/components/SiteFooter.vue`
+**Layout integration:** `App.vue` renders `<SiteFooter />` inside the existing `<footer>` element, which is only shown for non-admin routes (`v-if="!isAdminRoute"`). Admin pages do not display the public footer.
+
+**Displayed fields (all from `site.ts` config):**
+
+| Field | Config key | Display rule |
+|-------|-----------|-------------|
+| Copyright year | `VITE_COPYRIGHT_YEAR` | Single year if equal to current year; range (`2024–2026`) if earlier |
+| Copyright owner | `VITE_COPYRIGHT_OWNER` | Falls back to `VITE_SITE_NAME` if empty |
+| ICP record | `VITE_ICP_RECORD` | Hidden if empty; linked if `VITE_ICP_LINK` exists |
+| Police record | `VITE_POLICE_RECORD` | Hidden if empty; linked if `VITE_POLICE_LINK` exists |
+| Contact email | `VITE_CONTACT_EMAIL` | Hidden if empty; rendered as `mailto:` link |
+
+**Rules:**
+- No hardcoded copyright text, ICP numbers, or email addresses.
+- Empty optional fields produce no placeholder or broken UI.
+- External links use `target="_blank"` with `rel="noopener noreferrer"`.
+- No contact form, only `mailto:`.
+- The component uses flex layout for responsive spacing; no extra separators when items are missing.
+
+**Tests:** `src/test/SiteFooter.test.ts` — 13 tests covering year display, ICP/police/email visibility, link rendering, and empty-state handling.
+
 ## Page Meta management
 
 Page `<title>`, `<meta>`, `<link rel="canonical">`, Open Graph and Twitter Card
