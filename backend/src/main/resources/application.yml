@@ -43,6 +43,15 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET}
     ttl: ${APP_JWT_TTL:PT2H}
+  auth:
+    challenge:
+      # L-7：登录人机验证三层参数；难度每 +1 前端 PoW 平均计算量 ×16
+      pow-difficulty: ${APP_AUTH_POW_DIFFICULTY:4}
+      ttl: ${APP_AUTH_CHALLENGE_TTL:PT5M}
+      captcha-threshold: ${APP_AUTH_CAPTCHA_THRESHOLD:3}
+      cooldown-threshold: ${APP_AUTH_COOLDOWN_THRESHOLD:10}
+      failure-window: ${APP_AUTH_FAILURE_WINDOW:PT15M}
+      cooldown-duration: ${APP_AUTH_COOLDOWN_DURATION:PT30M}
   admin:
     username: ${APP_ADMIN_USERNAME:}
     password: ${APP_ADMIN_PASSWORD:}

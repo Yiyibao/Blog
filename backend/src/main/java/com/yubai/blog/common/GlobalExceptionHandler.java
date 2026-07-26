@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.yubai.blog.admin.ai.AiServiceException;
+import com.yubai.blog.auth.ChallengeVerificationException;
+import com.yubai.blog.auth.LoginCooldownException;
 import com.yubai.blog.note.InvalidNoteFileException;
 import com.yubai.blog.note.NoteVersionConflictException;
 
@@ -89,6 +91,24 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TooManyRequestsException.class)
     public ResponseEntity<Map<String, Object>> handleTooManyRequests(TooManyRequestsException exception) {
         return error(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage());
+    }
+
+    /** L-7：人机验证失败统一 400，文案不区分具体原因。 */
+    @ExceptionHandler(ChallengeVerificationException.class)
+    public ResponseEntity<Map<String, Object>> handleChallengeVerification(ChallengeVerificationException exception) {
+        return error(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    /** L-7：登录冷却 429 附带 Retry-After，便于客户端与上游按标准语义处理。 */
+    @ExceptionHandler(LoginCooldownException.class)
+    public ResponseEntity<Map<String, Object>> handleLoginCooldown(LoginCooldownException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", String.valueOf(Math.max(1, exception.getRetryAfter().toSeconds())))
+            .body(Map.of(
+                "status", HttpStatus.TOO_MANY_REQUESTS.value(),
+                "message", exception.getMessage(),
+                "timestamp", Instant.now()
+            ));
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

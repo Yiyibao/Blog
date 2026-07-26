@@ -118,8 +118,29 @@ async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T>
   return (await request).data.data
 }
 
-export function login(username: string, password: string) {
-  return unwrap<LoginResult>(api.post('/auth/login', { username, password }))
+/** L-7：登录人机验证 challenge；type 为 IMAGE 时需展示 captchaImage 并提交答案。 */
+export interface LoginChallenge {
+  challengeId: string
+  type: 'POW' | 'IMAGE'
+  salt: string
+  difficulty: number
+  captchaImage: string | null
+}
+
+export interface LoginVerification {
+  challengeId: string
+  nonce: string
+  captchaAnswer?: string
+}
+
+export function fetchLoginChallenge(username?: string) {
+  return unwrap<LoginChallenge>(
+    api.get('/auth/challenge', { params: username ? { username } : undefined }),
+  )
+}
+
+export function login(username: string, password: string, verification: LoginVerification) {
+  return unwrap<LoginResult>(api.post('/auth/login', { username, password, ...verification }))
 }
 
 function asPage<T>(data: PageResult<T> | T[], page = 0, size = 20): PageResult<T> {

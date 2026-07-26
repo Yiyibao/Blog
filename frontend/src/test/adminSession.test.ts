@@ -7,14 +7,29 @@ import { clearAdminSession, getAdminSessionName, hasValidAdminSession, saveAdmin
 import { useAuthStore } from '../stores/auth'
 
 const mockLogin = vi.fn()
+const mockFetchChallenge = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/admin')>()
   return {
     ...actual,
     login: (...args: unknown[]) => mockLogin(...args),
+    fetchLoginChallenge: (...args: unknown[]) => mockFetchChallenge(...args),
   }
 })
+
+// L-7：登录组件提交前会先解 PoW，测试环境直接给定 nonce
+vi.mock('../utils/pow', () => ({
+  solvePow: vi.fn().mockResolvedValue('42'),
+}))
+
+const POW_CHALLENGE = {
+  challengeId: 'ch-1',
+  type: 'POW' as const,
+  salt: 'abcd',
+  difficulty: 1,
+  captchaImage: null,
+}
 
 const LOGIN_RESULT = {
   token: 'fresh-token',
@@ -53,6 +68,8 @@ function startUnauthenticated() {
 
 beforeEach(() => {
   mockLogin.mockReset()
+  mockFetchChallenge.mockReset()
+  mockFetchChallenge.mockResolvedValue(POW_CHALLENGE)
 })
 
 describe('NF-1 管理端登录态单一事实源', () => {
@@ -106,7 +123,7 @@ describe('NF-1 管理端登录态单一事实源', () => {
     await flushPromises()
 
     // 守卫与登录流程读写同一个 store：跳转成功且停留在 /admin
-    expect(mockLogin).toHaveBeenCalledWith('gxynf', 'secret')
+    expect(mockLogin).toHaveBeenCalledWith('gxynf', 'secret', { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined })
     expect(router.currentRoute.value.name).toBe('admin')
   })
 

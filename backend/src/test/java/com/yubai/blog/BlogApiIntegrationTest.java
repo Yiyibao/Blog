@@ -40,6 +40,9 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yubai.blog.auth.CaptchaImageGenerator;
+import com.yubai.blog.auth.ChallengeService;
+import com.yubai.blog.auth.LoginAttemptTracker;
 import com.yubai.blog.common.RateLimiter;
 import com.yubai.blog.post.PostService;
 
@@ -51,6 +54,22 @@ class BlogApiIntegrationTest {
     private static final Properties ENV = loadEnv();
     /** 带真实 PNG 文件头的最小样本（P0-6 magic-byte 校验用）。 */
     private static final byte[] PNG_SAMPLE = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4};
+    /** L-7：集成测试固定图形码答案，绕过图片 OCR；真实生成逻辑由 CaptchaImageGeneratorTest 覆盖。 */
+    private static final String FIXED_CAPTCHA_TEXT = "AB3CD";
+
+    @org.springframework.boot.test.context.TestConfiguration
+    static class FixedCaptchaConfig {
+        @org.springframework.context.annotation.Bean
+        @org.springframework.context.annotation.Primary
+        CaptchaImageGenerator fixedCaptchaGenerator() {
+            return new CaptchaImageGenerator() {
+                @Override
+                public Captcha generate() {
+                    return new Captcha(FIXED_CAPTCHA_TEXT, "data:image/png;base64,fixed");
+                }
+            };
+        }
+    }
 
     @BeforeAll
     static void prepareDatabase() {
@@ -105,10 +124,18 @@ class BlogApiIntegrationTest {
     @Autowired
     PostService postService;
 
-    /** P0-2/P0-3：限流器为进程级单例，逐测试重置避免相互污染。 */
+    @Autowired
+    ChallengeService challengeService;
+
+    @Autowired
+    LoginAttemptTracker attemptTracker;
+
+    /** P0-2/P0-3/L-7：限流器、challenge 存储与失败计数均为进程级单例，逐测试重置避免相互污染。 */
     @BeforeEach
     void resetRateLimiter() {
         rateLimiter.reset();
+        challengeService.reset();
+        attemptTracker.reset();
     }
 
     @Test
@@ -236,7 +263,7 @@ class BlogApiIntegrationTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"admin\",\"password\":\"wrong\"}"))
+                .content(loginBody("admin", "wrong")))
             .andExpect(status().isUnauthorized());
 
         mockMvc.perform(post("/api/v1/admin/ai/chat")
@@ -951,18 +978,112 @@ class BlogApiIntegrationTest {
     @Test
     @Order(20)
     void loginIsRateLimitedPerIp() throws Exception {
-        // P0-3：同一 IP 一分钟内第 6 次登录尝试被 429 拒绝
-        String badBody = "{\"username\":\"admin\",\"password\":\"definitely-wrong\"}";
+        // P0-3：同一 IP 一分钟内第 6 次登录尝试被 429 拒绝（每次携带合法 challenge，隔离限流断言）
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(post("/api/v1/auth/login")
-                    .contentType(MediaType.APPLICATION_JSON).content(badBody))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(loginBody("admin", "definitely-wrong")))
                 .andExpect(status().isUnauthorized());
         }
         mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON).content(badBody))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "definitely-wrong")))
             .andExpect(status().isTooManyRequests())
             .andExpect(jsonPath("$.status").value(429));
         rateLimiter.reset();
+        attemptTracker.reset();
+    }
+
+    @Test
+    @Order(31)
+    void loginWithoutChallengeIsRejected() throws Exception {
+        // L-7：不带 challenge 凭据直接登录 → 400（Bean Validation）
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"admin\",\"password\":\"admin-pass-12345\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(32)
+    void replayedChallengeIsRejected() throws Exception {
+        // L-7：challenge 一次性使用——同一 challenge 重放第二次登录必须 400
+        JsonNode challenge = fetchChallenge("admin");
+        var body = objectMapper.createObjectNode()
+            .put("username", "admin")
+            .put("password", "admin-pass-12345")
+            .put("challengeId", challenge.path("challengeId").asText())
+            .put("nonce", solvePow(challenge.path("salt").asText(), challenge.path("difficulty").asInt()))
+            .toString();
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(33)
+    void thirdFailureEscalatesToImageCaptcha() throws Exception {
+        // L-7：第 3 次失败后 challenge 升级为 IMAGE；无图形答案被拒，全要素正确则登录成功
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(loginBody("admin", "definitely-wrong")))
+                .andExpect(status().isUnauthorized());
+        }
+        JsonNode escalated = fetchChallenge("admin");
+        assertEquals("IMAGE", escalated.path("type").asText(), "达到阈值后应下发图形验证码");
+        assertTrue(escalated.path("captchaImage").asText().startsWith("data:image/png;base64,"));
+
+        // 只解 PoW、不带图形答案 → 400
+        var withoutAnswer = objectMapper.createObjectNode()
+            .put("username", "admin")
+            .put("password", "admin-pass-12345")
+            .put("challengeId", escalated.path("challengeId").asText())
+            .put("nonce", solvePow(escalated.path("salt").asText(), escalated.path("difficulty").asInt()))
+            .toString();
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON).content(withoutAnswer))
+            .andExpect(status().isBadRequest());
+
+        // 全要素（PoW + 图形答案，小写验证大小写不敏感）→ 登录成功；成功后计数清零回到纯 PoW
+        JsonNode retry = fetchChallenge("admin");
+        var fullBody = objectMapper.createObjectNode()
+            .put("username", "admin")
+            .put("password", "admin-pass-12345")
+            .put("challengeId", retry.path("challengeId").asText())
+            .put("nonce", solvePow(retry.path("salt").asText(), retry.path("difficulty").asInt()))
+            .put("captchaAnswer", FIXED_CAPTCHA_TEXT.toLowerCase())
+            .toString();
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON).content(fullBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.token").isNotEmpty());
+        assertEquals("POW", fetchChallenge("admin").path("type").asText(), "成功登录后失败计数应清零");
+    }
+
+    @Test
+    @Order(34)
+    void tenthFailureTriggersCooldown() throws Exception {
+        // L-7：同 IP 第 10 次失败进入冷却——登录与取 challenge 均 429 且带 Retry-After
+        for (int i = 0; i < 10; i++) {
+            rateLimiter.reset(); // 隔离 P0-3 的 5 次/分限流，只验证冷却层
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(loginBody("admin", "definitely-wrong")))
+                .andExpect(status().isUnauthorized());
+        }
+        rateLimiter.reset();
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"admin\",\"password\":\"admin-pass-12345\",\"challengeId\":\"x\",\"nonce\":\"0\"}"))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("Retry-After"));
+        mockMvc.perform(get("/api/v1/auth/challenge"))
+            .andExpect(status().isTooManyRequests());
+        attemptTracker.reset();
     }
 
     @Test
@@ -1123,11 +1244,51 @@ class BlogApiIntegrationTest {
     private String login() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"username\":\"admin\",\"password\":\"admin-pass-12345\"}"))
+                .content(loginBody("admin", "admin-pass-12345")))
             .andExpect(status().isOk())
             .andReturn();
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
         return root.path("data").path("token").asText();
+    }
+
+    /** L-7：登录前先取 challenge 并解 PoW；challenge 为 IMAGE 时附上固定图形码答案。 */
+    private String loginBody(String username, String password) throws Exception {
+        JsonNode challenge = fetchChallenge(username);
+        var body = objectMapper.createObjectNode()
+            .put("username", username)
+            .put("password", password)
+            .put("challengeId", challenge.path("challengeId").asText())
+            .put("nonce", solvePow(challenge.path("salt").asText(), challenge.path("difficulty").asInt()));
+        if ("IMAGE".equals(challenge.path("type").asText())) {
+            body.put("captchaAnswer", FIXED_CAPTCHA_TEXT);
+        }
+        return objectMapper.writeValueAsString(body);
+    }
+
+    private JsonNode fetchChallenge(String username) throws Exception {
+        var request = get("/api/v1/auth/challenge");
+        if (username != null) {
+            request = request.param("username", username);
+        }
+        MvcResult result = mockMvc.perform(request).andExpect(status().isOk()).andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
+    }
+
+    private static String solvePow(String salt, int difficulty) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            var prefix = "0".repeat(difficulty);
+            for (long nonce = 0; ; nonce++) {
+                var candidate = Long.toString(nonce);
+                var hash = java.util.HexFormat.of().formatHex(
+                    digest.digest((salt + candidate).getBytes(StandardCharsets.UTF_8)));
+                if (hash.startsWith(prefix)) {
+                    return candidate;
+                }
+            }
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static Properties loadEnv() {
