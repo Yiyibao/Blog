@@ -256,6 +256,26 @@ describe('FD-13 FoodSection 英雄区接线', () => {
     expect(mockFetchDailyMenu).not.toHaveBeenCalled()
   })
 
+  it('FD-14：匿名侧栏展示"一起定菜单"邀请，指向带意图的登录链接', async () => {
+    useAuthStore(pinia).clearSession()
+    const wrapper = await mountSection()
+    const invite = wrapper.find('.menu-invite')
+    expect(invite.exists()).toBe(true)
+    expect(invite.attributes('href')).toContain('/login')
+    expect(decodeURIComponent(invite.attributes('href') ?? '')).toContain('next=/recipes?view=menu&intent=addDish')
+  })
+
+  it('FD-14：登录带 intent=addDish 回来——编辑板已开、欢迎语弹出、intent 被消费', async () => {
+    loginAs('PARTNER', '小伙伴')
+    await mountSection('/recipes?view=menu&intent=addDish')
+    await flushPromises()
+    expect(document.body.querySelector('.menu-board')).not.toBeNull()
+    const { useUiStore } = await import('../stores/uiStore')
+    expect(useUiStore(pinia).toast).toContain('接着点菜')
+    expect(router.currentRoute.value.query.intent).toBeUndefined()
+    expect(router.currentRoute.value.query.view).toBe('menu')
+  })
+
   it('?view=menu 直达编辑板，关闭后从 URL 移除', async () => {
     loginAs('ADMIN', '站长')
     await mountSection('/recipes?view=menu')

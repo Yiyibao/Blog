@@ -74,6 +74,16 @@ function startMenu() {
   void foodStore.loadMenu(initialMenuDate())
   foodStore.startMenuPolling()
 }
+// FD-14：匿名点"一起定菜单"→ /login?next=/recipes?view=menu&intent=addDish ——
+// 登录回来编辑板已开且输入框已聚焦，这里补句欢迎语并消费掉 intent
+const MENU_INVITE_NEXT = '/recipes?view=menu&intent=addDish'
+watch(boardOpen, (open) => {
+  if (open && route.query.intent === 'addDish') {
+    uiStore.showToast('回来啦，接着点菜～')
+    const { intent: _intent, ...rest } = route.query
+    void router.replace({ query: rest })
+  }
+}, { immediate: true })
 watch(() => auth.canKitchen, (can) => {
   if (can) startMenu()
   else foodStore.stopMenuPolling()
@@ -268,11 +278,16 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
             :arrivals="foodStore.arrivals"
             @open="openBoard"
           />
-          <dl v-else class="food-stats" aria-label="菜谱统计">
-            <div><dt>{{ dishTotal.toString().padStart(2, '0') }}</dt><dd>RECIPES</dd></div>
-            <div><dt>{{ seenCategories.size }}</dt><dd>COLLECTIONS</dd></div>
-            <div><dt>{{ seenFeatured.size }}</dt><dd>FEATURED</dd></div>
-          </dl>
+          <template v-else>
+            <dl class="food-stats" aria-label="菜谱统计">
+              <div><dt>{{ dishTotal.toString().padStart(2, '0') }}</dt><dd>RECIPES</dd></div>
+              <div><dt>{{ seenCategories.size }}</dt><dd>COLLECTIONS</dd></div>
+              <div><dt>{{ seenFeatured.size }}</dt><dd>FEATURED</dd></div>
+            </dl>
+            <RouterLink class="menu-invite tap-44" :to="{ path: '/login', query: { next: MENU_INVITE_NEXT } }">
+              一起定今天的菜单 →
+            </RouterLink>
+          </template>
         </div>
       </header>
 
@@ -407,7 +422,10 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
 .food-hero h1 em { position: relative; margin-top: 10px; color: var(--accent); font: 400 clamp(3.5rem, 7vw, 6.8rem)/.96 Georgia, "Songti SC", "STSong", serif; font-style: normal; letter-spacing: -.06em; }
 .food-hero h1 em::after { content: ""; position: absolute; right: -28px; bottom: 8px; width: 18px; aspect-ratio: 1; border: 1px solid var(--accent); border-radius: 50%; opacity: .65; }
 .food-hero-copy > p:last-child { max-width: 590px; margin: 34px 0 0; color: var(--food-muted); font-size: clamp(.98rem, 1.25vw, 1.12rem); line-height: 1.8; }
-.food-hero-side { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+.food-hero-side { display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; min-width: 0; }
+.menu-invite { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; color: var(--accent); font-size: .8rem; font-weight: 600; text-decoration: none; background: color-mix(in srgb, var(--accent-soft) 55%, transparent); border: 1px dashed color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 999px; transition: background .25s, color .25s, border-color .25s, transform .25s var(--ease); }
+.menu-invite:hover { color: #fff; background: var(--accent); border-style: solid; transform: translateY(-2px); }
+.menu-invite:focus-visible { outline: 2px solid #0071e3; outline-offset: 3px; }
 .food-stats { display: grid; grid-template-columns: repeat(3, 1fr); min-width: 310px; margin: 0; padding: 24px 18px; border: 1px solid var(--food-line); border-radius: 22px; background: color-mix(in srgb, var(--surface) 72%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(16px); opacity: 0; }
 .ready .food-stats { animation: food-fade-in .9s ease .32s forwards; }
 .food-stats div { padding: 0 16px; border-left: 1px solid var(--food-line); }
