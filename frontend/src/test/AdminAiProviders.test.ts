@@ -125,6 +125,7 @@ beforeEach(() => {
   window.sessionStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
   window.sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
+  window.sessionStorage.setItem('yubai-admin-role', 'ADMIN')
 })
 
 describe('AdminAiProviders Component', () => {
@@ -365,10 +366,11 @@ describe('AdminAiProviders Component', () => {
 })
 
 describe('Route Registration & Guard', () => {
-  it('registers /admin/ai/providers with meta.requiresAdmin', () => {
+  it('registers /admin/ai/providers with ADMIN role requirement (FD-8)', () => {
     const providerRoute = router.getRoutes().find((r) => r.path === '/admin/ai/providers')
     expect(providerRoute).toBeDefined()
-    expect(providerRoute?.meta?.requiresAdmin).toBe(true)
+    expect(providerRoute?.meta?.requiresAuth).toBe(true)
+    expect(providerRoute?.meta?.requiresRole).toBe('ADMIN')
   })
 
   it('redirects unauthenticated visitors to /admin/login', async () => {

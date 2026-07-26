@@ -36,25 +36,35 @@ const LOGIN_RESULT = {
   tokenType: 'Bearer',
   username: 'gxynf',
   expiresAt: '2099-12-31T23:59:59Z',
+  // FD-8：真实后端自 FD-6 起返回角色；无角色的会话会被启动清理（见 authRole.test.ts）
+  role: 'ADMIN',
+  displayName: '站长',
 }
 
-/** 复刻 src/router/index.ts 的守卫逻辑（守卫读 useAuthStore）。 */
+/** 复刻 src/router/index.ts 的守卫逻辑（守卫读 useAuthStore；FD-8 起 requiresAuth+requiresRole）。 */
 function createGuardedRouter(): Router {
   const r = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div>Login</div>' } },
-      { path: '/admin', name: 'admin', component: { template: '<div>Dashboard</div>' }, meta: { requiresAdmin: true } },
+      { path: '/admin', name: 'admin', component: { template: '<div>Dashboard</div>' }, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+      { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
     ],
   })
   r.beforeEach((to, _from, next) => {
-    if (to.meta.requiresAdmin) {
-      const auth = useAuthStore()
-      if (!auth.isAuthenticated) {
-        next({ name: 'admin-login' })
-        return
-      }
+    if (!to.meta.requiresAuth) {
+      next()
+      return
+    }
+    const auth = useAuthStore()
+    if (!auth.isAuthenticated) {
+      next({ name: 'admin-login' })
+      return
+    }
+    if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
+      next({ path: '/recipes' })
+      return
     }
     next()
   })

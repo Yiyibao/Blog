@@ -71,6 +71,7 @@ beforeEach(() => {
   window.sessionStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
   window.sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
+  window.sessionStorage.setItem('yubai-admin-role', 'ADMIN')
 })
 
 describe('AdminAiChat Component', () => {
@@ -274,10 +275,11 @@ describe('AdminAiChat Component', () => {
 })
 
 describe('Route Authentication & Guard', () => {
-  it('protects /admin/ai with meta.requiresAdmin', () => {
+  it('protects /admin/ai with ADMIN role requirement (FD-8)', () => {
     const aiRoute = router.getRoutes().find(r => r.path === '/admin/ai')
     expect(aiRoute).toBeDefined()
-    expect(aiRoute?.meta?.requiresAdmin).toBe(true)
+    expect(aiRoute?.meta?.requiresAuth).toBe(true)
+    expect(aiRoute?.meta?.requiresRole).toBe('ADMIN')
   })
 
   it('redirects unauthenticated user navigating to /admin/ai to /admin/login', async () => {

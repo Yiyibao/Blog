@@ -25,10 +25,10 @@ const router = createRouter({
     { path: '/about', name: 'about', component: AboutPage },
     { path: '/notes', name: 'notes', component: NotesPage },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
-    { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAdmin: true } },
-    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAdmin: true } },
-    { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAdmin: true } },
-    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAdmin: true } },
+    { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+    { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/archive', name: 'archive', component: ArchivePage },
     { path: '/recipes', name: 'recipes', component: RecipesPage },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
@@ -37,12 +37,21 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
-  if (to.meta.requiresAdmin) {
-    const auth = useAuthStore()
-    if (!auth.isAuthenticated) {
-      next({ name: 'admin-login' })
-      return
-    }
+  // FD-8：requiresAdmin 拆为 requiresAuth + requiresRole——
+  // 未登录去登录页；已登录但角色不符（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
+  // 免得"已登录还被要求登录"的死循环体验
+  if (!to.meta.requiresAuth) {
+    next()
+    return
+  }
+  const auth = useAuthStore()
+  if (!auth.isAuthenticated) {
+    next({ name: 'admin-login' })
+    return
+  }
+  if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
+    next({ path: '/recipes' })
+    return
   }
   next()
 })

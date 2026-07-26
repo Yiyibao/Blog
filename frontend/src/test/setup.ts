@@ -36,6 +36,7 @@ beforeEach(() => {
   Object.keys(mockStorage).forEach(k => delete mockStorage[k])
   mockStorage['yubai-admin-token'] = 'fake-token'
   mockStorage['yubai-admin-expiry'] = '2099-12-31T23:59:59Z'
+  mockStorage['yubai-admin-role'] = 'ADMIN'
   vi.useFakeTimers({ shouldAdvanceTime: false })
 })
 
