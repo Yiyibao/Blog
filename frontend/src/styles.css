@@ -24,6 +24,15 @@
   --radius: 24px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* FD-2 cinema：菜谱详情抽屉的"恒深色影院"令牌。抽屉经 Teleport 挂 body，
+     变量只沿 DOM 继承，故必须落 :root；亮色主题用暖褐深色与樱粉呼应，暗色与全站暗底同源。 */
+  --cinema-bg: #181114;
+  --cinema-ink: #f7f2f1;
+  --cinema-text: #ddd3d3;
+  --cinema-muted: #a99fa0;
+  --cinema-faint: #877d7f;
+  --cinema-line: rgba(247, 242, 241, 0.12);
+  --cinema-backdrop: rgba(26, 15, 19, 0.62);
   color: var(--ink);
   background: var(--paper);
   font-family: "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
@@ -53,6 +62,13 @@
   --band: color-mix(in srgb, var(--paper) 70%, #1a1c18);
   --shadow-sm: 0 10px 30px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 30px 84px rgba(0, 0, 0, 0.5);
+  --cinema-bg: #101110;
+  --cinema-ink: #f2efe7;
+  --cinema-text: #d6d2c8;
+  --cinema-muted: #a7a49a;
+  --cinema-faint: #837f77;
+  --cinema-line: rgba(242, 239, 231, 0.12);
+  --cinema-backdrop: rgba(0, 0, 0, 0.7);
   color-scheme: dark;
 }
 
@@ -124,6 +140,8 @@ a { color: inherit; text-decoration: none; }
 .hero-intro { max-width: 34em; margin: 28px 0 36px; color: var(--muted); font-size: clamp(16px, 1.3vw, 19px); line-height: 1.65; }
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 0 22px; border: 1px solid transparent; border-radius: 980px; font-size: 15px; font-weight: 500; transition: transform .28s var(--ease), box-shadow .28s var(--ease), background .28s var(--ease), color .28s var(--ease), border-color .28s var(--ease); }
+/* FD-2 a11y：触控目标 ≥44×44 约定类——jsdom 无布局引擎，测试断言类名，实际尺寸由此类兜底 */
+.tap-44 { min-width: 44px; min-height: 44px; }
 .button.primary { color: #f5f5f7; background: #1d1d1f; box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
 .dark .button.primary { color: #1d1d1f; background: #f5f5f7; }
 .button.secondary { color: var(--ink); border-color: var(--line-strong); background: transparent; }

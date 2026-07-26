@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchDish, fetchDishes } from '../api/content'
-import type { Dish } from '../data'
-import { createSiteConfig, resolveUrl } from '../config/site'
-import { usePageMeta, cleanText } from '../composables/usePageMeta'
-import { recipe, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
+import { fetchDish, fetchDishes } from '../../api/content'
+import type { Dish } from '../../data'
+import { createSiteConfig, resolveUrl } from '../../config/site'
+import { usePageMeta, cleanText } from '../../composables/usePageMeta'
+import { recipe, breadcrumbList, useStructuredData } from '../../composables/useStructuredData'
+import DishPanel from './DishPanel.vue'
 const route = useRoute()
 const dishes = ref<Dish[]>([])
 const dishPage = ref(0)
@@ -17,7 +18,6 @@ const selectedDish = ref<Dish | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const ready = ref(false)
-const closeButton = ref<HTMLButtonElement | null>(null)
 let lastTrigger: HTMLElement | null = null
 
 const dishQuery = ref('')
@@ -49,21 +49,6 @@ function loadFavoriteDishes() {
     favoriteDishes.value = []
   }
 }
-const servings = ref(2)
-const originalServings = ref(2)
-function setServings(n: number) {
-  servings.value = Math.max(1, Math.min(20, n))
-}
-function scaledAmount(item: string): string {
-  const ratio = servings.value / originalServings.value
-  if (ratio === 1) return item
-  return item.replace(/(\d+(?:\.\d+)?)\s*(克|毫升|ml|g|kg|个|根|片|瓣|勺|汤匙|茶匙|小匙|大匙|碗|杯|只|条|块|包)/g, (_, num: string, unit: string) => {
-    const scaled = parseFloat(num) * ratio
-    const rounded = scaled >= 10 ? Math.round(scaled) : Math.round(scaled * 10) / 10
-    return `${rounded} ${unit}`
-  })
-}
-
 const { apply: applyMeta } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
@@ -151,14 +136,10 @@ async function openRouteDish() {
 async function openDish(dish: Dish, event?: Event) {
   lastTrigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null
   selectedDish.value = dish
-  document.body.style.overflow = 'hidden'
-  await nextTick()
-  closeButton.value?.focus()
 }
 
 function closeDish() {
   selectedDish.value = null
-  document.body.style.removeProperty('overflow')
   nextTick(() => lastTrigger?.focus())
 }
 
@@ -168,7 +149,6 @@ onMounted(() => {
   load()
   loadFavoriteDishes()
 })
-onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 </script>
 
 <template>
@@ -280,26 +260,7 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
     </div>
   </section>
 
-  <Teleport to="body">
-    <Transition name="dish-panel">
-      <div v-if="selectedDish" class="dish-backdrop" @click.self="closeDish" @keydown.esc="closeDish">
-        <article class="dish-panel" role="dialog" aria-modal="true" :aria-labelledby="`dish-title-${selectedDish.id}`">
-          <header class="dish-panel-media">
-            <img :src="selectedDish.imageUrl" :alt="selectedDish.imageAlt" loading="lazy">
-            <span />
-            <button ref="closeButton" type="button" aria-label="关闭菜谱详情" @click="closeDish">关闭 ×</button>
-            <div><small>{{ selectedDish.category }} · ★ {{ selectedDish.rating.toFixed(1) }}</small><h2 :id="`dish-title-${selectedDish.id}`">{{ selectedDish.name }}</h2><p>{{ selectedDish.summary }}</p></div>
-          </header>
-          <div class="dish-panel-body">
-            <dl><div><dt>准备时间</dt><dd>{{ selectedDish.prepMinutes }} 分钟</dd></div><div><dt>难度</dt><dd>{{ selectedDish.difficulty }}</dd></div><div><dt>食材</dt><dd>{{ selectedDish.ingredients.length }} 项</dd></div></dl>
-            <section><p>01 / INGREDIENTS</p><h3>准备食材</h3><div class="servings-bar"><button type="button" :disabled="servings <= 1" aria-label="减少份数" @click="setServings(servings - 1)">−</button><span>{{ servings }} 人份</span><button type="button" :disabled="servings >= 20" aria-label="增加份数" @click="setServings(servings + 1)">+</button></div><ul><li v-for="item in selectedDish.ingredients" :key="item">{{ scaledAmount(item) }}</li></ul></section>
-            <section><p>02 / METHOD</p><h3>开始制作</h3><ol><li v-for="(step, index) in selectedDish.steps" :key="step"><span>{{ String(index + 1).padStart(2, '0') }}</span><p>{{ step }}</p></li></ol></section>
-            <footer>图片：<a :href="selectedDish.imageSourceUrl" target="_blank" rel="noreferrer">{{ selectedDish.imageCredit }}</a></footer>
-          </div>
-        </article>
-      </div>
-    </Transition>
-  </Teleport>
+  <DishPanel :dish="selectedDish" @close="closeDish" />
 </template>
 
 <style scoped>
@@ -414,42 +375,6 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 .food-empty span { color: var(--food-muted); font-size: .68rem; letter-spacing: .15em; }
 .food-empty h2 { max-width: 600px; margin: 18px 0; font-size: 2.4rem; font-weight: 520; }
 .food-empty button { padding: 10px 14px; color: var(--paper); background: var(--ink); border: 0; border-radius: 8px; cursor: pointer; }
-.dish-backdrop { position: fixed; z-index: 2200; inset: 0; display: flex; justify-content: flex-end; background: rgba(0,0,0,.68); backdrop-filter: blur(8px); }
-.dish-panel { width: min(720px, 100%); height: 100%; overflow-y: auto; color: #f4f4f5; background: #0c0c0e; box-shadow: -40px 0 100px rgba(0,0,0,.46); }
-.dish-panel-media { position: relative; min-height: 410px; overflow: hidden; }
-.dish-panel-media > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.dish-panel-media > span { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.88)); }
-.dish-panel-media > button { position: absolute; z-index: 2; top: 22px; right: 22px; padding: 9px 13px; color: #fff; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; cursor: pointer; backdrop-filter: blur(12px); }
-.dish-panel-media > div { position: absolute; right: 36px; bottom: 34px; left: 36px; }
-.dish-panel-media small { color: rgba(255,255,255,.7); font-size: .68rem; letter-spacing: .1em; }
-.dish-panel-media h2 { margin: 9px 0; font-size: clamp(2.5rem, 7vw, 4.8rem); font-weight: 520; line-height: 1; letter-spacing: -.055em; }
-.dish-panel-media p { max-width: 560px; margin: 0; color: rgba(255,255,255,.72); line-height: 1.6; }
-.dish-panel-body { padding: clamp(28px, 6vw, 58px); }
-.dish-panel-body > dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 0 54px; padding: 18px 0; border-top: 1px solid rgba(255,255,255,.12); border-bottom: 1px solid rgba(255,255,255,.12); }
-.dish-panel-body dl div { padding: 0 16px; border-left: 1px solid rgba(255,255,255,.12); }
-.dish-panel-body dl div:first-child { padding-left: 0; border-left: 0; }
-.dish-panel-body dt { color: #a1a1aa; font-size: .68rem; }
-.dish-panel-body dd { margin: 6px 0 0; font-size: .92rem; }
-.dish-panel-body section { margin-top: 50px; }
-.dish-panel-body section > p { color: #71717a; font-size: .65rem; letter-spacing: .16em; }
-.dish-panel-body h3 { margin: 10px 0 24px; font-size: 2rem; font-weight: 520; letter-spacing: -.04em; }
-.dish-panel-body ul { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 24px; padding: 0; list-style: none; }
-.dish-panel-body ul li { padding: 14px 0; color: #d4d4d8; border-top: 1px solid rgba(255,255,255,.1); }
-.servings-bar { display: flex; align-items: center; gap: 12px; margin: 0 0 20px; padding: 10px 0; }
-.servings-bar button { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 50%; background: transparent; color: #d4d4d8; font-size: 1.1rem; cursor: pointer; transition: border-color .2s, color .2s; }
-.servings-bar button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.servings-bar button:disabled { opacity: .3; cursor: default; }
-.servings-bar span { min-width: 60px; color: #a1a1aa; font-size: .82rem; text-align: center; }
-.dish-panel-body ol { padding: 0; list-style: none; }
-.dish-panel-body ol li { display: grid; grid-template-columns: 42px 1fr; gap: 18px; padding: 22px 0; border-top: 1px solid rgba(255,255,255,.1); }
-.dish-panel-body ol span { color: #71717a; font-size: .72rem; }
-.dish-panel-body ol p { margin: 0; color: #d4d4d8; line-height: 1.75; }
-.dish-panel-body footer { margin-top: 58px; padding-top: 22px; color: #71717a; border-top: 1px solid rgba(255,255,255,.1); font-size: .72rem; }
-.dish-panel-body footer a { color: #a1a1aa; }
-.dish-panel-enter-active, .dish-panel-leave-active { transition: background .38s, backdrop-filter .38s; }
-.dish-panel-enter-active .dish-panel, .dish-panel-leave-active .dish-panel { transition: transform .42s cubic-bezier(.16,1,.3,1), opacity .3s; }
-.dish-panel-enter-from, .dish-panel-leave-to { background: transparent; backdrop-filter: blur(0); }
-.dish-panel-enter-from .dish-panel, .dish-panel-leave-to .dish-panel { opacity: .55; transform: translateX(100%); }
 @keyframes food-hero-in { to { opacity: 1; transform: translateY(0); } }
 @keyframes food-fade-in { to { opacity: 1; } }
 @keyframes dish-card-in { to { opacity: 1; transform: translateY(0); } }
@@ -460,7 +385,7 @@ onBeforeUnmount(() => document.body.style.removeProperty('overflow'))
 @keyframes skeleton { to { background-position-x: -220%; } }
 @media (max-width: 980px) { .food-hero { grid-template-columns: 1fr; gap: 42px; min-height: 0; } .food-hero::before { display: none; } .food-stats { max-width: 420px; } .dish-card { grid-column: span 6; } .dish-card.featured { grid-column: 1 / -1; grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr); grid-template-rows: 400px; } .ranking-board { grid-template-columns: 1fr; } .ranking-champion { min-height: 460px; } .ranking-list { grid-template-columns: repeat(2, minmax(0,1fr)); } .ranking-list button { min-height: 112px; grid-template-columns: 38px 74px minmax(0,1fr) auto; gap: 11px; } .ranking-list img { width: 74px; height: 78px; } .rank-arrow { display: none; } }
 @media (max-width: 760px) { .dish-card.featured { grid-template-columns: 1fr; grid-template-rows: 340px auto; } .dish-card.featured .dish-copy { justify-content: flex-start; padding: 34px 26px 26px; } .dish-card.featured .dish-copy::before { top: 0; left: 26px; } }
-@media (max-width: 640px) { .food-shell { padding-top: 70px; } .food-hero { padding-bottom: 42px; } .food-hero h1 span { font-size: clamp(2.35rem, 11vw, 3.2rem); } .food-hero h1 em { margin-top: 8px; font-size: clamp(3.15rem, 15vw, 4.5rem); letter-spacing: -.07em; } .food-hero h1 em::after { right: -16px; bottom: 5px; width: 12px; } .food-stats { min-width: 0; width: 100%; padding: 20px 8px; } .food-stats div { padding: 0 10px; } .food-filter { top: 64px; align-items: flex-start; flex-direction: column; gap: 10px; } .food-filter > div { width: 100%; } .food-catalog-head { align-items: flex-start; flex-direction: column; gap: 14px; margin-top: 38px; } .food-catalog-head p { max-width: none; } .dish-grid { display: flex; flex-direction: column; gap: 18px; } .dish-card, .dish-card.featured { display: grid; min-height: 0; grid-template-columns: 1fr; grid-template-rows: auto 1fr; border-radius: 20px 20px 7px 20px; } .dish-media, .dish-card.featured .dish-media { min-height: 280px; } .dish-card.featured .dish-copy { justify-content: flex-start; padding: 28px 20px 20px; } .dish-card.featured .dish-copy::before { top: 0; left: 20px; } .dish-card.featured .dish-copy strong { font-size: 2rem; } .dish-copy > span, .dish-card.featured .dish-copy > span { font-size: .86rem; -webkit-line-clamp: 3; } .food-ranking { margin-top: 64px; padding: 22px 14px; border-radius: 24px 24px 7px 24px; } .ranking-head { align-items: flex-start; flex-direction: column; gap: 13px; margin-bottom: 22px; padding-inline: 5px; } .ranking-head > p { max-width: none; } .ranking-champion { min-height: 410px; } .champion-copy { padding: 25px; } .score-orbit { width: 68px; height: 68px; } .ranking-list { grid-template-columns: 1fr; } .ranking-list button { grid-template-columns: 34px 72px minmax(0,1fr) auto; padding: 10px; } .ranking-list img { width: 72px; height: 74px; } .rank-info strong { font-size: 1rem; } .rank-meter { width: 92%; } .dish-panel-media { min-height: 360px; } .dish-panel-media > div { right: 24px; bottom: 26px; left: 24px; } .dish-panel-body ul { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .food-shell { padding-top: 70px; } .food-hero { padding-bottom: 42px; } .food-hero h1 span { font-size: clamp(2.35rem, 11vw, 3.2rem); } .food-hero h1 em { margin-top: 8px; font-size: clamp(3.15rem, 15vw, 4.5rem); letter-spacing: -.07em; } .food-hero h1 em::after { right: -16px; bottom: 5px; width: 12px; } .food-stats { min-width: 0; width: 100%; padding: 20px 8px; } .food-stats div { padding: 0 10px; } .food-filter { top: 64px; align-items: flex-start; flex-direction: column; gap: 10px; } .food-filter > div { width: 100%; } .food-catalog-head { align-items: flex-start; flex-direction: column; gap: 14px; margin-top: 38px; } .food-catalog-head p { max-width: none; } .dish-grid { display: flex; flex-direction: column; gap: 18px; } .dish-card, .dish-card.featured { display: grid; min-height: 0; grid-template-columns: 1fr; grid-template-rows: auto 1fr; border-radius: 20px 20px 7px 20px; } .dish-media, .dish-card.featured .dish-media { min-height: 280px; } .dish-card.featured .dish-copy { justify-content: flex-start; padding: 28px 20px 20px; } .dish-card.featured .dish-copy::before { top: 0; left: 20px; } .dish-card.featured .dish-copy strong { font-size: 2rem; } .dish-copy > span, .dish-card.featured .dish-copy > span { font-size: .86rem; -webkit-line-clamp: 3; } .food-ranking { margin-top: 64px; padding: 22px 14px; border-radius: 24px 24px 7px 24px; } .ranking-head { align-items: flex-start; flex-direction: column; gap: 13px; margin-bottom: 22px; padding-inline: 5px; } .ranking-head > p { max-width: none; } .ranking-champion { min-height: 410px; } .champion-copy { padding: 25px; } .score-orbit { width: 68px; height: 68px; } .ranking-list { grid-template-columns: 1fr; } .ranking-list button { grid-template-columns: 34px 72px minmax(0,1fr) auto; padding: 10px; } .ranking-list img { width: 72px; height: 74px; } .rank-info strong { font-size: 1rem; } .rank-meter { width: 92%; } }
 @media (hover: none) { .dish-card:hover { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .food-hero-copy, .food-stats, .dish-card, .ranking-champion, .ranking-list li, .rank-meter i { opacity: 1; transform: none; animation: none !important; } .dish-card img, .dish-copy, .dish-copy > span, .dish-copy u, .dish-panel-enter-active, .dish-panel-leave-active, .dish-panel { transition-duration: .01ms !important; } .food-skeleton-grid span, .score-orbit::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .food-hero-copy, .food-stats, .dish-card, .ranking-champion, .ranking-list li, .rank-meter i { opacity: 1; transform: none; animation: none !important; } .dish-card img, .dish-copy, .dish-copy > span, .dish-copy u { transition-duration: .01ms !important; } .food-skeleton-grid span, .score-orbit::after { animation: none; } }
 </style>
