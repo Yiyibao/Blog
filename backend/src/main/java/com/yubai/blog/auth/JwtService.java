@@ -16,16 +16,24 @@ import org.springframework.stereotype.Service;
 public class JwtService {
     private final JwtEncoder encoder;
     private final Duration ttl;
+    private final Duration rememberTtl;
 
-    public JwtService(JwtEncoder encoder, @Value("${app.jwt.ttl}") Duration ttl) {
+    public JwtService(JwtEncoder encoder,
+                      @Value("${app.jwt.ttl}") Duration ttl,
+                      @Value("${app.jwt.remember-ttl:PT24H}") Duration rememberTtl) {
         this.encoder = encoder;
         this.ttl = ttl;
+        this.rememberTtl = rememberTtl;
     }
 
-    /** FD-6：roles 不再硬编码 ADMIN，改读账号实体；uid 供 kitchen 署名/限流，name 供前端问候。 */
-    public LoginResponse issue(AdminUserEntity user) {
+    /**
+     * FD-6：roles 不再硬编码 ADMIN，改读账号实体；uid 供 kitchen 署名/限流，name 供前端问候。
+     * FD-9：remember 走 24h 而非 7 天——无撤销机制下窗口不宜过大，
+     * 且 sessions_valid_from（SessionValidityFilter）提供了改密/踢下线的止损阀。
+     */
+    public LoginResponse issue(AdminUserEntity user, boolean remember) {
         var issuedAt = Instant.now();
-        var expiresAt = issuedAt.plus(ttl);
+        var expiresAt = issuedAt.plus(remember ? rememberTtl : ttl);
         var claims = JwtClaimsSet.builder()
             .issuer("yubai-blog")
             .issuedAt(issuedAt)

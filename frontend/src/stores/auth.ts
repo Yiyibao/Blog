@@ -29,6 +29,33 @@ function removeSessionValue(key: string) {
   }
 }
 
+// FD-9："保持登录"用 localStorage 跨会话持久化；隐私模式全部 try/catch 降级
+function readPersistentValue(key: string) {
+  try {
+    return window.localStorage?.getItem(key) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writePersistentValue(key: string, value: string) {
+  try {
+    window.localStorage?.setItem(key, value)
+  } catch {
+    // 存不了就退化为仅本会话
+  }
+}
+
+function removePersistentValue(key: string) {
+  try {
+    window.localStorage?.removeItem(key)
+  } catch {
+    // 忽略
+  }
+}
+
+const SESSION_KEYS = ['yubai-admin-token', 'yubai-admin-name', 'yubai-admin-expiry', 'yubai-admin-role', 'yubai-admin-display'] as const
+
 export interface LoginResult {
   token: string
   tokenType: string
@@ -40,11 +67,13 @@ export interface LoginResult {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(readSessionValue('yubai-admin-token'))
-  const username = ref(readSessionValue('yubai-admin-name'))
-  const expiresAt = ref(readSessionValue('yubai-admin-expiry'))
-  const role = ref(readSessionValue('yubai-admin-role'))
-  const displayName = ref(readSessionValue('yubai-admin-display'))
+  // 会话优先，localStorage（保持登录）兜底
+  const readValue = (key: string) => readSessionValue(key) ?? readPersistentValue(key)
+  const token = ref(readValue('yubai-admin-token'))
+  const username = ref(readValue('yubai-admin-name'))
+  const expiresAt = ref(readValue('yubai-admin-expiry'))
+  const role = ref(readValue('yubai-admin-role'))
+  const displayName = ref(readValue('yubai-admin-display'))
 
   const isAuthenticated = computed(() => {
     if (!token.value) return false
@@ -60,19 +89,27 @@ export const useAuthStore = defineStore('auth', () => {
   const isPartner = computed(() => isAuthenticated.value && role.value === 'PARTNER')
   const canKitchen = computed(() => isAdmin.value || isPartner.value)
 
-  function saveSession(result: LoginResult) {
+  function saveSession(result: LoginResult, options: { remember?: boolean } = {}) {
     token.value = result.token
     username.value = result.username
     expiresAt.value = result.expiresAt
     role.value = result.role ?? null
     displayName.value = result.displayName ?? null
-    writeSessionValue('yubai-admin-token', result.token)
-    writeSessionValue('yubai-admin-name', result.username)
-    writeSessionValue('yubai-admin-expiry', result.expiresAt)
-    if (result.role) writeSessionValue('yubai-admin-role', result.role)
-    else removeSessionValue('yubai-admin-role')
-    if (result.displayName) writeSessionValue('yubai-admin-display', result.displayName)
-    else removeSessionValue('yubai-admin-display')
+    const values: Record<(typeof SESSION_KEYS)[number], string | null> = {
+      'yubai-admin-token': result.token,
+      'yubai-admin-name': result.username,
+      'yubai-admin-expiry': result.expiresAt,
+      'yubai-admin-role': result.role ?? null,
+      'yubai-admin-display': result.displayName ?? null,
+    }
+    for (const key of SESSION_KEYS) {
+      const value = values[key]
+      if (value) writeSessionValue(key, value)
+      else removeSessionValue(key)
+      // FD-9：勾选保持登录才落 localStorage；未勾选的登录顺带清掉历史持久化副本
+      if (options.remember && value) writePersistentValue(key, value)
+      else removePersistentValue(key)
+    }
   }
 
   function clearSession() {
@@ -81,11 +118,10 @@ export const useAuthStore = defineStore('auth', () => {
     expiresAt.value = null
     role.value = null
     displayName.value = null
-    removeSessionValue('yubai-admin-token')
-    removeSessionValue('yubai-admin-name')
-    removeSessionValue('yubai-admin-expiry')
-    removeSessionValue('yubai-admin-role')
-    removeSessionValue('yubai-admin-display')
+    for (const key of SESSION_KEYS) {
+      removeSessionValue(key)
+      removePersistentValue(key)
+    }
   }
 
   // FD-8：FD-6 之前签发的会话没有 role——启动即清，让持有者重登一次拿到带角色的新会话

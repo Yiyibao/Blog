@@ -47,7 +47,8 @@ function createGuardedRouter(): Router {
     history: createMemoryHistory(),
     routes: [
       { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
-      { path: '/admin/login', name: 'admin-login', component: { template: '<div>Login</div>' } },
+      { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
+      { path: '/admin/login', name: 'admin-login', component: { template: '<div>AdminLogin</div>' } },
       { path: '/admin', name: 'admin', component: { template: '<div>Dashboard</div>' }, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
       { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
     ],
@@ -59,7 +60,7 @@ function createGuardedRouter(): Router {
     }
     const auth = useAuthStore()
     if (!auth.isAuthenticated) {
-      next({ name: 'admin-login' })
+      next({ name: 'login', query: { next: to.fullPath } })
       return
     }
     if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
@@ -120,10 +121,11 @@ describe('NF-1 管理端登录态单一事实源', () => {
     startUnauthenticated()
     const router = createGuardedRouter()
 
-    // 未登录访问 /admin：被守卫送去登录页
+    // 未登录访问 /admin：被守卫送去 /login 并带上来路
     await router.push('/admin')
     await router.isReady()
-    expect(router.currentRoute.value.name).toBe('admin-login')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.next).toBe('/admin')
 
     mockLogin.mockResolvedValue(LOGIN_RESULT)
     const wrapper = mount(AdminLogin, { global: { plugins: [router] } })
@@ -133,7 +135,7 @@ describe('NF-1 管理端登录态单一事实源', () => {
     await flushPromises()
 
     // 守卫与登录流程读写同一个 store：跳转成功且停留在 /admin
-    expect(mockLogin).toHaveBeenCalledWith('gxynf', 'secret', { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined })
+    expect(mockLogin).toHaveBeenCalledWith('gxynf', 'secret', { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined }, false)
     expect(router.currentRoute.value.name).toBe('admin')
   })
 

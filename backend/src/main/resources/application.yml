@@ -43,6 +43,8 @@ app:
   jwt:
     secret: ${APP_JWT_SECRET}
     ttl: ${APP_JWT_TTL:PT2H}
+    # FD-9："保持登录"勾选时的 TTL；刻意不给 7 天——踢下线靠 sessions_valid_from
+    remember-ttl: ${APP_JWT_REMEMBER_TTL:PT24H}
   auth:
     challenge:
       # L-7：登录人机验证三层参数；难度每 +1 前端 PoW 平均计算量 ×16

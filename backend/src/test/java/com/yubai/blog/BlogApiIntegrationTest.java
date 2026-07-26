@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -133,6 +134,9 @@ class BlogApiIntegrationTest {
 
     @Autowired
     LoginAttemptTracker attemptTracker;
+
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     /** P0-2/P0-3/L-7：限流器、challenge 存储与失败计数均为进程级单例，逐测试重置避免相互污染。 */
     @BeforeEach
@@ -1238,6 +1242,44 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(43)
+    void rememberLoginIssuesLongerLivedToken() throws Exception {
+        // FD-9：remember=true 走 24h TTL；普通登录仍 2h
+        var normal = objectMapper.readTree(mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        var remembered = objectMapper.readTree(mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345", true)))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        var normalExpiry = java.time.Instant.parse(normal.path("expiresAt").asText());
+        var rememberedExpiry = java.time.Instant.parse(remembered.path("expiresAt").asText());
+        assertTrue(rememberedExpiry.isAfter(normalExpiry.plus(java.time.Duration.ofHours(20))),
+            "保持登录的过期时间应比普通登录晚约 22 小时");
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(44)
+    void bumpingSessionsValidFromInvalidatesIssuedTokens() throws Exception {
+        // FD-9：sessions_valid_from 是改密/踢下线止损阀——拨到未来，既有 token 立即 401
+        String token = login();
+        mockMvc.perform(get("/api/v1/admin/stats").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk());
+        jdbcTemplate.update("update admin_users set sessions_valid_from = now() + interval '5 minutes' where username = 'admin'");
+        mockMvc.perform(get("/api/v1/admin/stats").header("Authorization", "Bearer " + token))
+            .andExpect(status().isUnauthorized());
+        // 拨回过去恢复，原 token 重新生效，不影响后续用例
+        jdbcTemplate.update("update admin_users set sessions_valid_from = now() - interval '1 hour' where username = 'admin'");
+        mockMvc.perform(get("/api/v1/admin/stats").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(21)
     void publicCountersAreRateLimitedPerIpAndSlug() throws Exception {
         // P0-2：点赞按 IP+slug 限流，第 11 次 429；其他 slug 不受影响
@@ -1408,12 +1450,19 @@ class BlogApiIntegrationTest {
 
     /** L-7：登录前先取 challenge 并解 PoW；challenge 为 IMAGE 时附上固定图形码答案。 */
     private String loginBody(String username, String password) throws Exception {
+        return loginBody(username, password, false);
+    }
+
+    private String loginBody(String username, String password, boolean remember) throws Exception {
         JsonNode challenge = fetchChallenge(username);
         var body = objectMapper.createObjectNode()
             .put("username", username)
             .put("password", password)
             .put("challengeId", challenge.path("challengeId").asText())
             .put("nonce", solvePow(challenge.path("salt").asText(), challenge.path("difficulty").asInt()));
+        if (remember) {
+            body.put("remember", true);
+        }
         if ("IMAGE".equals(challenge.path("type").asText())) {
             body.put("captchaAnswer", FIXED_CAPTCHA_TEXT);
         }

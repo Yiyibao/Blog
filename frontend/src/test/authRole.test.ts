@@ -26,6 +26,7 @@ function guardedRouter(): Router {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: { template: '<div />' } },
+      { path: '/login', name: 'login', component: { template: '<div />' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div />' } },
       { path: '/admin', name: 'admin', component: { template: '<div />' }, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
       { path: '/recipes', name: 'recipes', component: { template: '<div />' } },
@@ -34,7 +35,7 @@ function guardedRouter(): Router {
   r.beforeEach((to, _from, next) => {
     if (!to.meta.requiresAuth) { next(); return }
     const auth = useAuthStore()
-    if (!auth.isAuthenticated) { next({ name: 'admin-login' }); return }
+    if (!auth.isAuthenticated) { next({ name: 'login', query: { next: to.fullPath } }); return }
     if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) { next({ path: '/recipes' }); return }
     next()
   })
@@ -97,7 +98,8 @@ describe('FD-8 authStore 角色感知', () => {
     const router = guardedRouter()
     await router.push('/admin')
     await router.isReady()
-    expect(router.currentRoute.value.name).toBe('admin-login')
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.next).toBe('/admin')
   })
 
   it('守卫：PARTNER 访问 /admin 被重定向到 /recipes 而非登录页', async () => {

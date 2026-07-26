@@ -89,7 +89,7 @@ public class AuthController {
             .orElseThrow(() -> new BadCredentialsException("用户名或密码错误"));
         // FD-0：登录成功审计——多账号后需要能回答"谁在什么时候从哪登录过"
         log.info("login success: user={} role={} ip={}", request.username(), user.getRole(), clientIp);
-        return ApiResponse.ok(jwtService.issue(user));
+        return ApiResponse.ok(jwtService.issue(user, request.rememberRequested()));
     }
 
     private void rejectIfCoolingDown(String clientIp, String username) {

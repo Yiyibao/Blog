@@ -15,6 +15,7 @@ const AdminDashboardPage = defineAsyncComponent(() => import('../pages/AdminDash
 const AdminNotesPage = defineAsyncComponent(() => import('../pages/AdminNotesPage.vue'))
 const AdminAiPage = defineAsyncComponent(() => import('../pages/AdminAiPage.vue'))
 const AdminAiProvidersPage = defineAsyncComponent(() => import('../pages/AdminAiProvidersPage.vue'))
+const LoginPage = defineAsyncComponent(() => import('../pages/LoginPage.vue'))
 
 const router = createRouter({
   history: createWebHistory(),
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/articles/:slug', name: 'article', component: ArticlePage },
     { path: '/about', name: 'about', component: AboutPage },
     { path: '/notes', name: 'notes', component: NotesPage },
+    { path: '/login', name: 'login', component: LoginPage },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
     { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
@@ -46,7 +48,8 @@ router.beforeEach((to, _from, next) => {
   }
   const auth = useAuthStore()
   if (!auth.isAuthenticated) {
-    next({ name: 'admin-login' })
+    // FD-9：统一走 /login，带上来路以便登录后原地接续（FD-14 的 intent 也在 next 里）
+    next({ name: 'login', query: { next: to.fullPath } })
     return
   }
   if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {

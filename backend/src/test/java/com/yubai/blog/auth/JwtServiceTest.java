@@ -34,7 +34,7 @@ class JwtServiceTest {
             "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8), "HmacSHA256");
         var jwk = new OctetSequenceKey.Builder(key).build();
         JWKSource<SecurityContext> source = (selector, context) -> selector.select(new JWKSet(jwk));
-        service = new JwtService(new NimbusJwtEncoder(source), Duration.ofHours(2));
+        service = new JwtService(new NimbusJwtEncoder(source), Duration.ofHours(2), Duration.ofHours(24));
         decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
     }
 
@@ -49,7 +49,7 @@ class JwtServiceTest {
 
     @Test
     void partnerTokenCarriesExactPartnerRoleAndIdentityClaims() {
-        var response = service.issue(user(7L, "partner", AdminUserRole.PARTNER, "小伙伴"));
+        var response = service.issue(user(7L, "partner", AdminUserRole.PARTNER, "小伙伴"), false);
 
         assertThat(response.role()).isEqualTo("PARTNER");
         assertThat(response.displayName()).isEqualTo("小伙伴");
@@ -67,9 +67,19 @@ class JwtServiceTest {
 
     @Test
     void adminTokenCarriesExactAdminRole() {
-        var response = service.issue(user(1L, "boss", AdminUserRole.ADMIN, "站长"));
+        var response = service.issue(user(1L, "boss", AdminUserRole.ADMIN, "站长"), false);
         var jwt = decoder.decode(response.token());
         assertThat(jwt.getClaimAsStringList("roles")).containsExactly("ADMIN");
         assertThat(jwt.<Long>getClaim("uid")).isEqualTo(1L);
+    }
+
+    @Test
+    void rememberLoginGetsTheLongTtl() {
+        // FD-9：普通 2h、保持登录 24h——两档都取自构造参数，防配置串线
+        var normal = service.issue(user(1L, "boss", AdminUserRole.ADMIN, "站长"), false);
+        var remembered = service.issue(user(1L, "boss", AdminUserRole.ADMIN, "站长"), true);
+        assertThat(normal.expiresAt()).isBefore(Instant.now().plus(Duration.ofHours(3)));
+        assertThat(remembered.expiresAt()).isAfter(Instant.now().plus(Duration.ofHours(23)));
+        assertThat(remembered.expiresAt()).isBefore(Instant.now().plus(Duration.ofHours(25)));
     }
 }

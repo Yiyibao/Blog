@@ -98,7 +98,7 @@ describe('L-7 登录人机验证三层状态机', () => {
       challengeId: 'pow-1',
       nonce: '42',
       captchaAnswer: undefined,
-    })
+    }, false)
     expect(wrapper.find('.admin-captcha').exists()).toBe(false)
     expect(router.currentRoute.value.name).toBe('admin')
   })
@@ -125,7 +125,7 @@ describe('L-7 登录人机验证三层状态机', () => {
       challengeId: 'img-1',
       nonce: '42',
       captchaAnswer: 'AB3CD',
-    })
+    }, false)
   })
 
   it('登录失败后重新取 challenge：升级为图形码时立即渲染', async () => {

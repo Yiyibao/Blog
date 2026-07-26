@@ -98,8 +98,8 @@ export function clearAdminSession() {
   useAuthStore().clearSession()
 }
 
-export function saveAdminSession(result: LoginResult) {
-  useAuthStore().saveSession(result)
+export function saveAdminSession(result: LoginResult, options: { remember?: boolean } = {}) {
+  useAuthStore().saveSession(result, options)
 }
 
 export function getAdminSessionName() {
@@ -140,8 +140,9 @@ export function fetchLoginChallenge(username?: string) {
   )
 }
 
-export function login(username: string, password: string, verification: LoginVerification) {
-  return unwrap<LoginResult>(api.post('/auth/login', { username, password, ...verification }))
+// FD-9：remember=true 请求 24h 长 token，配合 authStore 的 localStorage 持久化
+export function login(username: string, password: string, verification: LoginVerification, remember = false) {
+  return unwrap<LoginResult>(api.post('/auth/login', { username, password, remember, ...verification }))
 }
 
 function asPage<T>(data: PageResult<T> | T[], page = 0, size = 20): PageResult<T> {

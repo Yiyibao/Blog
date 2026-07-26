@@ -33,8 +33,11 @@ import com.nimbusds.jose.proc.SecurityContext;
 @Configuration
 public class SecurityConfiguration {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtConverter) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationConverter jwtConverter,
+                                            com.yubai.blog.auth.SessionValidityFilter sessionValidityFilter) throws Exception {
         return http
+            // FD-9：认证/授权之后校验 sessions_valid_from（改密/踢下线止损阀）
+            .addFilterAfter(sessionValidityFilter, org.springframework.security.web.access.intercept.AuthorizationFilter.class)
             .csrf(csrf -> csrf.disable())
             .cors(Customizer.withDefaults())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -52,6 +55,21 @@ public class SecurityConfiguration {
             )
             .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtConverter)))
             .build();
+    }
+
+    // FD-9：显式建 bean（类上无 @Component，防 @WebMvcTest 切片捡起）；
+    // 禁用 servlet 容器自动注册，确保只在安全链里跑一次
+    @Bean
+    com.yubai.blog.auth.SessionValidityFilter sessionValidityFilter(com.yubai.blog.auth.AdminUserRepository repository) {
+        return new com.yubai.blog.auth.SessionValidityFilter(repository);
+    }
+
+    @Bean
+    org.springframework.boot.web.servlet.FilterRegistrationBean<com.yubai.blog.auth.SessionValidityFilter> sessionValidityFilterRegistration(
+        com.yubai.blog.auth.SessionValidityFilter filter) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

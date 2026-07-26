@@ -1005,6 +1005,9 @@ a { color: inherit; text-decoration: none; }
 .admin-login-card .button { width: 100%; justify-content: center; margin-top: 8px; }
 .admin-login-card > small { display: block; margin-top: 20px; text-align: center; color: var(--muted); }
 .admin-error { padding: 11px 14px; border-left: 2px solid #b84f48; background: color-mix(in srgb, #b84f48 8%, transparent); color: #b84f48 !important; font-size: 13px; }
+/* FD-9："保持登录"勾选行（/login 与 /admin/login 共用） */
+.admin-remember { display: flex; align-items: center; gap: 9px; min-height: 44px; color: var(--muted); font-size: .82rem; cursor: pointer; }
+.admin-remember input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
 /* L-7：登录图形验证码（失败升级后出现） */
 .admin-captcha { display: grid; gap: 9px; margin-bottom: 20px; color: var(--muted); font-size: 12px; letter-spacing: .08em; }
