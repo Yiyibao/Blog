@@ -2,8 +2,11 @@ package com.yubai.blog.search;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +39,7 @@ public class SearchService {
         var pageable = PageRequest.of(0, limit);
         var likePattern = "%" + escapeLike(normalized) + "%";
 
-        var articles = postRepository.searchPublished(likePattern, pageable).stream()
+        var articles = postRepository.searchPublished(likePattern, null, withDateSort(pageable, SearchSort.DATE_DESC)).stream()
             .map(SearchService::toResult)
             .toList();
 
@@ -64,7 +67,7 @@ public class SearchService {
         if (type == SearchType.ALL) {
             var maxSize = Math.max(1, Math.min(10, request.size()));
             var allPageable = PageRequest.of(0, maxSize);
-            var posts = postRepository.searchPublished(likePattern, allPageable);
+            var posts = postRepository.searchPublished(likePattern, null, withDateSort(allPageable, SearchSort.DATE_DESC));
             var dishes = dishRepository.searchPublished(likePattern, allPageable);
             var notes = noteRepository.searchPublished(likePattern, allPageable);
 
@@ -78,9 +81,12 @@ public class SearchService {
         }
 
         if (type == SearchType.POST) {
-            var page = postRepository.searchPublished(likePattern, pageable);
+            // L-8：分类过滤与排序下推到数据库，命中补 date/readTime/tags——前端不再客户端补偿
+            var page = postRepository.searchPublished(likePattern, request.categorySlugOrNull(),
+                withDateSort(pageable, request.sortOrDefault()));
+            var tagsByPost = tagsFor(page.getContent());
             return new SearchPostResponse("POST", request.query(),
-                page.stream().map(SearchService::toResult).toList(),
+                page.stream().map(row -> toResult(row, tagsByPost.getOrDefault(row.getId(), List.of()))).toList(),
                 page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
         }
 
@@ -101,21 +107,46 @@ public class SearchService {
         return SearchPostResponse.empty(request.type().name(), request.query());
     }
 
+    /** L-8：排序统一由 Pageable.Sort 表达（仓库查询不再内嵌 ORDER BY）。 */
+    private static PageRequest withDateSort(org.springframework.data.domain.Pageable pageable, SearchSort sort) {
+        var direction = sort == SearchSort.DATE_ASC ? Sort.Direction.ASC : Sort.Direction.DESC;
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(direction, "date"));
+    }
+
+    /** L-8：一页命中批量补标签（复用 L-12 的 [postId, tag] 行查询，一次 IN）。 */
+    private Map<Long, List<String>> tagsFor(List<PostRepository.PostSearchRow> rows) {
+        if (rows.isEmpty()) return Map.of();
+        var ids = rows.stream().map(PostRepository.PostSearchRow::getId).toList();
+        return postRepository.findTagRows(ids).stream().collect(Collectors.groupingBy(
+            row -> (Long) row[0],
+            Collectors.mapping(row -> (String) row[1], Collectors.toList())));
+    }
+
     // NB-5：三类命中均由轻量投影行映射，不再为拼摘要/URL 捞整实体（正文列不出库）。
 
     private static SearchResult toResult(PostRepository.PostSearchRow post) {
         return new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
-            post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug());
+            post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug(),
+            null, null, null);
+    }
+
+    /** L-8：POST 分页分支的完整命中——含文章头所需 date/readTime/tags。 */
+    private static SearchResult toResult(PostRepository.PostSearchRow post, List<String> tags) {
+        return new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
+            post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug(),
+            post.getDate().toString(), post.getReadTime(), tags);
     }
 
     private static SearchResult toResult(DishRepository.DishSearchRow dish) {
         return new SearchResult("DISH", dish.getId(), dish.getName(), dish.getSummary(),
-            dish.getCategory(), "/recipes?dish=" + dish.getSlug(), null, null, dish.getSlug());
+            dish.getCategory(), "/recipes?dish=" + dish.getSlug(), null, null, dish.getSlug(),
+            null, null, null);
     }
 
     private static SearchResult toResult(NoteRepository.NoteSearchRow note) {
         return new SearchResult("NOTE", note.getId(), note.getTitle(), noteExcerpt(note),
-            note.getFolder(), "/notes?note=" + note.getId(), null, null, null);
+            note.getFolder(), "/notes?note=" + note.getId(), null, null, null,
+            null, null, null);
     }
 
     /** 笔记摘要：由投影截取的前 400 字符正文清洗生成（展示上限 200 字符，400 字符源足够）。 */

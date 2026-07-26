@@ -35,7 +35,15 @@ public class PostService {
      * @param sort         asc=最早优先，其余值一律按最新优先
      */
     public PageResponse<PostSummary> findPublished(int page, int size, String categorySlug, String sort) {
+        return findPublished(page, size, categorySlug, sort, false);
+    }
+
+    /** L-9：featured=true 时按精选标记直查，不再受"首页前 N 条"取窗限制。 */
+    public PageResponse<PostSummary> findPublished(int page, int size, String categorySlug, String sort, boolean featuredOnly) {
         var pageable = pageRequest(page, size);
+        if (featuredOnly) {
+            return toSummaryPage(repository.findByFeaturedTrueAndStatusOrderByDateDesc(PostStatus.PUBLISHED, pageable));
+        }
         boolean oldestFirst = "asc".equalsIgnoreCase(sort);
         boolean filtered = categorySlug != null && !categorySlug.isBlank();
         var result = filtered

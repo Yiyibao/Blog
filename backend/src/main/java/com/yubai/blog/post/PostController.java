@@ -42,15 +42,17 @@ public class PostController {
 
     /**
      * P1-2：列表返回摘要（不含正文）；categorySlug 过滤分类，sort=asc 最早优先（缺省最新优先）。
+     * L-9：featured=true 只出精选文章（忽略 categorySlug/sort，按日期倒序）。
      */
     @GetMapping({"/posts"})
     public ApiResponse<PageResponse<PostSummary>> findPublished(
         @RequestParam(defaultValue = "0") @Min(0) int page,
         @RequestParam(defaultValue = "10") @Min(1) @Max(50) int size,
         @RequestParam(required = false) String categorySlug,
-        @RequestParam(defaultValue = "desc") String sort
+        @RequestParam(defaultValue = "desc") String sort,
+        @RequestParam(defaultValue = "false") boolean featured
     ) {
-        return ApiResponse.ok(service.findPublished(page, size, categorySlug, sort));
+        return ApiResponse.ok(service.findPublished(page, size, categorySlug, sort, featured));
     }
 
     @GetMapping({"/posts/{slug}"})

@@ -44,7 +44,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         String getCategory();
     }
 
-    /** NB-5：搜索命中只取展示所需列，不再为拼 URL/摘要捞整实体（含全文）。 */
+    /** NB-5：搜索命中只取展示所需列，不再为拼 URL/摘要捞整实体（含全文）。L-8：补 date/readTime。 */
     interface PostSearchRow {
         Long getId();
         String getTitle();
@@ -53,6 +53,8 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         String getSlug();
         String getColor();
         String getNumber();
+        LocalDate getDate();
+        int getReadTime();
     }
 
     public interface CategoryCountProjection {
@@ -124,27 +126,37 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     long countByCategorySlugAndStatus(String categorySlug, PostStatus status);
 
+    /**
+     * L-8：categorySlug 可选过滤（null 即不过滤）；ORDER BY 不再内嵌，
+     * 由调用方经 Pageable.Sort 指定（date DESC/ASC），DISTINCT 所需列均在 SELECT 中。
+     */
     @Query(value = """
         SELECT DISTINCT p.id as id, p.title as title, p.excerpt as excerpt, p.category as category,
-               p.slug as slug, p.color as color, p.number as number, p.date as date
+               p.slug as slug, p.color as color, p.number as number, p.date as date, p.readTime as readTime
         FROM PostEntity p
         LEFT JOIN p.tags tag
         WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (:categorySlug IS NULL OR p.categorySlug = :categorySlug)
           AND (LOWER(p.title) LIKE LOWER(:query)
             OR LOWER(p.excerpt) LIKE LOWER(:query)
             OR LOWER(p.category) LIKE LOWER(:query)
             OR LOWER(p.content) LIKE LOWER(:query)
             OR LOWER(tag) LIKE LOWER(:query))
-        ORDER BY p.date DESC
         """, countQuery = """
         SELECT COUNT(DISTINCT p) FROM PostEntity p
         LEFT JOIN p.tags tag
         WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (:categorySlug IS NULL OR p.categorySlug = :categorySlug)
           AND (LOWER(p.title) LIKE LOWER(:query)
             OR LOWER(p.excerpt) LIKE LOWER(:query)
             OR LOWER(p.category) LIKE LOWER(:query)
             OR LOWER(p.content) LIKE LOWER(:query)
             OR LOWER(tag) LIKE LOWER(:query))
         """)
-    Page<PostSearchRow> searchPublished(@Param("query") String query, Pageable pageable);
+    Page<PostSearchRow> searchPublished(@Param("query") String query,
+                                        @Param("categorySlug") String categorySlug,
+                                        Pageable pageable);
+
+    /** L-9：精选文章不再受首页取窗限制，直接按标记检索。 */
+    Page<PostListRow> findByFeaturedTrueAndStatusOrderByDateDesc(PostStatus status, Pageable pageable);
 }

@@ -48,7 +48,7 @@ class SearchServiceTest {
 
     @Test
     void searchFindsResultsAcrossAllTypes() {
-        when(postRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
@@ -58,7 +58,7 @@ class SearchServiceTest {
 
     @Test
     void limitIsClampedBetweenOneAndTen() {
-        when(postRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
@@ -71,9 +71,9 @@ class SearchServiceTest {
 
     @Test
     void limitParameterIsPassedAsPageSize() {
-        when(postRepository.searchPublished(anyString(), any(Pageable.class)))
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class)))
             .thenAnswer(invocation -> {
-                Pageable pageable = invocation.getArgument(1);
+                Pageable pageable = invocation.getArgument(2);
                 assertThat(pageable.getPageSize()).isEqualTo(3);
                 return Page.empty();
             });
@@ -95,9 +95,9 @@ class SearchServiceTest {
 
     @Test
     void postSearchOnlyQueriesPostRepository() {
-        when(postRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var request = new SearchRequest("test", SearchType.POST, 0, 10);
+        var request = new SearchRequest("test", SearchType.POST, 0, 10, null, null);
         var result = service.search(request);
 
         assertThat(result.type()).isEqualTo("POST");
@@ -108,7 +108,7 @@ class SearchServiceTest {
     void dishSearchOnlyQueriesDishRepository() {
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var request = new SearchRequest("test", SearchType.DISH, 0, 10);
+        var request = new SearchRequest("test", SearchType.DISH, 0, 10, null, null);
         var result = service.search(request);
 
         assertThat(result.type()).isEqualTo("DISH");
@@ -119,7 +119,7 @@ class SearchServiceTest {
     void noteSearchOnlyQueriesNoteRepository() {
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var request = new SearchRequest("test", SearchType.NOTE, 0, 10);
+        var request = new SearchRequest("test", SearchType.NOTE, 0, 10, null, null);
         var result = service.search(request);
 
         assertThat(result.type()).isEqualTo("NOTE");
@@ -128,11 +128,11 @@ class SearchServiceTest {
 
     @Test
     void allSearchQueriesAllRepositories() {
-        when(postRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var request = new SearchRequest("test", SearchType.ALL, 0, 10);
+        var request = new SearchRequest("test", SearchType.ALL, 0, 10, null, null);
         var result = service.search(request);
 
         assertThat(result.type()).isEqualTo("ALL");
@@ -141,7 +141,7 @@ class SearchServiceTest {
 
     @Test
     void emptyQueryInPostSearchReturnsEmptyResponse() {
-        var request = new SearchRequest("   ", SearchType.POST, 0, 10);
+        var request = new SearchRequest("   ", SearchType.POST, 0, 10, null, null);
         var result = service.search(request);
 
         assertThat(result.type()).isEqualTo("POST");
@@ -150,14 +150,87 @@ class SearchServiceTest {
 
     @Test
     void postSearchPassesPaginationCorrectly() {
-        when(postRepository.searchPublished(anyString(), pageableCaptor.capture())).thenReturn(Page.empty());
+        when(postRepository.searchPublished(anyString(), any(), pageableCaptor.capture())).thenReturn(Page.empty());
 
-        var request = new SearchRequest("test", SearchType.POST, 2, 5);
+        var request = new SearchRequest("test", SearchType.POST, 2, 5, null, null);
         service.search(request);
 
         var captured = pageableCaptor.getValue();
         assertThat(captured.getPageNumber()).isEqualTo(2);
         assertThat(captured.getPageSize()).isEqualTo(5);
+    }
+
+    // L-8：分类过滤/排序下推 + POST 命中补 date/readTime/tags
+
+    @Test
+    void postSearchPushesCategoryFilterAndSortDownToRepository() {
+        var slugCaptor = ArgumentCaptor.forClass(String.class);
+        when(postRepository.searchPublished(anyString(), slugCaptor.capture(), pageableCaptor.capture()))
+            .thenReturn(Page.empty());
+
+        service.search(new SearchRequest("test", SearchType.POST, 0, 10, "engineering", SearchSort.DATE_ASC));
+
+        assertThat(slugCaptor.getValue()).isEqualTo("engineering");
+        var sort = pageableCaptor.getValue().getSort().getOrderFor("date");
+        assertThat(sort).isNotNull();
+        assertThat(sort.getDirection()).isEqualTo(org.springframework.data.domain.Sort.Direction.ASC);
+    }
+
+    @Test
+    void blankCategorySlugMeansNoFilterAndDefaultSortIsDateDesc() {
+        var slugCaptor = ArgumentCaptor.forClass(String.class);
+        when(postRepository.searchPublished(anyString(), slugCaptor.capture(), pageableCaptor.capture()))
+            .thenReturn(Page.empty());
+
+        service.search(new SearchRequest("test", SearchType.POST, 0, 10, "  ", null));
+
+        assertThat(slugCaptor.getValue()).isNull();
+        var sort = pageableCaptor.getValue().getSort().getOrderFor("date");
+        assertThat(sort).isNotNull();
+        assertThat(sort.getDirection()).isEqualTo(org.springframework.data.domain.Sort.Direction.DESC);
+    }
+
+    @Test
+    void postHitsCarryDateReadTimeAndBatchedTags() {
+        var row = postRow(7L, "标题");
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class)))
+            .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(row)));
+        when(postRepository.findTagRows(java.util.List.of(7L)))
+            .thenReturn(java.util.List.<Object[]>of(new Object[]{7L, "vue"}, new Object[]{7L, "vite"}));
+
+        var result = service.search(new SearchRequest("标题", SearchType.POST, 0, 10, null, null));
+
+        var hit = result.results().get(0);
+        assertThat(hit.date()).isEqualTo("2026-07-01");
+        assertThat(hit.readTime()).isEqualTo(6);
+        assertThat(hit.tags()).containsExactly("vue", "vite");
+    }
+
+    @Test
+    void groupedGetSearchLeavesExtendedFieldsNull() {
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class)))
+            .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(postRow(7L, "标题"))));
+        when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var hit = service.search("标题", 5).articles().get(0);
+        assertThat(hit.date()).isNull();
+        assertThat(hit.readTime()).isNull();
+        assertThat(hit.tags()).isNull();
+    }
+
+    private static PostRepository.PostSearchRow postRow(long id, String title) {
+        return new PostRepository.PostSearchRow() {
+            @Override public Long getId() { return id; }
+            @Override public String getTitle() { return title; }
+            @Override public String getExcerpt() { return "摘要"; }
+            @Override public String getCategory() { return "工程"; }
+            @Override public String getSlug() { return "slug-" + id; }
+            @Override public String getColor() { return "#fff"; }
+            @Override public String getNumber() { return "001"; }
+            @Override public java.time.LocalDate getDate() { return java.time.LocalDate.of(2026, 7, 1); }
+            @Override public int getReadTime() { return 6; }
+        };
     }
 
     // NB-5：笔记摘要由投影截断源（前 400 字符）生成
@@ -195,7 +268,7 @@ class SearchServiceTest {
     @Test
     void groupedSearchEscapesWildcardsInLikePattern() {
         var patternCaptor = ArgumentCaptor.forClass(String.class);
-        when(postRepository.searchPublished(patternCaptor.capture(), any(Pageable.class))).thenReturn(Page.empty());
+        when(postRepository.searchPublished(patternCaptor.capture(), any(), any(Pageable.class))).thenReturn(Page.empty());
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
