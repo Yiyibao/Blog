@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { fetchCategories, fetchPost, fetchPosts, searchPosts } from '../api/content'
 import { posts as seedPosts, type Post, type PostSummary, type SearchHit } from '../data'
+import { extractMarkdownOutline } from '../utils/markdownOutline'
 
 interface CategoryTab {
   name: string
@@ -98,6 +99,15 @@ export const useContentStore = defineStore('content', () => {
     return post && 'content' in post ? (post as Post).content : ''
   })
 
+  // 3A-4：MARKDOWN 篇的正文与格式判定——详情页据此选受控渲染管线
+  const currentMarkdown = computed(() => {
+    const post = currentPost.value
+    if (!post || !('contentFormat' in post)) return ''
+    const detail = post as Post
+    return detail.contentFormat === 'MARKDOWN' ? (detail.markdownContent ?? '') : ''
+  })
+  const currentIsMarkdown = computed(() => currentMarkdown.value.length > 0)
+
   const relatedPosts = computed(() => {
     const current = currentPost.value
     if (!current) return []
@@ -107,6 +117,8 @@ export const useContentStore = defineStore('content', () => {
   })
 
   const articleOutline = computed(() => {
+    // 3B：MARKDOWN 篇目录取自源文（AST 级提取），HTML 存量篇沿用 id 正则直至退役
+    if (currentIsMarkdown.value) return extractMarkdownOutline(currentMarkdown.value)
     if (!currentContent.value) return []
     return [...currentContent.value.matchAll(/<h2\s+id=["']([^"']+)["'][^>]*>(.*?)<\/h2>/gi)]
       .map((m) => ({ id: m[1], title: m[2].replace(/<[^>]+>/g, '') }))
@@ -347,6 +359,7 @@ export const useContentStore = defineStore('content', () => {
     posts, postTotal, favorites, query, category, sortOrder, showFavoritesOnly,
     contentReady, contentError, usingFallback, articleDetail, articleDetailLoading,
     categories, featuredPost, currentSlug, setCurrentSlug, currentPost, currentContent,
+    currentMarkdown, currentIsMarkdown,
     archivePage, archivePosts, archiveTotal, archiveTotalPages, archiveLoading,
     archivePageSize: ARCHIVE_PAGE_SIZE,
     relatedPosts, articleOutline,

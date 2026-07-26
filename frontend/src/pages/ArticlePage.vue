@@ -7,6 +7,7 @@ import { createSiteConfig, resolveUrl } from '../config/site'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
 import { blogPosting, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
 import { sanitizeHtml } from '../utils/sanitizeHtml'
+import ControlledMarkdown from '../components/ControlledMarkdown.vue'
 
 const route = useRoute()
 const content = useContentStore()
@@ -223,7 +224,14 @@ onUnmounted(() => {
           </div>
           <div class="article-share"><p>分享文章</p><button type="button" @click="copyCurrentLink">复制链接</button><RouterLink to="/about">关于作者</RouterLink></div>
         </aside>
-        <div class="article-body" v-html="sanitizedContent" />
+        <!-- 3A-4：MARKDOWN 篇走受控渲染（Tiptap 只读 + lowlight，与笔记同管线）；HTML 存量篇维持消毒 v-html -->
+        <ControlledMarkdown
+          v-if="content.currentIsMarkdown"
+          class="article-body article-markdown-body"
+          :markdown="content.currentMarkdown"
+          @rendered="initArticleEnhancements"
+        />
+        <div v-else class="article-body" v-html="sanitizedContent" />
       </div>
       <section v-if="content.relatedPosts.length" class="related section-wrap"><div class="section-heading"><p><span>+</span> 继续阅读</p></div><div class="related-grid"><RouterLink v-for="post in content.relatedPosts" :key="post.slug" :to="`/articles/${post.slug}`"><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong><span>阅读全文 ↗</span></RouterLink></div></section>
     </article>

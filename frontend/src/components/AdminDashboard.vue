@@ -3,13 +3,14 @@ import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  clearAdminSession, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPost, fetchAdminPosts,
+  clearAdminSession, convertPostsMarkdown, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPost, fetchAdminPosts,
   fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish,
   type AdminNoteSummary, type AdminPostSummary, type DishPayload, type PostPayload,
 } from '../api/admin'
 import type { PostStatus } from '../data'
 
 import AdminSidebar from './AdminSidebar.vue'
+import TyporaEditor from './TyporaEditor.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -58,8 +59,39 @@ const greeting = (() => {
 const postForm = reactive({
   slug: '', title: '', excerpt: '', date: new Date().toISOString().slice(0, 10), readTime: 5,
   category: '工程实践', tags: '', color: '#A6784C', number: '01', featured: false, status: 'DRAFT' as PostStatus,
-  content: '<p class="lead">从这里开始写正文。</p>',
+  // 3A-3：新文章全程 Markdown；content 仅承载存量 HTML（快照随存量篇一起带回）
+  content: '',
+  markdownContent: '# 新文章\n\n从这里开始写正文。',
+  contentFormat: 'MARKDOWN' as 'HTML' | 'MARKDOWN',
 })
+
+/** 3A-3：Markdown 模式判定——MARKDOWN 篇或已有转换稿的存量篇都走 TyporaEditor；纯 HTML 未转换篇保留旧文本域 */
+const postMarkdownMode = computed(() =>
+  postForm.contentFormat === 'MARKDOWN' || postForm.markdownContent.trim().length > 0)
+
+const converting = ref(false)
+
+/** 存量未转换篇的一键转换：跑 3A-2 端点后重取本篇详情（markdown 稿即到位）。 */
+async function convertLegacyPost() {
+  if (!editingId.value) return
+  converting.value = true
+  error.value = ''
+  try {
+    await convertPostsMarkdown()
+    const full = await fetchAdminPost(editingId.value)
+    postForm.markdownContent = full.markdownContent ?? ''
+    postForm.contentFormat = full.contentFormat ?? 'HTML'
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = '转换失败，请稍后重试。'
+  } finally {
+    converting.value = false
+  }
+}
+
+/** 文章暂无独立图床——编辑器里请使用既有图片外链或站内路径。 */
+async function rejectPostImageUpload(): Promise<string> {
+  throw new Error('文章编辑器暂不支持直传图片')
+}
 const dishForm = reactive({
   slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
   prepMinutes: 20, difficulty: '家常' as AdminDish['difficulty'], rating: 4.5, featured: false, published: true,
@@ -130,7 +162,9 @@ function newItem() {
   if (editorKind.value === 'post') Object.assign(postForm, {
     slug: '', title: '', excerpt: '', date: new Date().toISOString().slice(0, 10), readTime: 5,
     category: '工程实践', tags: '', color: '#A6784C', number: String(postTotal.value + 1).padStart(2, '0'), featured: false, status: 'DRAFT',
-    content: '<p class="lead">从这里开始写正文。</p>',
+    content: '',
+    markdownContent: '# 新文章\n\n从这里开始写正文。',
+    contentFormat: 'MARKDOWN',
   })
   else Object.assign(dishForm, {
     slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
@@ -157,6 +191,8 @@ async function editPost(post: AdminPostSummary) {
       slug: full.slug, title: full.title, excerpt: full.excerpt, date: full.date, readTime: full.readTime,
       category: full.category, tags: full.tags.join(', '), color: full.color, number: full.number,
       featured: full.featured ?? false, status: full.status || 'PUBLISHED', content: full.content,
+      markdownContent: full.markdownContent ?? '',
+      contentFormat: full.contentFormat ?? 'HTML',
     })
     editorOpen.value = true
   } catch (cause) {
@@ -172,7 +208,14 @@ function editDish(dish: AdminDish) {
 }
 
 function postPayload(): PostPayload {
-  return { ...postForm, tags: postForm.tags.split(',').map((item) => item.trim()).filter(Boolean) }
+  // 3A-3/3A-5：Markdown 模式保存即按篇切换 MARKDOWN（编辑并保存 = 该篇校对签收）；
+  // content 原样回传保留 HTML 快照，双列并存随时可回退
+  return {
+    ...postForm,
+    tags: postForm.tags.split(',').map((item) => item.trim()).filter(Boolean),
+    contentFormat: postMarkdownMode.value ? 'MARKDOWN' : 'HTML',
+    markdownContent: postForm.markdownContent || null,
+  }
 }
 
 function dishPayload(): DishPayload {
@@ -278,7 +321,22 @@ onMounted(load)
           <div class="admin-form-grid"><label>标题<input v-model="postForm.title" required maxlength="200"></label><label>Slug<input v-model="postForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="postForm.category" required></label><label>发布日期<input v-model="postForm.date" type="date" required></label><label>阅读时间（分钟）<input v-model.number="postForm.readTime" type="number" min="1" max="180" required></label><label>编号<input v-model="postForm.number" required maxlength="10"></label><label>颜色<input v-model="postForm.color" type="color" required></label><label>状态<select v-model="postForm.status" required><option value="DRAFT">草稿</option><option value="PUBLISHED">发布</option></select></label><label class="admin-check"><input v-model="postForm.featured" type="checkbox">设为精选文章</label></div>
           <label>标签（逗号分隔）<input v-model="postForm.tags" required placeholder="Vue, TypeScript"></label>
           <label>摘要<textarea v-model="postForm.excerpt" rows="3" required /></label>
-          <label>HTML 正文<textarea v-model="postForm.content" class="admin-code-editor" rows="14" required spellcheck="false" /></label>
+          <!-- 3A-3：Markdown 模式复用 TyporaEditor；纯 HTML 存量篇先转换（旧文本域兜底可继续编辑 HTML） -->
+          <div v-if="postMarkdownMode" class="post-markdown-field">
+            <span class="field-label">正文（Markdown）</span>
+            <TyporaEditor
+              v-model="postForm.markdownContent"
+              :upload-image="rejectPostImageUpload"
+              @upload-error="error = '文章编辑器暂不支持直传图片，请使用站内路径或外链。'"
+            />
+          </div>
+          <template v-else>
+            <div class="legacy-html-notice" role="status">
+              <span>该篇为存量 HTML，尚未生成 Markdown 稿。转换后即可用 Markdown 编辑器（保存前不改线上渲染）。</span>
+              <button type="button" :disabled="converting" @click="convertLegacyPost">{{ converting ? '转换中…' : '一键转换' }}</button>
+            </div>
+            <label>HTML 正文<textarea v-model="postForm.content" class="admin-code-editor" rows="14" required spellcheck="false" /></label>
+          </template>
         </template>
         <template v-else>
           <div class="admin-form-grid"><label>菜品名称<input v-model="dishForm.name" required maxlength="120"></label><label>Slug<input v-model="dishForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="dishForm.category" required maxlength="60"></label><label>准备时间（分钟）<input v-model.number="dishForm.prepMinutes" type="number" min="1" max="1440" required></label><label>难度<select v-model="dishForm.difficulty" required><option value="简单">简单</option><option value="家常">家常</option><option value="进阶">进阶</option></select></label><label>评分<input v-model.number="dishForm.rating" type="number" min="0" max="5" step="0.1" required></label><label>展示顺序<input v-model.number="dishForm.displayOrder" type="number" min="0" required></label><label class="admin-check"><input v-model="dishForm.featured" type="checkbox">设为精选菜品</label><label class="admin-check"><input v-model="dishForm.published" type="checkbox">公开发布</label></div>
@@ -295,3 +353,42 @@ onMounted(load)
     </div>
   </section>
 </template>
+
+<style scoped>
+/* 3A-3：文章 Markdown 编辑区与存量转换提示条 */
+.post-markdown-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.post-markdown-field .field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.legacy-html-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, #c47b2c 45%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, #c47b2c 8%, var(--surface));
+  font-size: 13px;
+  color: var(--ink);
+}
+.legacy-html-notice button {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.legacy-html-notice button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+</style>

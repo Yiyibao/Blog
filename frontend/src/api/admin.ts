@@ -193,6 +193,21 @@ export function deletePost(id: number) {
   return api.delete(`/admin/posts/${id}`, { headers: tokenHeader() })
 }
 
+// 3A-2：存量 HTML→Markdown 一次性转换（响应即人工校对清单）
+export interface MarkdownConversionReport {
+  id: number
+  slug: string
+  converted: boolean
+  risks: string[]
+}
+
+export function convertPostsMarkdown(force = false) {
+  return unwrap<MarkdownConversionReport[]>(api.post('/admin/posts/convert-markdown', null, {
+    headers: tokenHeader(),
+    params: force ? { force: true } : undefined,
+  }))
+}
+
 export async function fetchAdminDishes(page = 0, size = 20) {
   const data = await unwrap<PageResult<AdminDish> | AdminDish[]>(api.get('/admin/dishes', {
     headers: tokenHeader(), params: { page, size },
