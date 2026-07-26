@@ -1,5 +1,6 @@
 package com.yubai.blog;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -16,10 +17,13 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.sql.DriverManager;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -36,6 +40,8 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yubai.blog.common.RateLimiter;
+import com.yubai.blog.post.PostService;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -43,6 +49,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class BlogApiIntegrationTest {
     private static final String TEST_DB = "yubai_blog_it";
     private static final Properties ENV = loadEnv();
+    /** 带真实 PNG 文件头的最小样本（P0-6 magic-byte 校验用）。 */
+    private static final byte[] PNG_SAMPLE = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4};
 
     @BeforeAll
     static void prepareDatabase() {
@@ -87,6 +95,18 @@ class BlogApiIntegrationTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Autowired
+    RateLimiter rateLimiter;
+
+    @Autowired
+    PostService postService;
+
+    /** P0-2/P0-3：限流器为进程级单例，逐测试重置避免相互污染。 */
+    @BeforeEach
+    void resetRateLimiter() {
+        rateLimiter.reset();
+    }
 
     @Test
     @Order(1)
@@ -339,10 +359,11 @@ class BlogApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(updatedDraft))
             .andExpect(status().isConflict());
 
-        var image = new MockMultipartFile("file", "pixel.png", "image/png", new byte[] {1, 2, 3, 4});
+        // P0-6：附件校验 magic bytes，测试数据需带真实 PNG 文件头
+        var image = new MockMultipartFile("file", "pixel.png", "image/png", PNG_SAMPLE);
         MvcResult uploaded = mockMvc.perform(multipart("/api/v1/admin/notes/" + draftId + "/attachments")
                 .file(image).header("Authorization", "Bearer " + token))
-            .andExpect(status().isCreated()).andExpect(jsonPath("$.data.byteSize").value(4)).andReturn();
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.data.byteSize").value(PNG_SAMPLE.length)).andReturn();
         JsonNode attachment = objectMapper.readTree(uploaded.getResponse().getContentAsString()).path("data");
         long attachmentId = attachment.path("id").asLong();
         String publicId = attachment.path("publicId").asText();
@@ -350,7 +371,7 @@ class BlogApiIntegrationTest {
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(result -> {
-                if (result.getResponse().getContentAsByteArray().length != 4) {
+                if (result.getResponse().getContentAsByteArray().length != PNG_SAMPLE.length) {
                     throw new AssertionError("authenticated draft preview did not return attachment bytes");
                 }
             });
@@ -369,7 +390,7 @@ class BlogApiIntegrationTest {
                 if (!"no-store".equals(result.getResponse().getHeader("Cache-Control"))) {
                     throw new AssertionError("revocable note attachments must not be cached");
                 }
-                if (result.getResponse().getContentAsByteArray().length != 4) throw new AssertionError("attachment bytes were not read from database");
+                if (result.getResponse().getContentAsByteArray().length != PNG_SAMPLE.length) throw new AssertionError("attachment bytes were not read from database");
             });
         mockMvc.perform(put("/api/v1/admin/notes/" + draftId + "/unpublish")
                 .header("Authorization", "Bearer " + token)
@@ -714,7 +735,8 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.message").value("success"))
             .andExpect(jsonPath("$.data.slug").value("authentic-mapo-tofu"))
-            .andExpect(jsonPath("$.data.isFavorite").value(true))
+            // P0-7（已批准）：纯计数语义，响应不再包含 isFavorite
+            .andExpect(jsonPath("$.data.isFavorite").doesNotExist())
             .andExpect(jsonPath("$.data.favoriteCount").isNumber());
 
         mockMvc.perform(get("/api/v1/dishes/favorites"))
@@ -870,6 +892,119 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data[0].content").isString())
             .andExpect(jsonPath("$.data[0].author").isString())
             .andExpect(jsonPath("$.data[0].category").isString());
+    }
+
+    @Test
+    @Order(19)
+    void unlistedRoutesAreDeniedByDefault() throws Exception {
+        // P0-1：兜底 denyAll——未显式白名单的路径未登录 401，已登录也 403
+        mockMvc.perform(get("/internal-debug")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v2/anything")).andExpect(status().isUnauthorized());
+
+        String token = login();
+        mockMvc.perform(get("/internal-debug").header("Authorization", "Bearer " + token))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @Order(20)
+    void loginIsRateLimitedPerIp() throws Exception {
+        // P0-3：同一 IP 一分钟内第 6 次登录尝试被 429 拒绝
+        String badBody = "{\"username\":\"admin\",\"password\":\"definitely-wrong\"}";
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON).content(badBody))
+                .andExpect(status().isUnauthorized());
+        }
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON).content(badBody))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.status").value(429));
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(21)
+    void publicCountersAreRateLimitedPerIpAndSlug() throws Exception {
+        // P0-2：点赞按 IP+slug 限流，第 11 次 429；其他 slug 不受影响
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(post("/api/v1/posts/clarity-by-design/like")).andExpect(status().isOk());
+        }
+        mockMvc.perform(post("/api/v1/posts/clarity-by-design/like")).andExpect(status().isTooManyRequests());
+        mockMvc.perform(post("/api/v1/dishes/authentic-mapo-tofu/favorite")).andExpect(status().isOk());
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(22)
+    void concurrentLikesDoNotLoseUpdates() throws Exception {
+        // P0-4：数据库端原子自增，并发点赞不丢计数
+        long before = objectMapper.readTree(
+                mockMvc.perform(get("/api/v1/posts/clarity-by-design/stats"))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString())
+            .path("data").path("likeCount").asLong();
+
+        int likes = 32;
+        try (var pool = Executors.newFixedThreadPool(8)) {
+            for (int i = 0; i < likes; i++) {
+                pool.submit(() -> postService.likePost("clarity-by-design"));
+            }
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(30, TimeUnit.SECONDS), "concurrent likes did not finish in time");
+        }
+
+        long after = objectMapper.readTree(
+                mockMvc.perform(get("/api/v1/posts/clarity-by-design/stats"))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString())
+            .path("data").path("likeCount").asLong();
+        assertEquals(before + likes, after, "atomic increment must not lose concurrent updates");
+    }
+
+    @Test
+    @Order(23)
+    void attachmentUploadRejectsForgedContentType() throws Exception {
+        // P0-6：Content-Type 伪造成 image/png 但内容不是 PNG，应 400 拒绝
+        String token = login();
+        String noteBody = """
+            {"title":"Magic byte test","markdownContent":"# t","folder":"Tests","status":"DRAFT","tags":[],"version":0}
+            """;
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(noteBody))
+            .andExpect(status().isCreated()).andReturn();
+        long noteId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        var forged = new MockMultipartFile("file", "fake.png", "image/png", new byte[] {1, 2, 3, 4});
+        mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                .file(forged).header("Authorization", "Bearer " + token))
+            .andExpect(status().isBadRequest());
+
+        var forgedHtml = new MockMultipartFile("file", "page.png", "image/png",
+            "<html><script>alert(1)</script></html>".getBytes(StandardCharsets.UTF_8));
+        mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                .file(forgedHtml).header("Authorization", "Bearer " + token))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(24)
+    void searchEscapesLikeWildcards() throws Exception {
+        // P0-9：% 与 _ 作为字面量匹配，不再命中所有内容
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"%\",\"type\":\"POST\",\"page\":0,\"size\":5}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(0));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "_____"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(0));
     }
 
     private String login() throws Exception {
