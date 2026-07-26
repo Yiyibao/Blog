@@ -109,7 +109,8 @@ async function sendMessage() {
   await scrollToBottom()
 
   // 4A-2：流式渲染——先挂空的助手气泡，增量到达时就地追加（必须改代理对象保证响应式）
-  messages.value = [...messages.value, { role: 'assistant', content: '' }].slice(-20)
+  const liveSeed: AiChatMessage = { role: 'assistant', content: '' }
+  messages.value = [...messages.value, liveSeed].slice(-20)
   const live = messages.value[messages.value.length - 1]!
   const controller = new AbortController()
   abortController = controller

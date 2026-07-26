@@ -181,6 +181,11 @@ describe('AdminAiChat Component', () => {
 
     expect(wrapper.text()).toContain('Partial answer')
     expect(wrapper.find('.chat-error-bar').exists()).toBe(false)
+    // 中止后回到空闲态：输入框解除禁用、停止按钮消失；send 按钮因输入已清空仍然禁用，
+    // 重新输入后应恢复可用（可再次发送）。
+    expect(wrapper.find('textarea').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('button.stop-btn').exists()).toBe(false)
+    await wrapper.find('textarea').setValue('Follow-up question')
     expect(wrapper.find('button.send-btn').attributes('disabled')).toBeUndefined()
 
     const saved = JSON.parse(window.sessionStorage.getItem('yubai-admin-ai-messages')!)
