@@ -55,7 +55,7 @@ public class PostService {
     public PostResponse findPublishedBySlug(String slug) {
         var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
             .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
-        return PostResponse.from(post, sanitizer);
+        return PostResponse.from(post);
     }
 
     @Transactional
@@ -76,7 +76,7 @@ public class PostService {
     }
 
     public PostResponse findOne(long id) {
-        return PostResponse.from(entity(id), sanitizer);
+        return PostResponse.from(entity(id));
     }
 
     public List<String> findPublishedCategories() {
@@ -104,7 +104,7 @@ public class PostService {
     @Transactional
     public PostResponse create(PostRequest request) {
         requireUniqueSlug(request.slug(), null);
-        return PostResponse.from(repository.save(PostEntity.create(request, sanitizer)), sanitizer);
+        return PostResponse.from(repository.save(PostEntity.create(request, sanitizer)));
     }
 
     @Transactional
@@ -112,7 +112,7 @@ public class PostService {
         var post = entity(id);
         requireUniqueSlug(request.slug(), id);
         post.update(request, sanitizer);
-        return PostResponse.from(post, sanitizer);
+        return PostResponse.from(post);
     }
 
     @Transactional

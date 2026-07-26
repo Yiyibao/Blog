@@ -3,7 +3,9 @@ package com.yubai.blog.post;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
@@ -109,10 +111,23 @@ class PostServiceTest {
     void findPublishedBySlugReturnsPost() {
         var post = samplePost();
         when(repository.findBySlugAndStatus("test-slug", PostStatus.PUBLISHED)).thenReturn(Optional.of(post));
-        when(sanitizer.sanitize(any())).thenReturn("<p>content</p>");
 
         var result = service.findPublishedBySlug("test-slug");
         assertThat(result.slug()).isEqualTo("test-slug");
+    }
+
+    /** P1-3：写入已消毒，读路径必须直接返回存储值、零消毒调用（消除每次详情读的整篇 jsoup 遍历）。 */
+    @Test
+    void readPathReturnsStoredContentWithoutResanitizing() {
+        when(sanitizer.sanitize("<p>content</p>")).thenReturn("<p>stored-clean</p>");
+        var post = samplePost();
+        clearInvocations(sanitizer);
+        when(repository.findBySlugAndStatus("test-slug", PostStatus.PUBLISHED)).thenReturn(Optional.of(post));
+
+        var result = service.findPublishedBySlug("test-slug");
+
+        assertThat(result.content()).isEqualTo("<p>stored-clean</p>");
+        verifyNoInteractions(sanitizer);
     }
 
     @Test
@@ -125,7 +140,6 @@ class PostServiceTest {
     void findOneReturnsPost() {
         var post = samplePost();
         when(repository.findById(1L)).thenReturn(Optional.of(post));
-        when(sanitizer.sanitize(any())).thenReturn("<p>content</p>");
 
         var result = service.findOne(1L);
         assertThat(result.slug()).isEqualTo("test-slug");
