@@ -55,7 +55,7 @@ describe('ArchivePage', () => {
       page: 0, size: 10, totalElements: 1, totalPages: 1,
     })
     mockDishes.mockResolvedValue({
-      items: [{ id: 1, slug: 'd', name: '菜品名称', summary: '', category: '家常', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '', prepMinutes: 10, difficulty: '简单', rating: 4, featured: false, published: true, displayOrder: 1, ingredients: [], steps: [], createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z' }],
+      items: [{ id: 1, slug: 'd', name: '菜品名称', summary: '', category: '家常', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '', prepMinutes: 10, difficulty: '简单', rating: 4, featured: false, published: true, displayOrder: 1, favoriteCount: 0, ingredients: [], steps: [], createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z' }],
       page: 0, size: 12, totalElements: 1, totalPages: 1,
     })
     mockNotes.mockResolvedValue({

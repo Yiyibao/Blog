@@ -20,7 +20,8 @@ export type AdminPostSummary = PostSummary & { id: number }
 export interface PostPayload extends Omit<AdminPost, 'id'> {}
 
 export interface AdminDish extends Dish {}
-export type DishPayload = Omit<AdminDish, 'id' | 'createdAt' | 'updatedAt'>
+// favoriteCount 只经收藏端点原子自增，管理端编辑不提交也不覆盖（后端 DishRequest 亦无此字段）
+export type DishPayload = Omit<AdminDish, 'id' | 'createdAt' | 'updatedAt' | 'favoriteCount'>
 
 export type NoteStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 

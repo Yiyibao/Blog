@@ -20,6 +20,7 @@ function makeDish(overrides: Partial<Dish> = {}): Dish {
     featured: false,
     published: true,
     displayOrder: 0,
+    favoriteCount: 6,
     ingredients: ['五花肉 200 克', '盐 适量'],
     steps: ['切块焯水', '小火慢炖'],
     createdAt: '2026-06-01T00:00:00Z',
@@ -158,10 +159,36 @@ describe('DishPanel', () => {
   it('meets the 44px touch target contract on drawer controls', async () => {
     await mountPanel()
     // jsdom 无布局引擎，尺寸靠 .tap-44 约定类做源码级断言，最终以人工验收为准
-    const close = document.body.querySelector<HTMLButtonElement>('.dish-panel-media button')!
+    const close = document.body.querySelector<HTMLButtonElement>('button[aria-label="关闭菜谱详情"]')!
     expect(close.classList.contains('tap-44')).toBe(true)
     document.body.querySelectorAll<HTMLButtonElement>('.servings-bar button').forEach((btn) => {
       expect(btn.classList.contains('tap-44')).toBe(true)
     })
+    expect(document.body.querySelector('.dish-heart-btn')!.classList.contains('tap-44')).toBe(true)
+  })
+
+  it('shows the favorite count on the heart button and emits favorite on click', async () => {
+    const w = await mountPanel()
+    const heart = document.body.querySelector<HTMLButtonElement>('.dish-heart-btn')!
+    expect(heart.textContent).toContain('6')
+    expect(heart.getAttribute('aria-label')).toContain('6')
+    heart.click()
+    await flushPromises()
+    expect(w.emitted('favorite')).toHaveLength(1)
+    expect((w.emitted('favorite')![0][0] as Dish).slug).toBe('test-dish')
+  })
+
+  it('lets ingredients be checked off and resets the checklist per dish', async () => {
+    const w = await mountPanel()
+    const first = document.body.querySelector<HTMLButtonElement>('.ingredient-item')!
+    expect(first.getAttribute('aria-pressed')).toBe('false')
+    first.click()
+    await flushPromises()
+    expect(first.getAttribute('aria-pressed')).toBe('true')
+    expect(first.classList.contains('checked')).toBe(true)
+    await w.setProps({ dish: makeDish({ id: 9, slug: 'other', name: '换一道' }) })
+    await flushPromises()
+    const reset = document.body.querySelector<HTMLButtonElement>('.ingredient-item')!
+    expect(reset.getAttribute('aria-pressed')).toBe('false')
   })
 })

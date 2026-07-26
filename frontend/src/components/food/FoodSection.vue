@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchDish, fetchDishes } from '../../api/content'
+import { fetchDish, fetchDishes, fetchDishFavorites, favoriteDish, type DishFavoriteItem } from '../../api/content'
 import type { Dish } from '../../data'
 import { createSiteConfig, resolveUrl } from '../../config/site'
 import { usePageMeta, cleanText } from '../../composables/usePageMeta'
 import { recipe, breadcrumbList, useStructuredData } from '../../composables/useStructuredData'
+import { useUiStore } from '../../stores/uiStore'
+import { removeLegacyKey } from '../../utils/localStore'
 import DishPanel from './DishPanel.vue'
 const route = useRoute()
 const dishes = ref<Dish[]>([])
@@ -37,18 +39,26 @@ const visibleDishes = computed(() => {
   }
   return result
 })
-const rankedDishes = computed(() => [...dishes.value].sort((a, b) => b.rating - a.rating).slice(0, 5))
+// FD-3：排行榜从"当前页 12 条按后台手填评分排序"换成全站真实点亮数据（后端收藏榜端点）
+const favoriteBoard = ref<DishFavoriteItem[]>([])
+const showRanking = computed(() => favoriteBoard.value.length > 0 && favoriteBoard.value[0].favoriteCount > 0)
+const championCount = computed(() => Math.max(1, favoriteBoard.value[0]?.favoriteCount ?? 1))
 
-// Favorite bookmark (localStorage)
-const favoriteDishes = ref<string[]>([])
-function loadFavoriteDishes() {
+const uiStore = useUiStore()
+
+async function onFavorite(dish: Dish) {
+  // 乐观 +1，服务端响应为权威值；GET 详情带 5 分钟公共缓存，禁止用其回写计数
+  dish.favoriteCount += 1
   try {
-    const raw = localStorage.getItem('yubai_dish_favorites')
-    favoriteDishes.value = raw ? JSON.parse(raw) : []
-  } catch {
-    favoriteDishes.value = []
+    const result = await favoriteDish(dish.slug)
+    dish.favoriteCount = result.favoriteCount
+  } catch (error) {
+    dish.favoriteCount = Math.max(0, dish.favoriteCount - 1)
+    const status = (error as { response?: { status?: number } })?.response?.status
+    uiStore.showToast(status === 429 ? '爱心点太快啦，休息一分钟再来～' : '爱心没送出去，稍后再试试')
   }
 }
+
 const { apply: applyMeta } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
@@ -101,10 +111,15 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await fetchDishes(dishPage.value, dishPageSize)
+    // 收藏榜失败不拖垮主列表：榜单整块隐藏即可
+    const [result, favorites] = await Promise.all([
+      fetchDishes(dishPage.value, dishPageSize),
+      fetchDishFavorites(0, 5).catch(() => null),
+    ])
     dishes.value = result.items
     dishTotal.value = result.totalElements
     dishTotalPages.value = Math.max(1, result.totalPages)
+    favoriteBoard.value = favorites?.items ?? []
     await openRouteDish()
     requestAnimationFrame(() => { ready.value = true })
   } catch {
@@ -112,6 +127,18 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function openBySlug(slug: string, event?: Event) {
+  let dish = dishes.value.find(item => item.slug === slug)
+  if (!dish) {
+    try {
+      dish = await fetchDish(slug)
+    } catch {
+      return
+    }
+  }
+  await openDish(dish, event)
 }
 
 async function openRouteDish() {
@@ -147,7 +174,8 @@ watch(() => route.query.dish, () => void openRouteDish())
 
 onMounted(() => {
   load()
-  loadFavoriteDishes()
+  // NF-9（提前执行）：清掉幽灵收藏死代码写下的遗留键
+  removeLegacyKey('yubai_dish_favorites')
 })
 </script>
 
@@ -203,13 +231,16 @@ onMounted(() => {
               :class="{ featured: index === 0 && selectedCategory === '全部' }"
               :style="{ '--card-delay': `${Math.min(index, 7) * 55}ms` }"
               type="button"
-              :aria-label="`查看${dish.name}的食材和做法`"
+              :aria-label="dish.favoriteCount > 0
+                ? `查看${dish.name}的食材和做法，已被点亮 ${dish.favoriteCount} 次`
+                : `查看${dish.name}的食材和做法`"
               @click="openDish(dish, $event)"
             >
               <span class="dish-media">
                 <img :src="dish.imageUrl" :alt="dish.imageAlt" loading="lazy">
                 <span class="dish-shade" />
                 <span class="dish-topline"><small>{{ dish.category }}</small><small>★ {{ dish.rating.toFixed(1) }}</small></span>
+                <span v-if="dish.favoriteCount > 0" class="dish-hearts" aria-hidden="true">♥ {{ dish.favoriteCount }}</span>
                 <span class="dish-index">{{ String(index + 1).padStart(2, '0') }}</span>
               </span>
               <span class="dish-copy">
@@ -224,34 +255,34 @@ onMounted(() => {
       </template>
       <nav v-if="dishTotalPages > 1" class="pagination" aria-label="公开菜谱分页"><button type="button" :disabled="dishPage <= 0" @click="dishPage -= 1; load()">上一页</button><span>{{ dishPage + 1 }} / {{ dishTotalPages }}</span><button type="button" :disabled="dishPage >= dishTotalPages - 1" @click="dishPage += 1; load()">下一页</button></nav>
 
-      <section v-if="rankedDishes.length" class="food-ranking" aria-labelledby="food-ranking-title">
+      <section v-if="showRanking" class="food-ranking" aria-labelledby="food-ranking-title">
         <header class="ranking-head">
           <div><p>TASTE CLUB · TOP 05</p><h2 id="food-ranking-title">美食爱好榜</h2></div>
-          <p>用味蕾投票，记录此刻最让人惦记的五道家常味道。</p>
+          <p>按真实点亮次数排名，记录此刻最让人惦记的家常味道。</p>
         </header>
         <div class="ranking-board">
           <button
-            v-if="rankedDishes[0]"
+            v-if="favoriteBoard[0]"
             class="ranking-champion"
             type="button"
-            :aria-label="`查看榜首${rankedDishes[0].name}`"
-            @click="openDish(rankedDishes[0], $event)"
+            :aria-label="`查看榜首${favoriteBoard[0].name}，被点亮 ${favoriteBoard[0].favoriteCount} 次`"
+            @click="openBySlug(favoriteBoard[0].slug, $event)"
           >
-            <span class="champion-media"><img :src="rankedDishes[0].imageUrl" :alt="rankedDishes[0].imageAlt" loading="lazy"><i /><b>NO. 01</b></span>
-            <span class="champion-copy"><small>本期味蕾冠军</small><strong>{{ rankedDishes[0].name }}</strong><span>{{ rankedDishes[0].category }} · {{ rankedDishes[0].prepMinutes }} 分钟</span><u>查看冠军菜谱 ↗</u></span>
-            <span class="score-orbit"><b>{{ rankedDishes[0].rating.toFixed(1) }}</b><small>SCORE</small></span>
+            <span class="champion-media"><img :src="favoriteBoard[0].imageUrl" :alt="favoriteBoard[0].name" loading="lazy"><i /><b>NO. 01</b></span>
+            <span class="champion-copy"><small>本期味蕾冠军</small><strong>{{ favoriteBoard[0].name }}</strong><span>{{ favoriteBoard[0].summary }}</span><u>查看冠军菜谱 ↗</u></span>
+            <span class="score-orbit"><b>{{ favoriteBoard[0].favoriteCount }}</b><small>点亮</small></span>
           </button>
           <ol class="ranking-list">
             <li
-              v-for="(dish, index) in rankedDishes.slice(1)"
-              :key="dish.id"
+              v-for="(item, index) in favoriteBoard.slice(1)"
+              :key="item.slug"
               :style="{ '--rank-delay': `${index * 80 + 160}ms` }"
             >
-              <button type="button" @click="openDish(dish, $event)">
+              <button type="button" :aria-label="`查看${item.name}，被点亮 ${item.favoriteCount} 次`" @click="openBySlug(item.slug, $event)">
                 <span class="rank-number">{{ String(index + 2).padStart(2, '0') }}</span>
-                <img :src="dish.imageUrl" :alt="dish.imageAlt" loading="lazy">
-                <span class="rank-info"><strong>{{ dish.name }}</strong><small>{{ dish.category }} · {{ dish.prepMinutes }} 分钟</small><span class="rank-meter"><i :style="{ width: `${dish.rating / 5 * 100}%` }" /></span></span>
-                <b class="rank-score">{{ dish.rating.toFixed(1) }}</b><span class="rank-arrow">↗</span>
+                <img :src="item.imageUrl" :alt="item.name" loading="lazy">
+                <span class="rank-info"><strong>{{ item.name }}</strong><small>大家点亮 {{ item.favoriteCount }} 次</small><span class="rank-meter"><i :style="{ width: `${Math.round(item.favoriteCount / championCount * 100)}%` }" /></span></span>
+                <b class="rank-score">{{ item.favoriteCount }}</b><span class="rank-arrow">↗</span>
               </button>
             </li>
           </ol>
@@ -260,7 +291,7 @@ onMounted(() => {
     </div>
   </section>
 
-  <DishPanel :dish="selectedDish" @close="closeDish" />
+  <DishPanel :dish="selectedDish" @close="closeDish" @favorite="onFavorite" />
 </template>
 
 <style scoped>
@@ -309,6 +340,8 @@ onMounted(() => {
 .dish-topline { position: absolute; inset: 15px 15px auto; display: flex; justify-content: space-between; gap: 12px; }
 .dish-topline small { padding: 7px 10px; color: #fff; background: rgba(30,25,27,.46); border: 1px solid rgba(255,255,255,.22); border-radius: 999px; box-shadow: 0 5px 18px rgba(0,0,0,.1); font-size: .64rem; letter-spacing: .04em; backdrop-filter: blur(14px) saturate(130%); }
 .dish-index { position: absolute; right: 16px; bottom: 12px; color: rgba(255,255,255,.82); font: 400 2.45rem/1 Georgia, serif; text-shadow: 0 2px 15px rgba(0,0,0,.3); }
+/* FD-3：只读点亮徽章（可点爱心只在详情抽屉里，卡片保持单一 button 语义） */
+.dish-hearts { position: absolute; left: 15px; bottom: 14px; padding: 6px 10px; color: #ffd5de; background: rgba(30,25,27,.46); border: 1px solid rgba(255,255,255,.22); border-radius: 999px; font-size: .64rem; letter-spacing: .04em; backdrop-filter: blur(14px) saturate(130%); }
 .dish-copy { position: relative; display: flex; min-width: 0; flex-direction: column; align-items: flex-start; padding: 22px 17px 17px; }
 .dish-card.featured .dish-copy { justify-content: center; padding: clamp(36px, 5vw, 68px); background: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent-soft) 78%, transparent), transparent 48%); }
 .dish-copy::before { content: ""; position: absolute; top: 0; left: 18px; width: 34px; height: 2px; border-radius: 99px; background: var(--accent); opacity: .58; }

@@ -81,6 +81,33 @@ export function fetchDish(slug: string) {
   return unwrap<Dish>(api.get(`/dishes/${encodeURIComponent(slug)}`))
 }
 
+// FD-3：收藏榜条目是后端刻意的轻量投影（无 imageAlt/category/食材步骤），不复用 Dish
+export interface DishFavoriteItem {
+  slug: string
+  name: string
+  summary: string
+  imageUrl: string
+  favoriteCount: number
+}
+
+export interface DishFavoriteResult {
+  slug: string
+  favoriteCount: number
+}
+
+export async function fetchDishFavorites(page = 0, size = 5) {
+  const data = await unwrap<PageResult<DishFavoriteItem> | DishFavoriteItem[]>(
+    api.get('/dishes/favorites', { params: { page, size } }),
+  )
+  return asPage(data, page, size)
+}
+
+// 纯计数 +1（非 toggle），免登录，后端按 IP+slug 限流 10 次/分，超限 429。
+// ⚠️ 计数回显只信本端点响应；GET /dishes/{slug} 带 5 分钟公共缓存，禁止用它回写 favoriteCount。
+export function favoriteDish(slug: string) {
+  return unwrap<DishFavoriteResult>(api.post(`/dishes/${encodeURIComponent(slug)}/favorite`))
+}
+
 export interface SearchGroup {
   articles: SearchHit[]
   notes: SearchHit[]
