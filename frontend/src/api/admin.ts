@@ -140,6 +140,11 @@ export function fetchLoginChallenge(username?: string) {
   )
 }
 
+// FD-25：自助改密——成功后服务端推进 sessions_valid_from，本端应清会话重登
+export function changePassword(currentPassword: string, newPassword: string) {
+  return api.put('/auth/password', { currentPassword, newPassword })
+}
+
 // FD-9：remember=true 请求 24h 长 token，配合 authStore 的 localStorage 持久化
 export function login(username: string, password: string, verification: LoginVerification, remember = false) {
   return unwrap<LoginResult>(api.post('/auth/login', { username, password, remember, ...verification }))

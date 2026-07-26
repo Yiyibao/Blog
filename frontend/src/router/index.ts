@@ -16,6 +16,7 @@ const AdminNotesPage = defineAsyncComponent(() => import('../pages/AdminNotesPag
 const AdminAiPage = defineAsyncComponent(() => import('../pages/AdminAiPage.vue'))
 const AdminAiProvidersPage = defineAsyncComponent(() => import('../pages/AdminAiProvidersPage.vue'))
 const LoginPage = defineAsyncComponent(() => import('../pages/LoginPage.vue'))
+const AccountPage = defineAsyncComponent(() => import('../pages/AccountPage.vue'))
 
 const router = createRouter({
   history: createWebHistory(),
@@ -26,6 +27,7 @@ const router = createRouter({
     { path: '/about', name: 'about', component: AboutPage },
     { path: '/notes', name: 'notes', component: NotesPage },
     { path: '/login', name: 'login', component: LoginPage },
+    { path: '/account', name: 'account', component: AccountPage, meta: { requiresAuth: true } },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
     { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },

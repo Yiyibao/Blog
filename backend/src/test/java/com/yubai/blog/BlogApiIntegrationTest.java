@@ -1280,6 +1280,52 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(45)
+    void selfServicePasswordChangeRotatesAndKicksOldTokens() throws Exception {
+        // FD-25：伴侣自助改密全循环——改密成功 → 旧 token 立即 401 → 新口令可登录 → 改回原口令
+        String oldToken = loginAs("partner", "partner-pass-12345");
+        rateLimiter.reset();
+
+        // 匿名不可打；当前口令错 → 400 表单级错误（非 401，防前端拦截器误清会话）
+        mockMvc.perform(put("/api/v1/auth/password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"x\",\"newPassword\":\"whatever-long-enough\"}"))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/v1/auth/password")
+                .header("Authorization", "Bearer " + oldToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"wrong-current\",\"newPassword\":\"新口令是一句短语呀2026\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("当前密码不正确"));
+
+        mockMvc.perform(put("/api/v1/auth/password")
+                .header("Authorization", "Bearer " + oldToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"partner-pass-12345\",\"newPassword\":\"新口令是一句短语呀2026\"}"))
+            .andExpect(status().isNoContent());
+
+        // 旧 token 已被 sessions_valid_from 踢掉
+        mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + oldToken))
+            .andExpect(status().isUnauthorized());
+
+        // 新口令可登录；随后改回原口令保持种子状态，后续用例不受影响
+        rateLimiter.reset();
+        attemptTracker.reset();
+        challengeService.reset();
+        String newToken = loginAs("partner", "新口令是一句短语呀2026");
+        mockMvc.perform(put("/api/v1/auth/password")
+                .header("Authorization", "Bearer " + newToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"新口令是一句短语呀2026\",\"newPassword\":\"partner-pass-12345\"}"))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+        attemptTracker.reset();
+        challengeService.reset();
+        loginAs("partner", "partner-pass-12345");
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(21)
     void publicCountersAreRateLimitedPerIpAndSlug() throws Exception {
         // P0-2：点赞按 IP+slug 限流，第 11 次 429；其他 slug 不受影响

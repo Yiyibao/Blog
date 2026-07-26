@@ -63,6 +63,14 @@ public class AdminUserEntity {
         return new AdminUserEntity(username, passwordHash, role, displayName);
     }
 
+    /** FD-25：改密同时推进 sessions_valid_from——所有既有 token（含发起本次请求的）立即失效。 */
+    public void changePassword(String newPasswordHash) {
+        this.passwordHash = newPasswordHash;
+        var now = Instant.now();
+        this.sessionsValidFrom = now;
+        this.updatedAt = now;
+    }
+
     public Long getId() { return id; }
     public String getUsername() { return username; }
     public String getPasswordHash() { return passwordHash; }
