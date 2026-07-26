@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Dish, PageResult, Post, PostStatus } from '../data'
+import { useAuthStore } from '../stores/auth'
 import type { LoginResult } from '../stores/auth'
 
 export type { LoginResult }
@@ -60,40 +61,19 @@ const api = axios.create({
   headers: { Accept: 'application/json' },
 })
 
-function readSessionValue(key: string) {
-  try {
-    return window.sessionStorage?.getItem(key) ?? null
-  } catch {
-    return null
-  }
-}
-
-function writeSessionValue(key: string, value: string) {
-  try {
-    window.sessionStorage?.setItem(key, value)
-  } catch {
-    // Some privacy modes disable sessionStorage.
-  }
-}
-
-function removeSessionValue(key: string) {
-  try {
-    window.sessionStorage?.removeItem(key)
-  } catch {
-    // ignore
-  }
-}
+// 管理端登录态的单一事实源是 Pinia useAuthStore（NF-1）。
+// 本模块不再直接读写 sessionStorage，全部委托给 store，
+// 保证路由守卫、登录页与 API 拦截器看到的是同一份状态。
 
 api.interceptors.request.use((config) => {
-  const token = readSessionValue('yubai-admin-token')
-  const expiry = readSessionValue('yubai-admin-expiry')
-  if (token && expiry && Date.parse(expiry) <= Date.now()) {
-    clearAdminSession()
+  const auth = useAuthStore()
+  if (auth.token && auth.expiresAt && Date.parse(auth.expiresAt) <= Date.now()) {
+    auth.clearSession()
     return Promise.reject(new axios.Cancel('登录已过期'))
   }
-  if (token) {
+  if (auth.token) {
     config.headers = config.headers ?? {}
-    config.headers.Authorization = `Bearer ${token}`
+    config.headers.Authorization = `Bearer ${auth.token}`
   }
   return config
 })
@@ -101,40 +81,29 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401) clearAdminSession()
+    if (axios.isAxiosError(error) && error.response?.status === 401) useAuthStore().clearSession()
     return Promise.reject(error)
   },
 )
 
 export function clearAdminSession() {
-  removeSessionValue('yubai-admin-token')
-  removeSessionValue('yubai-admin-name')
-  removeSessionValue('yubai-admin-expiry')
+  useAuthStore().clearSession()
 }
 
 export function saveAdminSession(result: LoginResult) {
-  writeSessionValue('yubai-admin-token', result.token)
-  writeSessionValue('yubai-admin-name', result.username)
-  writeSessionValue('yubai-admin-expiry', result.expiresAt)
+  useAuthStore().saveSession(result)
 }
 
 export function getAdminSessionName() {
-  return readSessionValue('yubai-admin-name')
+  return useAuthStore().username
 }
 
 export function hasValidAdminSession() {
-  const token = readSessionValue('yubai-admin-token')
-  const expiry = readSessionValue('yubai-admin-expiry')
-  if (!token) return false
-  if (expiry && Date.parse(expiry) <= Date.now()) {
-    clearAdminSession()
-    return false
-  }
-  return true
+  return useAuthStore().isAuthenticated
 }
 
 function tokenHeader() {
-  const token = readSessionValue('yubai-admin-token')
+  const token = useAuthStore().token
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
