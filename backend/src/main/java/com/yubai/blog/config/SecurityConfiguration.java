@@ -39,12 +39,13 @@ public class SecurityConfiguration {
             .cors(Customizer.withDefaults())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/sitemap.xml", "/robots.txt").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/sitemap.xml", "/robots.txt", "/error").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/note-assets/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/dishes/*/favorite", "/api/v1/posts/*/like", "/api/v1/search").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
-                .anyRequest().permitAll()
+                // P0-1：兜底 denyAll——新增路由必须显式加入白名单，避免默认公开
+                .anyRequest().denyAll()
             )
             .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtConverter)))
             .build();
@@ -64,6 +65,12 @@ public class SecurityConfiguration {
     SecretKey jwtSecretKey(@Value("${app.jwt.secret}") String secret) {
         if (secret.length() < 32) {
             throw new IllegalStateException("APP_JWT_SECRET must contain at least 32 characters");
+        }
+        // NB-3：.env.example 的占位符本身 ≥32 字符，能通过长度校验；
+        // 照抄模板等于用公开已知密钥上线，启动时直接拒绝。
+        if (secret.startsWith("replace_with")) {
+            throw new IllegalStateException(
+                "APP_JWT_SECRET 仍是 .env.example 的占位符，请改为随机生成的密钥（如 openssl rand -base64 48）");
         }
         return new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     }
