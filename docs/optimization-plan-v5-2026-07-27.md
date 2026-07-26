@@ -173,18 +173,19 @@
 
 ### 3.3 数据库迁移台账（v5 重排，自 V16 起）
 
-原则不变：**迁移只增不改，版本号以执行时实际最高号 +1 为准**（V15 已被 ai_providers/ai_usage 占用是 v4→v5 全表后移的原因，引以为鉴）。
+原则不变：**迁移只增不改，版本号以执行时实际最高号 +1 为准**（V15 被 ai_providers/ai_usage、V16 被 AI 加固先后占用，两次全表后移，引以为鉴）。**正文各条目内联提到的迁移号一律以本表为准。**
 
 | 规划版本 | 内容 | 归属 |
 | --- | --- | --- |
-| V16 | `CREATE EXTENSION pg_trgm` + 三表搜索列 GIN 索引 + (category_slug, status) 复合索引 | 阶段 1（P1-4/NB-1） |
-| V17 | dishes.base_servings | 阶段 2（NF-12） |
-| V18 | posts 加 markdown_content（可空）+ content_format | 阶段 3（3A-1） |
-| V19 | 存量正文迁移后的清理（是否删旧列单独评审） | 阶段 3 末 |
-| V20 | post_revisions / note_revisions | 阶段 4（4C） |
-| V21 | view_daily 按日聚合 | 阶段 4（4D） |
-| V22 | post_tags / learning_note_tags 的 tag 列索引 | 阶段 5（5B） |
-| V23+ | 中文分词（zhparser/pgroonga）对象，以 spike 结论为准 | 阶段 5（5A） |
+| ~~V16~~ | ai_providers 唯一默认部分索引（AI 加固占号，**已执行** 2026-07-27） | 已完成 |
+| V17 | `CREATE EXTENSION pg_trgm` + 三表搜索列 GIN 索引 + (category_slug, status) 复合索引 | 阶段 1（P1-4/NB-1） |
+| V18 | dishes.base_servings | 阶段 2（NF-12） |
+| V19 | posts 加 markdown_content（可空）+ content_format | 阶段 3（3A-1） |
+| V20 | 存量正文迁移后的清理（是否删旧列单独评审） | 阶段 3 末 |
+| V21 | post_revisions / note_revisions | 阶段 4（4C） |
+| V22 | view_daily 按日聚合 | 阶段 4（4D） |
+| V23 | post_tags / learning_note_tags 的 tag 列索引 | 阶段 5（5B） |
+| V24+ | 中文分词（zhparser/pgroonga）对象，以 spike 结论为准 | 阶段 5（5A） |
 
 配套惯例：含索引/扩展的迁移提交附 EXPLAIN (ANALYZE) 前后对比；series 表（V11）在 4B 实现前先复核结构，缺列以新迁移补。PG 版本策略沿用 v4（本地 18.4 / CI 锁 17，跟踪 Flyway 官方支持公告）。
 
