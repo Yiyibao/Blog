@@ -38,8 +38,17 @@ export const useContentStore = defineStore('content', () => {
 
   const featuredPost = computed(() => posts.value.find((p) => p.featured) ?? posts.value[0] ?? null)
 
+  // NF-3：当前文章 slug 作为响应式输入（由 ArticlePage 依据 route.params.slug 维护），
+  // 不再读取 window.location（非响应式，文章间跳转会渲染旧文章）。
+  const currentSlug = ref('')
+
+  function setCurrentSlug(slug: string) {
+    currentSlug.value = slug
+  }
+
   const currentPost = computed(() => {
-    const slug = window.location.pathname.match(/\/articles\/(.+)/)?.[1] ?? ''
+    const slug = currentSlug.value
+    if (!slug) return null
     return posts.value.find((p) => p.slug === slug) ?? (articleDetail.value?.slug === slug ? articleDetail.value : null)
   })
 
@@ -116,7 +125,7 @@ export const useContentStore = defineStore('content', () => {
   return {
     posts, favorites, query, category, sortOrder, archivePage, showFavoritesOnly,
     contentReady, contentError, articleDetail,
-    categories, filteredPosts, featuredPost, currentPost,
+    categories, filteredPosts, featuredPost, currentSlug, setCurrentSlug, currentPost,
     archivePageSize, archiveTotalPages, pagedPosts,
     relatedPosts, articleOutline,
     loadRemoteContent, ensureArticleDetail, toggleFavorite, initFavorites,
