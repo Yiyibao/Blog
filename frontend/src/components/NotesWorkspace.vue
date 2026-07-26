@@ -3,6 +3,7 @@ import axios from 'axios'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import TyporaEditor from './TyporaEditor.vue'
+import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
 import {
   archiveNote, clearAdminSession, createNote, deleteNote, deleteNoteAttachment, exportNote, fetchAdminNote, fetchNoteAttachments,
   fetchNotes, fetchNoteAttachmentContent, hasValidAdminSession, importNote, publishNote, unpublishNote, updateNote, uploadNoteAttachment,
@@ -29,6 +30,22 @@ const focusMode = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const form = reactive<NotePayload>({ title: '', markdownContent: '', folder: '未分类', status: 'DRAFT', tags: [], version: 0 })
 const tagText = ref('')
+
+/** 4A-5：AI 动作结果回填（笔记场景：总结当引言插入、标题/标签直填、润色/续写改正文）。 */
+function applyAiAction(action: AiActionKind, text: string) {
+  if (action === 'summary') {
+    form.markdownContent = `> ${text.replace(/\n+/g, ' ')}\n\n${form.markdownContent}`
+  } else if (action === 'title') {
+    const first = text.split('\n').map((line) => line.replace(/^\s*(?:[-*]|\d+[.、])\s*/, '').trim()).find(Boolean)
+    if (first) form.title = first
+  } else if (action === 'tags') {
+    tagText.value = text.split(/[,，、\n]/).map((t) => t.trim()).filter(Boolean).slice(0, 6).join(', ')
+  } else if (action === 'polish') {
+    form.markdownContent = text
+  } else if (action === 'continue') {
+    form.markdownContent = `${form.markdownContent.trimEnd()}\n\n${text}`
+  }
+}
 const attachments = ref<NoteAttachment[]>([])
 const attachmentPreviewUrls = ref<Record<number, string>>({})
 const openIds = ref<number[]>([])
@@ -474,6 +491,8 @@ onBeforeUnmount(() => {
         <div class="manuscript">
           <input v-model="form.title" class="note-title" maxlength="200" placeholder="未命名笔记" aria-label="笔记标题">
           <input v-model="tagText" class="note-tags" placeholder="添加标签，用逗号分隔" aria-label="标签">
+          <!-- 4A-5：场景化 AI 动作（结果只填入不保存；笔记有自动保存，润色/续写落表单后随防抖入库） -->
+          <AiActionChips :get-context="() => form.markdownContent" @apply="applyAiAction" />
           <TyporaEditor v-model="form.markdownContent" :upload-image="uploadEditorImage" @upload-error="error = $event" />
         </div>
         <footer class="note-statusbar"><span>Markdown</span><span>{{ charCount }} 字符</span><span>约 {{ readMinutes }} 分钟阅读</span><span>Ctrl + S 保存</span></footer>

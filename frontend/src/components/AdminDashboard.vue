@@ -11,6 +11,7 @@ import type { PostStatus } from '../data'
 
 import AdminSidebar from './AdminSidebar.vue'
 import TyporaEditor from './TyporaEditor.vue'
+import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -91,6 +92,28 @@ async function convertLegacyPost() {
 /** 文章暂无独立图床——编辑器里请使用既有图片外链或站内路径。 */
 async function rejectPostImageUpload(): Promise<string> {
   throw new Error('文章编辑器暂不支持直传图片')
+}
+
+/** 4A-5：AI 动作结果一键回填——只填入表单，保存仍是作者显式动作。 */
+function currentPostContext(): string {
+  return postMarkdownMode.value ? postForm.markdownContent : postForm.content
+}
+
+function applyAiAction(action: AiActionKind, text: string) {
+  if (action === 'summary') {
+    postForm.excerpt = text
+  } else if (action === 'title') {
+    const first = text.split('\n').map((line) => line.replace(/^\s*(?:[-*]|\d+[.、])\s*/, '').trim()).find(Boolean)
+    if (first) postForm.title = first
+  } else if (action === 'tags') {
+    postForm.tags = text.split(/[,，、\n]/).map((t) => t.trim()).filter(Boolean).slice(0, 6).join(', ')
+  } else if (action === 'polish') {
+    if (postMarkdownMode.value) postForm.markdownContent = text
+    else postForm.content = text
+  } else if (action === 'continue') {
+    if (postMarkdownMode.value) postForm.markdownContent = `${postForm.markdownContent.trimEnd()}\n\n${text}`
+    else postForm.content = `${postForm.content.trimEnd()}\n\n${text}`
+  }
 }
 const dishForm = reactive({
   slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
@@ -321,6 +344,8 @@ onMounted(load)
           <div class="admin-form-grid"><label>标题<input v-model="postForm.title" required maxlength="200"></label><label>Slug<input v-model="postForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="postForm.category" required></label><label>发布日期<input v-model="postForm.date" type="date" required></label><label>阅读时间（分钟）<input v-model.number="postForm.readTime" type="number" min="1" max="180" required></label><label>编号<input v-model="postForm.number" required maxlength="10"></label><label>颜色<input v-model="postForm.color" type="color" required></label><label>状态<select v-model="postForm.status" required><option value="DRAFT">草稿</option><option value="PUBLISHED">发布</option></select></label><label class="admin-check"><input v-model="postForm.featured" type="checkbox">设为精选文章</label></div>
           <label>标签（逗号分隔）<input v-model="postForm.tags" required placeholder="Vue, TypeScript"></label>
           <label>摘要<textarea v-model="postForm.excerpt" rows="3" required /></label>
+          <!-- 4A-5：场景化 AI 动作（结果只填入不保存） -->
+          <AiActionChips :get-context="currentPostContext" @apply="applyAiAction" />
           <!-- 3A-3：Markdown 模式复用 TyporaEditor；纯 HTML 存量篇先转换（旧文本域兜底可继续编辑 HTML） -->
           <div v-if="postMarkdownMode" class="post-markdown-field">
             <span class="field-label">正文（Markdown）</span>
