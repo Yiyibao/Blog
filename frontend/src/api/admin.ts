@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Dish, PageResult, Post, PostStatus } from '../data'
+import type { Dish, PageResult, Post, PostStatus, PostSummary } from '../data'
 import { useAuthStore } from '../stores/auth'
 import type { LoginResult } from '../stores/auth'
 
@@ -14,6 +14,9 @@ export interface AdminPost extends Post {
   id: number
 }
 
+// P1-2：管理端列表为摘要 DTO（不含 content），编辑前必须经 fetchAdminPost 拉取全文。
+export type AdminPostSummary = PostSummary & { id: number }
+
 export interface PostPayload extends Omit<AdminPost, 'id'> {}
 
 export interface AdminDish extends Dish {}
@@ -21,10 +24,10 @@ export type DishPayload = Omit<AdminDish, 'id' | 'createdAt' | 'updatedAt'>
 
 export type NoteStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
-export interface AdminNote {
+// P1-2：笔记列表为摘要 DTO（不含 markdownContent），正文经 fetchAdminNote 详情获取。
+export interface AdminNoteSummary {
   id: number
   title: string
-  markdownContent: string
   folder: string
   status: NoteStatus
   tags: string[]
@@ -33,6 +36,10 @@ export interface AdminNote {
   version: number
   createdAt: string
   updatedAt: string
+}
+
+export interface AdminNote extends AdminNoteSummary {
+  markdownContent: string
 }
 
 export interface NotePayload {
@@ -135,11 +142,15 @@ function asPage<T>(data: PageResult<T> | T[], page = 0, size = 20): PageResult<T
 }
 
 export async function fetchAdminPosts(page = 0, size = 20, status?: PostStatus | '') {
-  const data = await unwrap<PageResult<AdminPost> | AdminPost[]>(api.get('/admin/posts', {
+  const data = await unwrap<PageResult<AdminPostSummary> | AdminPostSummary[]>(api.get('/admin/posts', {
     headers: tokenHeader(),
     params: { page, size, ...(status ? { status } : {}) },
   }))
   return asPage(data, page, size)
+}
+
+export function fetchAdminPost(id: number) {
+  return unwrap<AdminPost>(api.get(`/admin/posts/${id}`, { headers: tokenHeader() }))
 }
 
 export function createPost(payload: PostPayload) {
@@ -174,10 +185,14 @@ export function deleteDish(id: number) {
 }
 
 export async function fetchNotes(page = 0, size = 20, status?: NoteStatus | '') {
-  const data = await unwrap<PageResult<AdminNote> | AdminNote[]>(api.get('/admin/notes', {
+  const data = await unwrap<PageResult<AdminNoteSummary> | AdminNoteSummary[]>(api.get('/admin/notes', {
     headers: tokenHeader(), params: { page, size, ...(status ? { status } : {}) },
   }))
   return asPage(data, page, size)
+}
+
+export function fetchAdminNote(id: number) {
+  return unwrap<AdminNote>(api.get(`/admin/notes/${id}`, { headers: tokenHeader() }))
 }
 
 export function createNote(payload: NotePayload) {
@@ -210,7 +225,7 @@ export function importNote(file: File) {
   return unwrap<AdminNote>(api.post('/admin/notes/import', body, { headers: tokenHeader() }))
 }
 
-export async function exportNote(note: AdminNote) {
+export async function exportNote(note: AdminNoteSummary) {
   const response = await api.get<Blob>(`/admin/notes/${note.id}/export`, {
     headers: tokenHeader(), responseType: 'blob',
   })

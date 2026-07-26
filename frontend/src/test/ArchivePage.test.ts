@@ -49,8 +49,9 @@ describe('ArchivePage', () => {
   })
 
   it('shows all types by default after loading in timeline view', async () => {
+    // P1-2：列表接口为摘要 DTO，不含 content 正文
     mockPosts.mockResolvedValue({
-      items: [{ slug: 'p', title: '文章标题', excerpt: '', date: '2026-07-01', readTime: 1, category: '测试', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED', content: '' }],
+      items: [{ slug: 'p', title: '文章标题', excerpt: '', date: '2026-07-01', readTime: 1, category: '测试', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED' }],
       page: 0, size: 10, totalElements: 1, totalPages: 1,
     })
     mockDishes.mockResolvedValue({
@@ -58,7 +59,7 @@ describe('ArchivePage', () => {
       page: 0, size: 12, totalElements: 1, totalPages: 1,
     })
     mockNotes.mockResolvedValue({
-      items: [{ id: 1, title: '笔记标题', markdownContent: '', folder: 'Test', status: 'PUBLISHED', tags: [], sourceFileName: null, wordCount: 0, version: 1, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-05-01T00:00:00Z' }],
+      items: [{ id: 1, title: '笔记标题', folder: 'Test', status: 'PUBLISHED', tags: [], sourceFileName: null, wordCount: 0, version: 1, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-05-01T00:00:00Z' }],
       page: 0, size: 20, totalElements: 1, totalPages: 1,
     })
     const { wrapper } = await mountPage()

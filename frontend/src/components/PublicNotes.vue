@@ -10,13 +10,16 @@ import Image from '@tiptap/extension-image'
 import { Mathematics } from '@tiptap/extension-mathematics'
 import 'katex/dist/katex.min.css'
 import { fetchPublishedNote, fetchPublishedNotes } from '../api/content'
-import type { AdminNote } from '../api/admin'
+import type { AdminNoteSummary } from '../api/admin'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
 import { createSiteConfig, resolveUrl } from '../config/site'
 import { techArticle, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
 
+// P1-2：公开列表为摘要 DTO；正文在选中时经详情接口补齐后回写列表
+type PublicNoteItem = AdminNoteSummary & { markdownContent?: string }
+
 const route = useRoute()
-const notes = ref<AdminNote[]>([])
+const notes = ref<PublicNoteItem[]>([])
 const selectedId = ref<number | null>(null)
 const query = ref('')
 const loading = ref(true)
@@ -33,9 +36,20 @@ const filtered = computed(() => {
 const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
+// 选中的笔记若尚无正文（摘要项），拉取详情并回写列表；详情返回后各 watch 自动重渲染
+watch(selected, async (note) => {
+  if (!note || typeof note.markdownContent === 'string') return
+  try {
+    const full = await fetchPublishedNote(note.id)
+    notes.value = notes.value.map(item => (item.id === full.id ? full : item))
+  } catch {
+    // 详情暂不可得：正文区维持加载中空态，列表与元信息不受影响
+  }
+}, { immediate: true })
+
 watch(selected, (note) => {
   if (note) {
-    const excerpt = cleanText(note.markdownContent, 200)
+    const excerpt = cleanText(note.markdownContent ?? '', 200)
     const authorName = createSiteConfig().authorName
     applyLD([
       techArticle({
@@ -84,8 +98,11 @@ const editor = useEditor({
   editorProps: { attributes: { class: 'typora-prose public-note-prose' } },
 })
 
-watch(selected, note => {
-  if (note && editor.value) editor.value.commands.setContent(note.markdownContent, { contentType: 'markdown' })
+watch([selected, () => selected.value?.markdownContent], () => {
+  const note = selected.value
+  if (!note || !editor.value) return
+  // 正文未到达时先清空，避免展示上一篇笔记的内容
+  editor.value.commands.setContent(note.markdownContent ?? '', { contentType: 'markdown' })
 }, { immediate: true })
 
 async function load() {

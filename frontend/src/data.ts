@@ -9,11 +9,13 @@ export interface SearchHit {
   url: string
   color: string | null
   number: string | null
+  slug?: string | null
 }
 
 export type PostStatus = 'DRAFT' | 'PUBLISHED'
 
-export interface Post {
+// P1-2：列表接口只返回摘要（不含 content 正文），正文仅由详情接口返回。
+export interface PostSummary {
   id?: number
   slug: string
   title: string
@@ -21,12 +23,24 @@ export interface Post {
   date: string
   readTime: number
   category: string
+  categorySlug?: string
   tags: string[]
   color: string
   number: string
   featured?: boolean
   status?: PostStatus
+  likeCount?: number
+  viewsCount?: number
+}
+
+export interface Post extends PostSummary {
   content: string
+}
+
+export interface CategorySummary {
+  name: string
+  slug: string
+  publishedPostCount: number
 }
 
 export interface PageResult<T> {

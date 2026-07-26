@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchPosts, fetchDishes, fetchPublishedNotes } from '../api/content'
-import type { Post, Dish } from '../data'
-import type { AdminNote } from '../api/admin'
+import type { PostSummary, Dish } from '../data'
+import type { AdminNoteSummary } from '../api/admin'
 import KnowledgeGraph from '../components/KnowledgeGraph.vue'
 
 type ArchiveContentType = 'ARTICLE' | 'NOTE' | 'DISH'
@@ -21,9 +21,9 @@ interface ArchiveEntry {
 const route = useRoute()
 const router = useRouter()
 
-const posts = ref<Post[]>([])
+const posts = ref<PostSummary[]>([])
 const dishes = ref<Dish[]>([])
-const notes = ref<AdminNote[]>([])
+const notes = ref<AdminNoteSummary[]>([])
 const loading = ref(true)
 const loadError = ref('')
 
@@ -64,25 +64,25 @@ function updateQuery(patch: { view?: string; type?: string; relation?: string | 
   void router.replace({ query })
 }
 
-function normalizeDate(item: Post | Dish | AdminNote, type: ArchiveContentType): string {
+function normalizeDate(item: PostSummary | Dish | AdminNoteSummary, type: ArchiveContentType): string {
   if (type === 'ARTICLE') {
-    const p = item as Post
+    const p = item as PostSummary
     return p.date ? `${p.date}T00:00:00Z` : ''
   }
-  const ts = (item as Dish | AdminNote).createdAt
+  const ts = (item as Dish | AdminNoteSummary).createdAt
   return ts || ''
 }
 
-function toEntry(item: Post | Dish | AdminNote, type: ArchiveContentType): ArchiveEntry {
+function toEntry(item: PostSummary | Dish | AdminNoteSummary, type: ArchiveContentType): ArchiveEntry {
   if (type === 'ARTICLE') {
-    const p = item as Post
+    const p = item as PostSummary
     return { type, title: p.title, summary: p.excerpt, publishedAt: normalizeDate(p, type), url: `/articles/${p.slug}`, category: p.category, tags: p.tags }
   }
   if (type === 'DISH') {
     const d = item as Dish
     return { type, title: d.name, summary: d.summary, publishedAt: normalizeDate(d, type), url: `/recipes?dish=${d.slug}`, category: d.category, tags: [] }
   }
-  const n = item as AdminNote
+  const n = item as AdminNoteSummary
   return { type, title: n.title, summary: '', publishedAt: normalizeDate(n, type), url: `/notes?note=${n.id}`, category: n.folder, tags: n.tags }
 }
 
@@ -167,9 +167,9 @@ async function load() {
   let dishErr = false
   let noteErr = false
   const [postRes, dishRes, noteRes] = await Promise.all([
-    fetchPosts(0, 50).catch(() => { postErr = true; return { items: [] as Post[] } }),
+    fetchPosts(0, 50).catch(() => { postErr = true; return { items: [] as PostSummary[] } }),
     fetchDishes(0, 50).catch(() => { dishErr = true; return { items: [] as Dish[] } }),
-    fetchPublishedNotes(0, 50).catch(() => { noteErr = true; return { items: [] as AdminNote[] } }),
+    fetchPublishedNotes(0, 50).catch(() => { noteErr = true; return { items: [] as AdminNoteSummary[] } }),
   ])
   posts.value = postRes.items ?? []
   dishes.value = dishRes.items ?? []

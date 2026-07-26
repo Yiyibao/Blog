@@ -40,6 +40,7 @@ const adminApi = vi.hoisted(() => {
     reject(name: string, reason: any) { const q = queues[name]; if (q && q.length) q.shift()!.reject(reason) },
     clear() { Object.values(queues).forEach(q => q.length = 0) },
     fetchNotes: mock('fetchNotes'),
+    fetchAdminNote: mock('fetchAdminNote'),
     updateNote: mock('updateNote'),
     publishNote: mock('publishNote'),
     unpublishNote: mock('unpublishNote'),
@@ -203,6 +204,38 @@ describe('NotesWorkspace regression', () => {
     await flush()
     await flush()
 
+    expect((w.find('.note-title').element as HTMLInputElement).value).toBe('B')
+    w.unmount()
+  })
+
+  // ── Scenario 2b: P1-2 摘要列表 → 选中先取详情 ──────────────────────────────
+  it('2b: P1-2 list items without markdownContent trigger a detail fetch before applying', async () => {
+    const strip = (note: AdminNote) => {
+      const { markdownContent: _content, ...summary } = note
+      return summary as unknown as AdminNote
+    }
+
+    const w = mountNotes()
+    await flush()
+    adminApi.resolve('fetchNotes', pageResult([strip(S1), strip(S2)]))
+    await flush()
+    await flush()
+
+    // 初始选中第一篇：摘要无正文，必须经详情接口补齐后才进入表单
+    expect(adminApi.fetchAdminNote).toHaveBeenCalledWith(1)
+    adminApi.resolve('fetchAdminNote', S1)
+    await flush()
+    await flush()
+    expect((w.find('.note-title').element as HTMLInputElement).value).toBe('A')
+
+    // 切换第二篇：同样先取详情，正文到达后才切换
+    w.findAll('.notes-list button')[1].trigger('click')
+    await flush()
+    await flush()
+    expect(adminApi.fetchAdminNote).toHaveBeenCalledWith(2)
+    adminApi.resolve('fetchAdminNote', S2)
+    await flush()
+    await flush()
     expect((w.find('.note-title').element as HTMLInputElement).value).toBe('B')
     w.unmount()
   })

@@ -4,14 +4,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import TyporaEditor from './TyporaEditor.vue'
 import {
-  archiveNote, clearAdminSession, createNote, deleteNote, deleteNoteAttachment, exportNote, fetchNoteAttachments, fetchNotes,
-  fetchNoteAttachmentContent, hasValidAdminSession, importNote, publishNote, unpublishNote, updateNote, uploadNoteAttachment,
-  type AdminNote, type NoteAttachment, type NotePayload, type NoteStatus,
+  archiveNote, clearAdminSession, createNote, deleteNote, deleteNoteAttachment, exportNote, fetchAdminNote, fetchNoteAttachments,
+  fetchNotes, fetchNoteAttachmentContent, hasValidAdminSession, importNote, publishNote, unpublishNote, updateNote, uploadNoteAttachment,
+  type AdminNote, type AdminNoteSummary, type NoteAttachment, type NotePayload, type NoteStatus,
 } from '../api/admin'
 import { buildPayload, clearPreviewUrls, replacePreviewUrls, replaceCanonicalUrls } from '../utils/noteHelpers'
 
 const router = useRouter()
-const notes = ref<AdminNote[]>([])
+// P1-2：列表为摘要 DTO（不含 markdownContent）；保存/新建/导入返回的全量笔记也会写回此列表
+const notes = ref<AdminNoteSummary[]>([])
 const selectedId = ref<number | null>(null)
 const query = ref('')
 const statusFilter = ref<'ALL' | NoteStatus>('ALL')
@@ -36,7 +37,7 @@ let noticeTimer: number | undefined
 let applying = false
 let editRevision = 0
 let savedRevision = 0
-let savePromise: Promise<AdminNote | null> | null = null
+let savePromise: Promise<AdminNoteSummary | null> | null = null
 let publicationChanging = false
 let deleting = false
 let loadRevision = 0
@@ -83,10 +84,35 @@ function applyNote(note: AdminNote) {
   void nextTick(() => { applying = false })
 }
 
-async function selectNote(note: AdminNote) {
+/**
+ * P1-2：applyNote 需要全量笔记（含 markdownContent）。列表摘要项先经
+ * 详情接口补齐正文；已携带正文的对象（保存/新建/导入的返回值）直接使用。
+ * 拉取失败时返回 null，调用方不得切换选中笔记，避免空正文进入表单被自动保存。
+ */
+async function resolveFullNote(note: AdminNoteSummary): Promise<AdminNote | null> {
+  if (typeof (note as Partial<AdminNote>).markdownContent === 'string') return note as AdminNote
+  try {
+    return await fetchAdminNote(note.id)
+  } catch (cause) {
+    if (axios.isAxiosError(cause) && cause.response?.status === 401) {
+      clearAdminSession()
+      void router.replace('/admin/login')
+      return null
+    }
+    // 只提示不动 saveState：当前笔记并无未保存内容，误标「保存失败」会触发无谓的离开拦截
+    error.value = '读取笔记正文失败，请稍后重试。'
+    return null
+  }
+}
+
+async function selectNote(note: AdminNoteSummary) {
   if (deleting || pendingUploads > 0 || note.id === selectedId.value) return
   if (!await flushCurrent()) return
-  applyNote(note)
+  const full = await resolveFullNote(note)
+  if (!full) return
+  // 详情拉取窗口期内用户可能继续键入当前笔记，applyNote 前再 flush 一次，防止静默丢弃
+  if (!await flushCurrent()) return
+  applyNote(full)
 }
 
 async function flushCurrent() {
@@ -175,7 +201,9 @@ async function closeTab(id: number) {
   if (selectedId.value !== id) return
   const nextId = openIds.value[Math.max(0, index - 1)]
   const next = notes.value.find(note => note.id === nextId)
-  if (next) applyNote(next)
+  const full = next ? await resolveFullNote(next) : null
+  if (full && !await flushCurrent()) return
+  if (full) applyNote(full)
   else {
     editorSession += 1
     selectedId.value = null
@@ -203,8 +231,15 @@ async function load() {
     notes.value = result.items
     noteTotal.value = result.totalElements
     noteTotalPages.value = Math.max(1, result.totalPages)
-    if (notes.value[0]) applyNote(notes.value[0])
-    else selectedId.value = null
+    const first = notes.value[0]
+    if (first) {
+      const full = await resolveFullNote(first)
+      if (requestRevision !== loadRevision) return
+      if (full) applyNote(full)
+      else selectedId.value = null
+    } else {
+      selectedId.value = null
+    }
   } catch (cause) {
     if (requestRevision === loadRevision) handleError(cause, '无法读取学习笔记，请确认后端服务正在运行。')
   } finally {
@@ -252,7 +287,7 @@ async function syncSavedNote(saved: AdminNote, noteId = saved.id) {
   applying = false
 }
 
-async function saveNow(): Promise<AdminNote | null> {
+async function saveNow(): Promise<AdminNoteSummary | null> {
   clearTimeout(saveTimer)
   if (!selectedId.value) return null
   if (publicationChanging) {
@@ -365,7 +400,8 @@ async function removeCurrent() {
     noteTotal.value = Math.max(0, noteTotal.value - 1)
     openIds.value = openIds.value.filter(id => id !== removedId)
     const next = notes.value.find(note => openIds.value.includes(note.id)) ?? notes.value[0]
-    if (next) applyNote(next)
+    const full = next ? await resolveFullNote(next) : null
+    if (full) applyNote(full)
     else {
       selectedId.value = null
       attachments.value = []

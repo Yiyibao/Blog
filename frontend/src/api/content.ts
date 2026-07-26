@@ -1,6 +1,6 @@
 import axios from 'axios'
-import type { Dish, PageResult, Post, SearchHit } from '../data'
-import type { AdminNote } from './admin'
+import type { CategorySummary, Dish, PageResult, Post, PostSummary, SearchHit } from '../data'
+import type { AdminNote, AdminNoteSummary } from './admin'
 
 interface ApiEnvelope<T> {
   data: T
@@ -37,8 +37,20 @@ function asPage<T>(data: PageResult<T> | T[], page = 0, size = 10): PageResult<T
   }
 }
 
-export async function fetchPosts(page = 0, size = 10) {
-  const data = await unwrap<PageResult<Post> | Post[]>(api.get('/posts', { params: { page, size } }))
+export interface FetchPostsOptions {
+  categorySlug?: string
+  sort?: 'asc' | 'desc'
+}
+
+// P1-2：列表返回 PostSummary（不含正文）；categorySlug 过滤分类，sort=asc 最早优先。
+export async function fetchPosts(page = 0, size = 10, options: FetchPostsOptions = {}) {
+  const data = await unwrap<PageResult<PostSummary> | PostSummary[]>(api.get('/posts', {
+    params: {
+      page, size,
+      ...(options.categorySlug ? { categorySlug: options.categorySlug } : {}),
+      ...(options.sort ? { sort: options.sort } : {}),
+    },
+  }))
   return asPage(data, page, size)
 }
 
@@ -46,13 +58,18 @@ export function fetchPost(slug: string) {
   return unwrap<Post>(api.get(`/posts/${encodeURIComponent(slug)}`))
 }
 
+export function fetchCategories() {
+  return unwrap<CategorySummary[]>(api.get('/categories'))
+}
+
 export async function fetchDishes(page = 0, size = 12) {
   const data = await unwrap<PageResult<Dish> | Dish[]>(api.get('/dishes', { params: { page, size } }))
   return asPage(data, page, size)
 }
 
+// P1-2：公开笔记列表为摘要 DTO（不含 markdownContent），正文经 fetchPublishedNote 详情获取。
 export async function fetchPublishedNotes(page = 0, size = 20) {
-  const data = await unwrap<PageResult<AdminNote> | AdminNote[]>(api.get('/notes', { params: { page, size } }))
+  const data = await unwrap<PageResult<AdminNoteSummary> | AdminNoteSummary[]>(api.get('/notes', { params: { page, size } }))
   return asPage(data, page, size)
 }
 
@@ -69,6 +86,26 @@ export interface SearchGroup {
   notes: SearchHit[]
   dishes: SearchHit[]
   total: number
+}
+
+export interface PostSearchPage {
+  results: SearchHit[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+// NF-5：归档搜索走 POST /search 的分页模式（type=POST），覆盖全部已发布文章而非仅当前页。
+export async function searchPosts(q: string, page = 0, size = 6): Promise<PostSearchPage> {
+  const data = await unwrap<PostSearchPage>(api.post('/search', { query: q.trim(), type: 'POST', page, size }))
+  return {
+    results: data.results ?? [],
+    page: data.page ?? page,
+    size: data.size ?? size,
+    totalElements: data.totalElements ?? 0,
+    totalPages: Math.max(1, data.totalPages ?? 1),
+  }
 }
 
 export async function searchContent(q: string, limit = 10, signal?: AbortSignal): Promise<SearchGroup> {

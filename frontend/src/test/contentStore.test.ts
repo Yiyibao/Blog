@@ -5,6 +5,8 @@ import type { Post } from '../data'
 
 const mockFetchPost = vi.fn()
 const mockFetchPosts = vi.fn()
+const mockSearchPosts = vi.fn()
+const mockFetchCategories = vi.fn()
 
 vi.mock('../api/content', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/content')>()
@@ -12,6 +14,8 @@ vi.mock('../api/content', async (importOriginal) => {
     ...actual,
     fetchPost: (...args: unknown[]) => mockFetchPost(...args),
     fetchPosts: (...args: unknown[]) => mockFetchPosts(...args),
+    searchPosts: (...args: unknown[]) => mockSearchPosts(...args),
+    fetchCategories: (...args: unknown[]) => mockFetchCategories(...args),
   }
 })
 
@@ -35,6 +39,9 @@ beforeEach(() => {
   setActivePinia(createPinia())
   mockFetchPost.mockReset()
   mockFetchPosts.mockReset()
+  mockSearchPosts.mockReset()
+  mockFetchCategories.mockReset()
+  mockFetchCategories.mockResolvedValue([])
 })
 
 describe('NF-3 currentPost 响应式', () => {
@@ -84,5 +91,129 @@ describe('NF-3 currentPost 响应式', () => {
 
     store.setCurrentSlug('post-c')
     expect(store.relatedPosts).toEqual([])
+  })
+})
+
+describe('P1-2 摘要契约：正文只来自详情接口', () => {
+  it('列表项为摘要（无 content）时 ensureArticleDetail 仍拉取详情', async () => {
+    const store = useContentStore()
+    const { content: _content, ...summary } = makePost('post-a')
+    store.posts = [summary]
+
+    store.setCurrentSlug('post-a')
+    // 摘要在列表中：元信息可见但正文为空，等待详情
+    expect(store.currentPost?.slug).toBe('post-a')
+    expect(store.currentContent).toBe('')
+
+    mockFetchPost.mockResolvedValue(makePost('post-a'))
+    await store.ensureArticleDetail('post-a')
+    expect(mockFetchPost).toHaveBeenCalledWith('post-a')
+    expect(store.currentContent).toContain('post-a 正文')
+  })
+
+  it('内置回退模式下种子自带正文时不再拉取详情', async () => {
+    const store = useContentStore()
+    store.usingFallback = true
+    store.posts = [makePost('post-a')]
+
+    store.setCurrentSlug('post-a')
+    await store.ensureArticleDetail('post-a')
+    expect(mockFetchPost).not.toHaveBeenCalled()
+    expect(store.currentContent).toContain('post-a 正文')
+  })
+
+  it('后端在线时即使本地种子带正文也必须拉取详情（种子 slug 与后端重叠的回归）', async () => {
+    const store = useContentStore()
+    // 默认非回退模式：posts 初始就是内置种子（自带 content），
+    // 不能以此为由跳过详情——否则 loadRemoteContent 摘要替换后正文永久空白。
+    store.posts = [makePost('clarity-by-design')]
+    mockFetchPost.mockResolvedValue(makePost('clarity-by-design', { content: '<p>远端正文</p>' }))
+
+    store.setCurrentSlug('clarity-by-design')
+    await store.ensureArticleDetail('clarity-by-design')
+
+    expect(mockFetchPost).toHaveBeenCalledWith('clarity-by-design')
+    expect(store.currentContent).toBe('<p>远端正文</p>')
+  })
+
+  it('详情请求乱序返回时以最新 slug 为准（竞态守卫）', async () => {
+    const store = useContentStore()
+    let resolveA!: (value: Post) => void
+    mockFetchPost
+      .mockImplementationOnce(() => new Promise<Post>((resolve) => { resolveA = resolve }))
+      .mockImplementationOnce(async () => makePost('post-b'))
+
+    const callA = store.ensureArticleDetail('post-a')
+    store.setCurrentSlug('post-b')
+    await store.ensureArticleDetail('post-b')
+    resolveA(makePost('post-a'))
+    await callA
+
+    expect(store.articleDetail?.slug).toBe('post-b')
+    expect(store.currentContent).toContain('post-b 正文')
+  })
+})
+
+describe('NF-5 归档服务端真分页', () => {
+  it('loadArchive 以 page/size/sort 请求服务端，分页元数据来自响应', async () => {
+    const store = useContentStore()
+    mockFetchPosts.mockResolvedValue({
+      items: [makePost('page-post')], page: 2, size: 6, totalElements: 20, totalPages: 4,
+    })
+
+    store.archivePage = 2
+    await store.loadArchive()
+
+    expect(mockFetchPosts).toHaveBeenCalledWith(2, 6, { sort: 'desc' })
+    expect(store.archivePosts.map((p) => p.slug)).toEqual(['page-post'])
+    expect(store.archiveTotal).toBe(20)
+    expect(store.archiveTotalPages).toBe(4)
+  })
+
+  it('最早优先排序映射为 sort=asc', async () => {
+    const store = useContentStore()
+    mockFetchPosts.mockResolvedValue({ items: [], page: 0, size: 6, totalElements: 0, totalPages: 1 })
+
+    store.sortOrder = 'oldest'
+    await store.loadArchive()
+
+    expect(mockFetchPosts).toHaveBeenLastCalledWith(0, 6, { sort: 'asc' })
+  })
+
+  it('搜索词经 POST /search 分页覆盖全部文章，命中映射为摘要卡片', async () => {
+    const store = useContentStore()
+    mockSearchPosts.mockResolvedValue({
+      results: [{
+        type: 'POST', id: 9, title: '命中标题', excerpt: '命中摘要', category: '技术',
+        url: '/articles/hit-post', color: null, number: null, slug: 'hit-post',
+      }],
+      page: 0, size: 6, totalElements: 1, totalPages: 1,
+    })
+
+    store.query = '命中'
+    await store.loadArchive()
+
+    expect(mockSearchPosts).toHaveBeenCalledWith('命中', 0, 6)
+    expect(store.archivePosts[0]?.slug).toBe('hit-post')
+    expect(store.archivePosts[0]?.title).toBe('命中标题')
+    expect(store.archiveTotal).toBe(1)
+  })
+
+  it('搜索模式在客户端应用已选分类过滤（分类+关键词叠加语义）', async () => {
+    const store = useContentStore()
+    const hit = (slug: string, category: string) => ({
+      type: 'POST', id: 1, title: slug, excerpt: '', category,
+      url: `/articles/${slug}`, color: null, number: null, slug,
+    })
+    mockSearchPosts.mockResolvedValue({
+      results: [hit('vue-post', '技术'), hit('life-post', '生活')],
+      page: 0, size: 6, totalElements: 2, totalPages: 1,
+    })
+
+    store.category = '技术'
+    store.query = '关键词'
+    await store.loadArchive()
+
+    expect(store.archivePosts.map((p) => p.slug)).toEqual(['vue-post'])
   })
 })

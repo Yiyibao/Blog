@@ -3,9 +3,9 @@ import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  clearAdminSession, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPosts,
-  fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish, type AdminNote,
-  type AdminPost, type DishPayload, type PostPayload,
+  clearAdminSession, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPost, fetchAdminPosts,
+  fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish,
+  type AdminNoteSummary, type AdminPostSummary, type DishPayload, type PostPayload,
 } from '../api/admin'
 import type { PostStatus } from '../data'
 
@@ -27,9 +27,9 @@ function setTab(nextTab: 'posts' | 'dishes') {
   tab.value = nextTab
   void router.push({ path: '/admin', query: { section: nextTab } })
 }
-const posts = ref<AdminPost[]>([])
+const posts = ref<AdminPostSummary[]>([])
 const dishes = ref<AdminDish[]>([])
-const notes = ref<AdminNote[]>([])
+const notes = ref<AdminNoteSummary[]>([])
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
@@ -123,6 +123,8 @@ function logout() {
 }
 
 function newItem() {
+  // 使在途的 editPost 详情请求作废，避免其迟到响应覆盖新建表单
+  editRequestToken += 1
   editingId.value = null
   editorKind.value = tab.value === 'posts' ? 'post' : 'dish'
   if (editorKind.value === 'post') Object.assign(postForm, {
@@ -138,11 +140,28 @@ function newItem() {
   editorOpen.value = true
 }
 
-function editPost(post: AdminPost) {
-  editingId.value = post.id
-  editorKind.value = 'post'
-  Object.assign(postForm, { ...post, tags: post.tags.join(', '), status: post.status || 'PUBLISHED' })
-  editorOpen.value = true
+// P1-2：管理端列表为摘要 DTO（不含正文），编辑前必须先取详情，
+// 否则表单里的旧正文会在保存时覆盖该文章的真实内容。
+let editRequestToken = 0
+
+async function editPost(post: AdminPostSummary) {
+  error.value = ''
+  const token = ++editRequestToken
+  try {
+    const full = await fetchAdminPost(post.id)
+    // 等待期间用户已另开编辑（再点编辑/新建）时丢弃迟到的响应
+    if (token !== editRequestToken || editorOpen.value) return
+    editingId.value = full.id
+    editorKind.value = 'post'
+    Object.assign(postForm, {
+      slug: full.slug, title: full.title, excerpt: full.excerpt, date: full.date, readTime: full.readTime,
+      category: full.category, tags: full.tags.join(', '), color: full.color, number: full.number,
+      featured: full.featured ?? false, status: full.status || 'PUBLISHED', content: full.content,
+    })
+    editorOpen.value = true
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = '读取文章正文失败，请稍后重试。'
+  }
 }
 
 function editDish(dish: AdminDish) {
@@ -199,7 +218,7 @@ async function remove(kind: 'post' | 'dish', id: number, title: string) {
   }
 }
 
-function postStatusText(post: AdminPost) {
+function postStatusText(post: AdminPostSummary) {
   if (post.status === 'DRAFT') return '草稿'
   return post.featured ? '精选' : '已发布'
 }

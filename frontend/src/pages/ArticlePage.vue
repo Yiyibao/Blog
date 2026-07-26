@@ -12,7 +12,8 @@ const route = useRoute()
 const content = useContentStore()
 
 // NF-2：v-html 渲染点前置 DOMPurify 消毒，防存储型 XSS。
-const sanitizedContent = computed(() => sanitizeHtml(content.currentPost?.content ?? ''))
+// P1-2：正文只来自详情接口（store.currentContent），列表摘要不再携带 content。
+const sanitizedContent = computed(() => sanitizeHtml(content.currentContent))
 const ui = useUiStore()
 const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
@@ -85,7 +86,9 @@ function initArticleEnhancements() {
   })
 }
 
-watch(() => content.currentPost, (post) => {
+// 加入 articleDetailLoading 维度：详情在途时不写 404 meta；
+// 加载结束仍无文章（currentPost 保持 null 不触发自身变化）时由 loading 翻转驱动本 watcher 补写。
+watch([() => content.currentPost, () => content.articleDetailLoading], ([post]) => {
   if (post) {
     const authorName = createSiteConfig().authorName
     applyLD([
@@ -121,7 +124,7 @@ watch(() => content.currentPost, (post) => {
       },
     })
     initArticleEnhancements()
-  } else if (content.contentReady) {
+  } else if (content.contentReady && !content.articleDetailLoading) {
     apply({
       title: '页面不存在',
       description: '文章不存在或已被归档',
@@ -162,7 +165,8 @@ onUnmounted(() => {
     <article class="article-page">
       <header class="article-header section-wrap">
         <RouterLink class="back-link" to="/articles">← 返回文章</RouterLink>
-        <div class="post-meta"><span>{{ content.currentPost.category }}</span><time>{{ content.currentPost.date }}</time><span>{{ content.currentPost.readTime }} MIN READ</span></div>
+        <!-- 搜索命中映射的摘要缺 date/readTime，空值不渲染对应元信息 -->
+        <div class="post-meta"><span>{{ content.currentPost.category }}</span><time v-if="content.currentPost.date">{{ content.currentPost.date }}</time><span v-if="content.currentPost.readTime">{{ content.currentPost.readTime }} MIN READ</span></div>
         <h1>{{ content.currentPost.title }}</h1>
         <p>{{ content.currentPost.excerpt }}</p>
         <div class="article-header-actions"><div class="tag-row"><span v-for="tag in content.currentPost.tags" :key="tag"># {{ tag }}</span></div><button class="button secondary" type="button" @click="content.toggleFavorite(content.currentPost.slug); ui.showToast(content.favorites.includes(content.currentPost.slug) ? '已收藏' : '已取消收藏')">{{ content.favorites.includes(content.currentPost.slug) ? '★ 已收藏' : '☆ 收藏' }}</button></div>
@@ -189,11 +193,12 @@ onUnmounted(() => {
     </article>
   </template>
   <template v-else>
+    <!-- 详情请求在途时视为加载中，只有确认拉取结束仍无文章才呈现 404 -->
     <section class="page-hero section-wrap compact-hero">
-      <p class="eyebrow"><span /> NOT FOUND</p>
-      <h1>{{ content.contentReady ? '这篇文章不存在，' : '正在加载文章，' }}<br><em>{{ content.contentReady ? '或者已经被归档。' : '请稍候…' }}</em></h1>
-      <p v-if="content.contentReady">链接可能已失效，回到归档继续浏览其他内容。</p>
-      <RouterLink v-if="content.contentReady" class="button primary" to="/articles">返回文章归档 ↗</RouterLink>
+      <p class="eyebrow"><span /> {{ content.contentReady && !content.articleDetailLoading ? 'NOT FOUND' : 'LOADING' }}</p>
+      <h1>{{ content.contentReady && !content.articleDetailLoading ? '这篇文章不存在，' : '正在加载文章，' }}<br><em>{{ content.contentReady && !content.articleDetailLoading ? '或者已经被归档。' : '请稍候…' }}</em></h1>
+      <p v-if="content.contentReady && !content.articleDetailLoading">链接可能已失效，回到归档继续浏览其他内容。</p>
+      <RouterLink v-if="content.contentReady && !content.articleDetailLoading" class="button primary" to="/articles">返回文章归档 ↗</RouterLink>
     </section>
   </template>
 
