@@ -74,6 +74,13 @@ jobs:
         with:
           name: backend-test-output
           path: backend/test-output.log
+      # P2-5：JaCoCo 覆盖率报告随构建产出（阈值基线见计划书 6C，只升不降）
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco
 
   quality:
     runs-on: ubuntu-latest
@@ -88,7 +95,11 @@ jobs:
             base_sha="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
             git diff --check "$base_sha"..HEAD
           else
-            if git rev-parse HEAD~1 &>/dev/null; then
+            # D-11：push 检查整个推送区间（event.before..HEAD），不再只看最后一笔
+            before="${{ github.event.before }}"
+            if [[ -n "$before" && ! "$before" =~ ^0+$ ]] && git cat-file -e "$before" 2>/dev/null; then
+              git diff --check "$before"..HEAD
+            elif git rev-parse HEAD~1 &>/dev/null; then
               git diff --check HEAD~1
             else
               echo "Initial commit — no parent to compare."

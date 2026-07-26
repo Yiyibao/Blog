@@ -1,0 +1,107 @@
+name: Deploy
+
+# CD（阶段 2）：tag 或手动触发 + GitHub Environment 人工批准门。
+# 前置（用户操作，未完成前本工作流不可用）：
+#   1. 服务器建 deploy 用户与部署目录（/opt/yubai-blog/{releases,shared}）
+#   2. GitHub 仓库 Settings → Environments 建 "production" 并勾选 Required reviewers
+#   3. Secrets：DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY（私钥）/ DEPLOY_PATH（如 /opt/yubai-blog）
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Build backend jar (tests run in CI workflow)
+        working-directory: backend
+        run: mvn --batch-mode -DskipTests package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: backend/target/*.jar
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # 人工批准门：Environment 配置 Required reviewers 后，此步会挂起等待批准
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/frontend
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: dist/backend
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+      - name: Upload release (rsync over SSH)
+        run: |
+          release="release-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          echo "RELEASE_DIR=$release" >> "$GITHUB_ENV"
+          rsync -az -e "ssh -i ~/.ssh/id_deploy" dist/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/releases/$release/"
+      - name: Atomic switch + restart + health check
+        # 远端不继承 runner env——路径与 release 名以位置参数传入
+        run: |
+          ssh -i ~/.ssh/id_deploy "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            bash -s "$DEPLOY_PATH" "$RELEASE_DIR" <<'EOF'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          RELEASE_DIR="$2"
+          cd "${DEPLOY_PATH}"
+          # 原子切换：current 软链指向新 release，失败可指回旧目录回滚
+          ln -sfn "releases/${RELEASE_DIR}" current.next && mv -T current.next current
+          sudo systemctl restart yubai-blog
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"UP"'; then
+              echo "health check passed"; exit 0
+            fi
+            sleep 2
+          done
+          echo "health check FAILED after 60s" >&2
+          exit 1
+          EOF
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          RELEASE_DIR: ${{ env.RELEASE_DIR }}
+      - name: Prune old releases (keep 5)
+        run: |
+          ssh -i ~/.ssh/id_deploy "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}/releases' && ls -1t | tail -n +6 | xargs -r rm -rf --"
