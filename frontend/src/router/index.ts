@@ -25,7 +25,8 @@ const router = createRouter({
     { path: '/articles', name: 'articles', component: ArticlesPage },
     { path: '/articles/:slug', name: 'article', component: ArticlePage },
     { path: '/about', name: 'about', component: AboutPage },
-    { path: '/notes', name: 'notes', component: NotesPage },
+    // L-16/D-17：学习笔记对游客真隐藏——需登录（任意角色），深链未登录会被送去 /login?next= 接续
+    { path: '/notes', name: 'notes', component: NotesPage, meta: { requiresAuth: true } },
     { path: '/login', name: 'login', component: LoginPage },
     { path: '/account', name: 'account', component: AccountPage, meta: { requiresAuth: true } },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },

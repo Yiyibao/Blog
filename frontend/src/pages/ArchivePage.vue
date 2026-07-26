@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchPosts, fetchDishes, fetchPublishedNotes } from '../api/content'
+import { useAuthStore } from '../stores/auth'
 import type { PostSummary, Dish } from '../data'
 import type { AdminNoteSummary } from '../api/admin'
 import KnowledgeGraph from '../components/KnowledgeGraph.vue'
@@ -143,15 +144,19 @@ async function load() {
   let postErr = false
   let dishErr = false
   let noteErr = false
+  // L-16/D-17：学习笔记接口已收权——游客不请求（也不算失败），登录后时间轴恢复笔记条目
+  const includeNotes = useAuthStore().isAuthenticated
   const [postRes, dishRes, noteRes] = await Promise.all([
     fetchPosts(0, 50).catch(() => { postErr = true; return { items: [] as PostSummary[] } }),
     fetchDishes(0, 50).catch(() => { dishErr = true; return { items: [] as Dish[] } }),
-    fetchPublishedNotes(0, 50).catch(() => { noteErr = true; return { items: [] as AdminNoteSummary[] } }),
+    includeNotes
+      ? fetchPublishedNotes(0, 50).catch(() => { noteErr = true; return { items: [] as AdminNoteSummary[] } })
+      : Promise.resolve({ items: [] as AdminNoteSummary[] }),
   ])
   posts.value = postRes.items ?? []
   dishes.value = dishRes.items ?? []
   notes.value = noteRes.items ?? []
-  if (postErr && dishErr && noteErr) {
+  if (postErr && dishErr && (noteErr || !includeNotes)) {
     loadError.value = '归档数据暂时无法加载，请稍后重试。'
     partialError.value = ''
   } else {

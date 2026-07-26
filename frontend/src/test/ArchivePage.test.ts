@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 import ArchivePage from '../pages/ArchivePage.vue'
+import { useAuthStore } from '../stores/auth'
 
 const mockPosts = vi.fn()
 const mockDishes = vi.fn()
@@ -13,7 +15,19 @@ vi.mock('../api/content', () => ({
   fetchPublishedNotes: (...args: unknown[]) => mockNotes(...args),
 }))
 
+// L-16：归档 load() 按登录态决定是否请求笔记
+function signIn() {
+  useAuthStore().saveSession({
+    token: 't', tokenType: 'Bearer', username: 'gxynf',
+    expiresAt: '2099-12-31T23:59:59Z', role: 'ADMIN', displayName: '站长',
+  })
+}
+
 beforeEach(() => {
+  sessionStorage.clear()
+  localStorage.clear()
+  setActivePinia(createPinia())
+  useAuthStore().clearSession()
   mockPosts.mockReset()
   mockDishes.mockReset()
   mockNotes.mockReset()
@@ -49,7 +63,8 @@ describe('ArchivePage', () => {
   })
 
   it('shows all types by default after loading in timeline view', async () => {
-    // P1-2：列表接口为摘要 DTO，不含 content 正文
+    // L-16：登录态下时间轴含笔记；P1-2：列表接口为摘要 DTO，不含 content 正文
+    signIn()
     mockPosts.mockResolvedValue({
       items: [{ slug: 'p', title: '文章标题', excerpt: '', date: '2026-07-01', readTime: 1, category: '测试', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED' }],
       page: 0, size: 10, totalElements: 1, totalPages: 1,
@@ -124,11 +139,33 @@ describe('ArchivePage', () => {
   })
 
   it('shows error and retry button when all fetches fail', async () => {
+    signIn()
     mockPosts.mockRejectedValue(new Error('fail'))
     mockDishes.mockRejectedValue(new Error('fail'))
     mockNotes.mockRejectedValue(new Error('fail'))
     const { wrapper } = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('重试')
+  })
+
+  it('L-16: guests never request notes and see no partial-failure notice', async () => {
+    mockPosts.mockResolvedValue({ items: [], page: 0, size: 10, totalElements: 0, totalPages: 1 })
+    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
+
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    expect(mockNotes).not.toHaveBeenCalled()
+    expect(wrapper.find('.archive-partial-notice').exists()).toBe(false)
+  })
+
+  it('L-16: guests with both public fetches failing get the full error state', async () => {
+    mockPosts.mockRejectedValue(new Error('fail'))
+    mockDishes.mockRejectedValue(new Error('fail'))
+
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    expect(wrapper.find('.archive-error').exists()).toBe(true)
   })
 })

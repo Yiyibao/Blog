@@ -4,13 +4,17 @@ import { RouterLink, useRoute } from 'vue-router'
 import SiteFooter from './components/SiteFooter.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import AmbientSound from './components/AmbientSound.vue'
+import EntryGate from './components/EntryGate.vue'
 import { useUiStore } from './stores/uiStore'
+import { useAuthStore } from './stores/auth'
 import { usePageMeta } from './composables/usePageMeta'
 import { useStructuredData, webSite } from './composables/useStructuredData'
 import { refreshReveals, disconnectReveals } from './composables/useReveals'
 
 const route = useRoute()
 const ui = useUiStore()
+// L-16：角色化导航——游客隐藏学习笔记，管理员多一个"进入后台"
+const auth = useAuthStore()
 
 const menuOpen = ref(false)
 const readingProgress = ref(0)
@@ -175,10 +179,11 @@ onBeforeUnmount(() => {
         <RouterLink to="/articles"><i>✎</i>文章</RouterLink>
         <RouterLink to="/archive"><i>☰</i>归档</RouterLink>
         <RouterLink to="/recipes"><i>♨</i>美食</RouterLink>
-        <RouterLink to="/notes"><i>☘</i>学习笔记</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/notes"><i>☘</i>学习笔记</RouterLink>
         <RouterLink to="/about"><i>○</i>关于</RouterLink>
       </nav>
       <div class="header-actions">
+        <RouterLink v-if="auth.isAdmin" class="admin-entry-link" to="/admin">进入后台 ↗</RouterLink>
         <button class="icon-button search-trigger" type="button" aria-label="全站搜索" @click="ui.openSearch">⌕ <kbd>⌘K</kbd></button>
         <button class="icon-button" type="button" :aria-label="ui.isDark ? '切换浅色模式' : '切换深色模式'" @click="ui.toggleTheme">{{ ui.isDark ? '☀' : '◐' }}</button>
         <button class="menu-button" type="button" :aria-expanded="menuOpen" aria-label="打开导航" @click="menuOpen = !menuOpen">{{ menuOpen ? '关闭' : '菜单' }}</button>
@@ -190,8 +195,9 @@ onBeforeUnmount(() => {
       <RouterLink to="/articles">文章 <span>02</span></RouterLink>
       <RouterLink to="/archive">归档 <span>03</span></RouterLink>
       <RouterLink to="/recipes">美食 <span>04</span></RouterLink>
-      <RouterLink to="/notes">学习笔记 <span>05</span></RouterLink>
+      <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记 <span>05</span></RouterLink>
       <RouterLink to="/about">关于 <span>06</span></RouterLink>
+      <RouterLink v-if="auth.isAdmin" to="/admin">进入后台 <span>→</span></RouterLink>
     </nav>
 
     <main>
@@ -204,7 +210,7 @@ onBeforeUnmount(() => {
         <RouterLink to="/articles">文章</RouterLink>
         <RouterLink to="/archive">归档</RouterLink>
         <RouterLink to="/recipes">美食</RouterLink>
-        <RouterLink to="/notes">学习笔记</RouterLink>
+        <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记</RouterLink>
         <RouterLink to="/about">关于</RouterLink>
         <RouterLink to="/admin/login">管理</RouterLink>
       </div>
@@ -230,6 +236,30 @@ onBeforeUnmount(() => {
 
     <GlobalSearch :open="ui.searchOpen" @close="ui.closeSearch" />
     <AmbientSound v-if="!isAdminRoute" />
+    <!-- L-16/D-18：入口大屏（组件内部判定：仅根路径 + 无既往选择 + 未登录） -->
+    <EntryGate />
     <div class="toast" :class="{ visible: !!ui.toast }" role="status" aria-live="polite">{{ ui.toast }}</div>
   </div>
 </template>
+
+<style scoped>
+/* L-16：管理员"进入后台"入口（样式随组件走，不动全局样式表） */
+.admin-entry-link {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.admin-entry-link:hover,
+.admin-entry-link:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+</style>
