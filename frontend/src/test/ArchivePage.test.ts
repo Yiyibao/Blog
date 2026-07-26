@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import ArchivePage from '../pages/ArchivePage.vue'
 
 const mockPosts = vi.fn()
@@ -19,17 +19,31 @@ beforeEach(() => {
   mockNotes.mockReset()
 })
 
-function mountPage() {
-  const router = createRouter({ history: createWebHistory(), routes: [] })
+async function mountPage() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
+      { path: '/archive', name: 'archive', component: ArchivePage },
+      { path: '/articles', name: 'articles', component: { template: '<div>Articles</div>' } },
+      { path: '/articles/:slug', name: 'article', component: { template: '<div>Article</div>' } },
+      { path: '/notes', name: 'notes', component: { template: '<div>Notes</div>' } },
+      { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
+      { path: '/categories', name: 'categories', component: { template: '<div>Categories</div>' } },
+      { path: '/categories/:slug', name: 'category', component: { template: '<div>Category</div>' } },
+    ],
+  })
+  await router.push('/archive')
+  await router.isReady()
   return mount(ArchivePage, { global: { plugins: [router] } })
 }
 
 describe('ArchivePage', () => {
-  it('shows loading state initially', () => {
+  it('shows loading state initially', async () => {
     mockPosts.mockReturnValue(new Promise(() => {}))
     mockDishes.mockReturnValue(new Promise(() => {}))
     mockNotes.mockReturnValue(new Promise(() => {}))
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     expect(wrapper.text()).toContain('正在加载')
   })
 
@@ -46,7 +60,7 @@ describe('ArchivePage', () => {
       items: [{ id: 1, title: '笔记标题', markdownContent: '', folder: 'Test', status: 'PUBLISHED', tags: [], sourceFileName: null, wordCount: 0, version: 1, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-05-01T00:00:00Z' }],
       page: 0, size: 20, totalElements: 1, totalPages: 1,
     })
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     const text = wrapper.text()
     expect(text).toContain('文章标题')
@@ -61,7 +75,7 @@ describe('ArchivePage', () => {
     })
     mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
     mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.find('a.archive-entry').attributes('href')).toBe('/articles/test-slug')
   })
@@ -73,7 +87,7 @@ describe('ArchivePage', () => {
       items: [{ id: 42, title: 'Test Note', markdownContent: '', folder: '', status: 'PUBLISHED', tags: [], sourceFileName: null, wordCount: 0, version: 1, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' }],
       page: 0, size: 20, totalElements: 1, totalPages: 1,
     })
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.find('a.archive-entry').attributes('href')).toBe('/notes?note=42')
   })
@@ -85,7 +99,7 @@ describe('ArchivePage', () => {
       page: 0, size: 12, totalElements: 1, totalPages: 1,
     })
     mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.find('a.archive-entry').attributes('href')).toBe('/recipes?dish=test-dish')
   })
@@ -94,7 +108,7 @@ describe('ArchivePage', () => {
     mockPosts.mockRejectedValue(new Error('fail'))
     mockDishes.mockRejectedValue(new Error('fail'))
     mockNotes.mockRejectedValue(new Error('fail'))
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('重试')
   })

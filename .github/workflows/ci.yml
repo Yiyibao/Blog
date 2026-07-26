@@ -54,12 +54,6 @@ jobs:
           distribution: temurin
           java-version: 21
           cache: maven
-      - name: Compile and verify
-        run: mvn --batch-mode compile test-compile
-        env:
-          DB_URL: jdbc:postgresql://localhost:5432/yubai_blog_it
-          DB_USERNAME: yubai_app
-          DB_PASSWORD: ci-test-password
       - name: Run tests
         run: mvn --batch-mode test 2>&1 | tee test-output.log
         env:

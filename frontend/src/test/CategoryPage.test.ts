@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import CategoryPage from '../pages/CategoryPage.vue'
 
 const mockCategoryDetail = vi.fn()
@@ -24,11 +24,18 @@ function makeCategoryDetail(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function mountPage(route = '/categories/' + encodeURIComponent('\u8bbe\u8ba1\u672d\u8bb0')) {
-  const router = createRouter({ history: createWebHistory(), routes: [
-    { path: '/categories/:slug', component: CategoryPage },
-  ]})
-  router.push(route)
+async function mountPage(route = '/categories/' + encodeURIComponent('\u8bbe\u8ba1\u672d\u8bb0')) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
+      { path: '/categories', name: 'categories', component: { template: '<div>Categories</div>' } },
+      { path: '/categories/:slug', name: 'category', component: CategoryPage },
+      { path: '/articles/:slug', name: 'article', component: { template: '<div>Article</div>' } },
+    ],
+  })
+  await router.push(route)
+  await router.isReady()
   return mount(CategoryPage, { global: { plugins: [router] } })
 }
 
@@ -37,15 +44,15 @@ beforeEach(() => {
 })
 
 describe('CategoryPage', () => {
-  it('shows loading state initially', () => {
+  it('shows loading state initially', async () => {
     mockCategoryDetail.mockReturnValue(new Promise(() => {}))
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     expect(wrapper.text()).toContain('正在加载')
   })
 
   it('displays post list with correct title and tags', async () => {
     mockCategoryDetail.mockResolvedValue(makeCategoryDetail())
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('设计札记')
     expect(wrapper.text()).toContain('把复杂留给系统')
@@ -55,7 +62,7 @@ describe('CategoryPage', () => {
 
   it('generates correct article detail links', async () => {
     mockCategoryDetail.mockResolvedValue(makeCategoryDetail())
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     const link = wrapper.find('a[href="/articles/clarity-by-design"]')
     expect(link.exists()).toBe(true)
@@ -66,14 +73,14 @@ describe('CategoryPage', () => {
     // @ts-expect-error - mock response structure
     err.response = { status: 404 }
     mockCategoryDetail.mockRejectedValue(err)
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('分类不存在')
   })
 
   it('shows error state for network failure', async () => {
     mockCategoryDetail.mockRejectedValue(new Error('network error'))
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('加载失败')
     expect(wrapper.text()).not.toContain('分类不存在')
@@ -89,7 +96,7 @@ describe('CategoryPage', () => {
       page: 0,
       totalPages: 2,
     }))
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('1 / 2')
   })
@@ -98,7 +105,7 @@ describe('CategoryPage', () => {
     mockCategoryDetail.mockResolvedValue(makeCategoryDetail({
       posts: [{ slug: 'pub-post', title: '公开发布的文章', excerpt: '', date: '2026-07-18', tags: [] }],
     }))
-    const wrapper = mountPage()
+    const wrapper = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('公开发布的文章')
     expect(wrapper.text()).not.toContain('DRAFT')
