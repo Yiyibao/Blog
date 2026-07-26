@@ -22,18 +22,34 @@ public class PostService {
         this.sanitizer = sanitizer;
     }
 
-    public PageResponse<PostResponse> findPublished(int page, int size) {
+    /**
+     * P1-2：公开列表返回摘要 DTO（不含正文），并支持分类过滤与时间排序，
+     * 供前端 NF-5 服务端真分页使用。
+     *
+     * @param categorySlug 为空表示不过滤分类
+     * @param sort         asc=最早优先，其余值一律按最新优先
+     */
+    public PageResponse<PostSummary> findPublished(int page, int size, String categorySlug, String sort) {
         var pageable = pageRequest(page, size);
-        return PageResponse.from(repository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, pageable)
-            .map(post -> PostResponse.from(post, sanitizer)));
+        boolean oldestFirst = "asc".equalsIgnoreCase(sort);
+        boolean filtered = categorySlug != null && !categorySlug.isBlank();
+        var result = filtered
+            ? (oldestFirst
+                ? repository.findByCategorySlugAndStatusOrderByDateAsc(categorySlug, PostStatus.PUBLISHED, pageable)
+                : repository.findByCategorySlugAndStatusOrderByDateDesc(categorySlug, PostStatus.PUBLISHED, pageable))
+            : (oldestFirst
+                ? repository.findAllByStatusOrderByDateAsc(PostStatus.PUBLISHED, pageable)
+                : repository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, pageable));
+        return PageResponse.from(result.map(PostSummary::from));
     }
 
-    public PageResponse<PostResponse> findAdmin(PostStatus status, int page, int size) {
+    /** P1-2：管理端列表同样只出摘要，编辑时经 findOne 拉取全文。 */
+    public PageResponse<PostSummary> findAdmin(PostStatus status, int page, int size) {
         var pageable = pageRequest(page, size);
         var result = status == null
             ? repository.findAllByOrderByDateDesc(pageable)
             : repository.findAllByStatusOrderByDateDesc(status, pageable);
-        return PageResponse.from(result.map(post -> PostResponse.from(post, sanitizer)));
+        return PageResponse.from(result.map(PostSummary::from));
     }
 
     public PostResponse findPublishedBySlug(String slug) {

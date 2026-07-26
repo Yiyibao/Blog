@@ -25,6 +25,7 @@ import com.yubai.blog.note.NoteResponse;
 import com.yubai.blog.note.NoteService;
 import com.yubai.blog.note.NoteStatus;
 import com.yubai.blog.note.NoteStatusChangeRequest;
+import com.yubai.blog.note.NoteSummary;
 
 import jakarta.validation.Valid;
 
@@ -34,7 +35,8 @@ public class AdminNoteController {
     private final NoteService service;
     public AdminNoteController(NoteService service) { this.service = service; }
 
-    @GetMapping public ApiResponse<PageResponse<NoteResponse>> findAll(
+    /** P1-2：列表只出摘要，编辑时前端经 findOne 拉全文。 */
+    @GetMapping public ApiResponse<PageResponse<NoteSummary>> findAll(
         @RequestParam(required = false) NoteStatus status,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size

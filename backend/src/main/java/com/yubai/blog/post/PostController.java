@@ -32,12 +32,17 @@ public class PostController {
         this.rateLimiter = rateLimiter;
     }
 
+    /**
+     * P1-2：列表返回摘要（不含正文）；categorySlug 过滤分类，sort=asc 最早优先（缺省最新优先）。
+     */
     @GetMapping({"/posts"})
-    public ApiResponse<PageResponse<PostResponse>> findPublished(
+    public ApiResponse<PageResponse<PostSummary>> findPublished(
         @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(required = false) String categorySlug,
+        @RequestParam(defaultValue = "desc") String sort
     ) {
-        return ApiResponse.ok(service.findPublished(page, size));
+        return ApiResponse.ok(service.findPublished(page, size, categorySlug, sort));
     }
 
     @GetMapping({"/posts/{slug}"})

@@ -48,18 +48,48 @@ class PostServiceTest {
         var posts = List.of(samplePost());
         when(repository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(posts));
-        when(sanitizer.sanitize(any())).thenReturn("<p>content</p>");
 
-        var result = service.findPublished(0, 10);
+        var result = service.findPublished(0, 10, null, null);
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().get(0).slug()).isEqualTo("test-slug");
+    }
+
+    // P1-2：sort=asc 走「最早优先」查询
+    @Test
+    void findPublishedSupportsAscendingSort() {
+        var posts = List.of(samplePost());
+        when(repository.findAllByStatusOrderByDateAsc(PostStatus.PUBLISHED, PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(posts));
+
+        var result = service.findPublished(0, 10, "", "asc");
+        assertThat(result.items()).hasSize(1);
+    }
+
+    // P1-2：categorySlug 非空时走分类过滤查询
+    @Test
+    void findPublishedSupportsCategoryFilter() {
+        var posts = List.of(samplePost());
+        when(repository.findByCategorySlugAndStatusOrderByDateDesc("engineering", PostStatus.PUBLISHED, PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(posts));
+
+        var result = service.findPublished(0, 10, "engineering", "desc");
+        assertThat(result.items()).hasSize(1);
+    }
+
+    @Test
+    void findPublishedSupportsCategoryFilterWithAscendingSort() {
+        var posts = List.of(samplePost());
+        when(repository.findByCategorySlugAndStatusOrderByDateAsc("engineering", PostStatus.PUBLISHED, PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(posts));
+
+        var result = service.findPublished(0, 10, "engineering", "asc");
+        assertThat(result.items()).hasSize(1);
     }
 
     @Test
     void findAdminWithoutStatusReturnsAll() {
         var posts = List.of(samplePost());
         when(repository.findAllByOrderByDateDesc(any(Pageable.class))).thenReturn(new PageImpl<>(posts));
-        when(sanitizer.sanitize(any())).thenReturn("<p>content</p>");
 
         var result = service.findAdmin(null, 0, 10);
         assertThat(result.items()).hasSize(1);
@@ -70,7 +100,6 @@ class PostServiceTest {
         var posts = List.of(samplePost());
         when(repository.findAllByStatusOrderByDateDesc(PostStatus.DRAFT, PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(posts));
-        when(sanitizer.sanitize(any())).thenReturn("<p>content</p>");
 
         var result = service.findAdmin(PostStatus.DRAFT, 0, 10);
         assertThat(result.items()).hasSize(1);

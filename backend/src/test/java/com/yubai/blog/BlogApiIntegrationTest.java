@@ -121,7 +121,11 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data.items").isArray())
             .andExpect(jsonPath("$.data.size").value(2))
             .andExpect(jsonPath("$.data.totalElements").value(5))
-            .andExpect(jsonPath("$.data.totalPages").value(3));
+            .andExpect(jsonPath("$.data.totalPages").value(3))
+            // P1-2：列表为摘要 DTO——保留元数据字段，但绝不携带正文
+            .andExpect(jsonPath("$.data.items[0].slug").isNotEmpty())
+            .andExpect(jsonPath("$.data.items[0].likeCount").exists())
+            .andExpect(jsonPath("$.data.items[0].content").doesNotExist());
 
         String draftBody = """
             {
@@ -161,7 +165,9 @@ class BlogApiIntegrationTest {
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.totalElements").value(1))
-            .andExpect(jsonPath("$.data.items[0].slug").value("draft-only-post"));
+            .andExpect(jsonPath("$.data.items[0].slug").value("draft-only-post"))
+            // P1-2：管理端列表同样不携带正文
+            .andExpect(jsonPath("$.data.items[0].content").doesNotExist());
 
         String publishBody = """
             {
@@ -189,11 +195,37 @@ class BlogApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/posts/draft-only-post"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.title").value("已发布文章"));
+            .andExpect(jsonPath("$.data.title").value("已发布文章"))
+            // P1-2：详情保留全文
+            .andExpect(jsonPath("$.data.content").isNotEmpty());
 
         mockMvc.perform(delete("/api/v1/admin/posts/" + draftId)
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isNoContent());
+
+        // P1-2：sort=asc 最早优先
+        MvcResult ascResult = mockMvc.perform(get("/api/v1/posts").param("size", "50").param("sort", "asc"))
+            .andExpect(status().isOk())
+            .andReturn();
+        JsonNode ascItems = objectMapper.readTree(ascResult.getResponse().getContentAsString())
+            .path("data").path("items");
+        for (int i = 1; i < ascItems.size(); i++) {
+            String prev = ascItems.get(i - 1).path("date").asText();
+            String curr = ascItems.get(i).path("date").asText();
+            assertTrue(prev.compareTo(curr) <= 0, "sort=asc 应按日期升序：" + prev + " -> " + curr);
+        }
+
+        // P1-2：categorySlug 过滤——用任一已发布文章的分类做过滤，结果应全部命中该分类
+        String filterSlug = ascItems.get(0).path("categorySlug").asText();
+        MvcResult catResult = mockMvc.perform(get("/api/v1/posts").param("categorySlug", filterSlug))
+            .andExpect(status().isOk())
+            .andReturn();
+        JsonNode catItems = objectMapper.readTree(catResult.getResponse().getContentAsString())
+            .path("data").path("items");
+        assertTrue(catItems.size() > 0, "分类过滤应返回至少一篇文章");
+        for (JsonNode item : catItems) {
+            assertEquals(filterSlug, item.path("categorySlug").asText());
+        }
     }
 
     @Test
@@ -340,14 +372,21 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/notes").param("page", "0").param("size", "1")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(2))
-            .andExpect(jsonPath("$.data.totalPages").value(2));
+            .andExpect(jsonPath("$.data.totalPages").value(2))
+            // P1-2：管理端列表同样不携带正文
+            .andExpect(jsonPath("$.data.items[0].markdownContent").doesNotExist());
         mockMvc.perform(get("/api/v1/admin/notes").param("status", "DRAFT")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
         mockMvc.perform(get("/api/v1/notes"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
+            // P1-2：公开笔记列表为摘要 DTO，不含 markdown 正文
+            .andExpect(jsonPath("$.data.items[0].title").isNotEmpty())
+            .andExpect(jsonPath("$.data.items[0].markdownContent").doesNotExist());
         mockMvc.perform(get("/api/v1/notes/" + draftId)).andExpect(status().isNotFound());
-        mockMvc.perform(get("/api/v1/notes/" + publishedId)).andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/notes/" + publishedId)).andExpect(status().isOk())
+            // P1-2：详情保留全文
+            .andExpect(jsonPath("$.data.markdownContent").isNotEmpty());
 
         long version = draft.path("version").asLong();
         String updatedDraft = draftBody.replace("Draft note", "Updated draft").replace("\"version\":0", "\"version\":" + version);

@@ -21,17 +21,19 @@ public class NoteService {
 
     public NoteService(NoteRepository repository) { this.repository = repository; }
 
-    public PageResponse<NoteResponse> findAll(NoteStatus status, int page, int size) {
+    /** P1-2：列表只出摘要（不含正文），正文由 findOne / findPublishedOne 返回。 */
+    public PageResponse<NoteSummary> findAll(NoteStatus status, int page, int size) {
         var pageable = PageRequests.of(page, size);
         var result = status == null
             ? repository.findAllByOrderByUpdatedAtDesc(pageable)
             : repository.findAllByStatusOrderByUpdatedAtDesc(status, pageable);
-        return PageResponse.from(result.map(NoteResponse::from));
+        return PageResponse.from(result.map(NoteSummary::from));
     }
 
-    public PageResponse<NoteResponse> findPublished(int page, int size) {
+    /** P1-2：公开列表只出摘要（不含正文）。 */
+    public PageResponse<NoteSummary> findPublished(int page, int size) {
         return PageResponse.from(repository.findAllByStatusOrderByUpdatedAtDesc(
-            NoteStatus.PUBLISHED, PageRequests.of(page, size)).map(NoteResponse::from));
+            NoteStatus.PUBLISHED, PageRequests.of(page, size)).map(NoteSummary::from));
     }
 
     public NoteResponse findOne(long id) { return NoteResponse.from(entity(id)); }

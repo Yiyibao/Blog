@@ -15,8 +15,9 @@ public class PublicNoteController {
     private final NoteService service;
     public PublicNoteController(NoteService service) { this.service = service; }
 
+    /** P1-2：列表只出摘要（不含正文），正文经 /{id} 详情获取。 */
     @GetMapping
-    public ApiResponse<PageResponse<NoteResponse>> findPublished(
+    public ApiResponse<PageResponse<NoteSummary>> findPublished(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) { return ApiResponse.ok(service.findPublished(page, size)); }

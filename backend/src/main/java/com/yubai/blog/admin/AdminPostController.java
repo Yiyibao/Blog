@@ -18,6 +18,7 @@ import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostResponse;
 import com.yubai.blog.post.PostService;
 import com.yubai.blog.post.PostStatus;
+import com.yubai.blog.post.PostSummary;
 
 import jakarta.validation.Valid;
 
@@ -30,8 +31,9 @@ public class AdminPostController {
         this.service = service;
     }
 
+    /** P1-2：列表只出摘要，编辑时前端经 findOne 拉全文。 */
     @GetMapping
-    public ApiResponse<PageResponse<PostResponse>> findAll(
+    public ApiResponse<PageResponse<PostSummary>> findAll(
         @RequestParam(required = false) PostStatus status,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size

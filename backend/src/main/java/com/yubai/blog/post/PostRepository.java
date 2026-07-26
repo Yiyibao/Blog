@@ -31,6 +31,9 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     Page<PostEntity> findAllByStatusOrderByDateDesc(PostStatus status, Pageable pageable);
 
+    /** P1-2：公开列表「最早优先」排序。 */
+    Page<PostEntity> findAllByStatusOrderByDateAsc(PostStatus status, Pageable pageable);
+
     Optional<PostEntity> findBySlugAndStatus(String slug, PostStatus status);
 
     Optional<PostEntity> findBySlug(String slug);
@@ -62,6 +65,9 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     Page<PostEntity> findByCategoryAndStatusOrderByDateDesc(String category, PostStatus status, Pageable pageable);
 
     Page<PostEntity> findByCategorySlugAndStatusOrderByDateDesc(String categorySlug, PostStatus status, Pageable pageable);
+
+    /** P1-2：分类过滤 + 最早优先。 */
+    Page<PostEntity> findByCategorySlugAndStatusOrderByDateAsc(String categorySlug, PostStatus status, Pageable pageable);
 
     long countByCategoryAndStatus(String category, PostStatus status);
 

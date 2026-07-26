@@ -56,25 +56,25 @@ mvn spring-boot:run
 
 首批只读接口：
 
-- `GET /api/v1/posts?page=0&size=10`：仅返回 `PUBLISHED` 文章，分页字段为 `items/page/size/totalElements/totalPages`
-- `GET /api/v1/posts/{slug}`：仅返回已发布文章
+- `GET /api/v1/posts?page=0&size=10&categorySlug=&sort=desc`：仅返回 `PUBLISHED` 文章，分页字段为 `items/page/size/totalElements/totalPages`；P1-2 起列表为摘要 DTO（PostSummary，**不含 content 正文**），`categorySlug` 可选过滤分类，`sort=asc` 最早优先（缺省最新优先）
+- `GET /api/v1/posts/{slug}`：仅返回已发布文章（PostResponse，含正文，正文仅在详情返回）
 - `GET /api/v1/categories`：返回所有至少关联一篇已发布文章的分类（CategorySummary[]，含 name、slug、publishedPostCount）
 - `GET /api/v1/categories/{slug}?page=0&size=10`：返回指定分类详情及已发布文章（CategoryDetail，含 name、slug、description、total、posts 分页列表）
 - `GET /api/v1/dishes?page=0&size=20`：分页返回已发布菜品，并按精选和展示顺序排序
 - `GET /api/v1/dishes/{slug}`：读取菜品、食材、步骤和图片署名
-- `GET /api/v1/notes?page=0&size=20`、`GET /api/v1/notes/{id}`（仅返回公开学习笔记）
+- `GET /api/v1/notes?page=0&size=20`、`GET /api/v1/notes/{id}`（仅返回公开学习笔记；P1-2 起列表为摘要 DTO（NoteSummary，**不含 markdownContent**），正文经 `/{id}` 详情获取）
 - `GET /api/v1/note-assets/{publicId}`（仅当所属笔记已公开时读取笔记内图片）
 - `GET /api/v1/search?q=关键词&limit=5`：按 `articles/notes/dishes` 分组返回公开内容，每组最多 1–10 条
 
 管理接口：
 
 - `POST /api/v1/auth/login`
-- `GET /api/v1/admin/posts?page=0&size=20&status=DRAFT|PUBLISHED`：可按状态筛选
+- `GET /api/v1/admin/posts?page=0&size=20&status=DRAFT|PUBLISHED`：可按状态筛选；P1-2 起列表为摘要 DTO（不含正文），编辑前先经 `GET /{id}` 拉取全文
 - `POST /api/v1/admin/posts`：创建文章，`status` 支持 `DRAFT` / `PUBLISHED`
 - `GET|PUT|DELETE /api/v1/admin/posts/{id}`
 - `GET /api/v1/admin/dishes?page=0&size=20`、`POST /api/v1/admin/dishes`
 - `GET|PUT|DELETE /api/v1/admin/dishes/{id}`
-- `GET /api/v1/admin/notes?page=0&size=20&status=DRAFT|PUBLISHED|ARCHIVED`、`POST /api/v1/admin/notes`
+- `GET /api/v1/admin/notes?page=0&size=20&status=DRAFT|PUBLISHED|ARCHIVED`、`POST /api/v1/admin/notes`；P1-2 起列表为摘要 DTO（不含 markdownContent），选中笔记时经 `GET /{id}` 拉取全文
 - `GET|PUT|DELETE /api/v1/admin/notes/{id}`：笔记读取、自动保存与删除
 - `PUT /api/v1/admin/notes/{id}/publish|unpublish|archive`：使用当前版本号发布、恢复草稿或归档笔记
 - `POST /api/v1/admin/notes/import`：上传 `.md`、`.markdown` 或 `.txt`（最大 2 MB）
