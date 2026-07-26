@@ -27,7 +27,15 @@ jobs:
       - run: npm test
       - run: npm run test:typecheck
       - run: npm run build
-      - run: npm audit --audit-level=high
+      # P2-6：运行时（生产）依赖漏洞保持阻塞门槛
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      # P2-6：完整审计降为非阻塞记录——12 个 high 全部来自测试/构建链的
+      # brace-expansion 传递依赖（minimatch→glob→workbox-build→vite-plugin-pwa），
+      # 上游修复后恢复阻塞（每月复查，见 v5 计划 6F）
+      - name: Audit all dependencies (informational)
+        run: npm audit --audit-level=high
+        continue-on-error: true
 
   backend:
     runs-on: ubuntu-latest
