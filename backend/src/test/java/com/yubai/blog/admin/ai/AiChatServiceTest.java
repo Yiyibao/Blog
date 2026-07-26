@@ -24,6 +24,7 @@ class AiChatServiceTest {
     private OpenAiCompatibleClient client;
     private AiChatService service;
     private AiCrypto crypto;
+    private AiUsageService usageService;
 
     private void build(boolean envEnabled, String envKey, String masterKey) {
         properties = new AiProperties();
@@ -39,7 +40,9 @@ class AiChatServiceTest {
         crypto = new AiCrypto(properties);
         var providerService = new AiProviderService(
             repository, crypto, new AiBaseUrlValidator(properties), client, properties);
-        service = new AiChatService(properties, providerService, client);
+        // 4A-6：用量服务以 mock 注入——预算/审计逻辑由 AiUsageServiceTest 独立覆盖
+        usageService = mock(AiUsageService.class);
+        service = new AiChatService(properties, providerService, client, usageService);
     }
 
     private static ChatRequest request(String content) {

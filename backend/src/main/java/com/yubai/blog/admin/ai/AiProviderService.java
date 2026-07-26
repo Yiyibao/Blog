@@ -207,8 +207,10 @@ public class AiProviderService {
         if (entity.getApiKeyEncrypted() != null && !entity.getApiKeyEncrypted().isBlank()) {
             apiKey = crypto.decrypt(entity.getApiKeyEncrypted());
         }
-        return new AiEndpoint(entity.getBaseUrl(), apiKey, model,
-            properties.getRequestTimeout(), properties.getMaxOutputTokens());
+        // 4A-6：providerId 与日限额随端点携带，供用量审计与预算检查
+        return new AiEndpoint(entity.getId(), entity.getBaseUrl(), apiKey, model,
+            properties.getRequestTimeout(), properties.getMaxOutputTokens(),
+            entity.getDailyRequestLimit(), entity.getDailyTokenLimit());
     }
 
     private String keyTail(AiProviderEntity entity) {
