@@ -12,6 +12,8 @@ import type { PostStatus } from '../data'
 import AdminSidebar from './AdminSidebar.vue'
 import TyporaEditor from './TyporaEditor.vue'
 import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
+import PostRevisionDrawer from './PostRevisionDrawer.vue'
+import type { AdminPost } from '../api/admin'
 
 const router = useRouter()
 const route = useRoute()
@@ -115,6 +117,20 @@ function applyAiAction(action: AiActionKind, text: string) {
     else postForm.content = `${postForm.content.trimEnd()}\n\n${text}`
   }
 }
+/** 4C：版本历史抽屉——恢复后回填表单（恢复只回写正文相关字段，meta 保持编辑器现值）。 */
+const revisionDrawerOpen = ref(false)
+
+function applyRestoredPost(post: AdminPost) {
+  Object.assign(postForm, {
+    title: post.title,
+    excerpt: post.excerpt,
+    content: post.content,
+    markdownContent: post.markdownContent ?? '',
+    contentFormat: post.contentFormat ?? 'HTML',
+  })
+  revisionDrawerOpen.value = false
+}
+
 const dishForm = reactive({
   slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
   prepMinutes: 20, difficulty: '家常' as AdminDish['difficulty'], rating: 4.5, featured: false, published: true,
@@ -339,7 +355,7 @@ onMounted(load)
 
     <div v-if="editorOpen" class="admin-editor-backdrop" @click.self="editorOpen = false">
       <form class="admin-editor" @submit.prevent="save">
-        <header><div><small>{{ editingId ? 'EDIT RECORD' : 'NEW RECORD' }}</small><h2>{{ editingId ? '编辑' : '新建' }}{{ editorNoun }}</h2></div><button type="button" aria-label="关闭编辑器" @click="editorOpen = false">×</button></header>
+        <header><div><small>{{ editingId ? 'EDIT RECORD' : 'NEW RECORD' }}</small><h2>{{ editingId ? '编辑' : '新建' }}{{ editorNoun }}</h2></div><div class="editor-head-actions"><button v-if="editorKind === 'post' && editingId" type="button" class="revision-trigger" @click="revisionDrawerOpen = true">↺ 历史版本</button><button type="button" aria-label="关闭编辑器" @click="editorOpen = false">×</button></div></header>
         <template v-if="editorKind === 'post'">
           <div class="admin-form-grid"><label>标题<input v-model="postForm.title" required maxlength="200"></label><label>Slug<input v-model="postForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="postForm.category" required></label><label>发布日期<input v-model="postForm.date" type="date" required></label><label>阅读时间（分钟）<input v-model.number="postForm.readTime" type="number" min="1" max="180" required></label><label>编号<input v-model="postForm.number" required maxlength="10"></label><label>颜色<input v-model="postForm.color" type="color" required></label><label>状态<select v-model="postForm.status" required><option value="DRAFT">草稿</option><option value="PUBLISHED">发布</option></select></label><label class="admin-check"><input v-model="postForm.featured" type="checkbox">设为精选文章</label></div>
           <label>标签（逗号分隔）<input v-model="postForm.tags" required placeholder="Vue, TypeScript"></label>
@@ -376,10 +392,32 @@ onMounted(load)
         <footer><button class="button secondary" type="button" @click="editorOpen = false">取消</button><button class="button primary" type="submit" :disabled="saving">{{ saving ? '正在保存…' : '保存内容 ↗' }}</button></footer>
       </form>
     </div>
+
+    <!-- 4C：版本历史抽屉（仅编辑既有文章时可用） -->
+    <PostRevisionDrawer
+      v-if="revisionDrawerOpen && editingId && editorKind === 'post'"
+      :post-id="editingId"
+      :current-text="currentPostContext()"
+      @close="revisionDrawerOpen = false"
+      @restored="applyRestoredPost"
+    />
   </section>
 </template>
 
 <style scoped>
+/* 4C：编辑器头部动作区与历史版本入口 */
+.editor-head-actions { display: flex; align-items: center; gap: 8px; }
+.revision-trigger {
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.revision-trigger:hover { border-color: var(--accent); }
+
 /* 3A-3：文章 Markdown 编辑区与存量转换提示条 */
 .post-markdown-field {
   display: flex;

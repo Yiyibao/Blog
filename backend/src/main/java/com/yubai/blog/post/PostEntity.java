@@ -137,6 +137,14 @@ public class PostEntity {
         this.markdownContent = markdown;
         this.contentFormat = format;
     }
+    /** 4C：版本恢复——只回写正文相关字段（快照存的是消毒后落库值），meta 不动。 */
+    void applyRevision(String title, String excerpt, String content, String markdownContent, ContentFormat format) {
+        this.title = title;
+        this.excerpt = excerpt;
+        this.content = content;
+        this.markdownContent = markdownContent;
+        this.contentFormat = format;
+    }
     public int getLikeCount() { return likeCount; }
     public void setLikeCount(int likeCount) { this.likeCount = likeCount; }
     public int getViewsCount() { return viewsCount; }

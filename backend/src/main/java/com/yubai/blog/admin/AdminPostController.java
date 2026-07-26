@@ -21,6 +21,7 @@ import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.post.PostMarkdownConversionService;
 import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostResponse;
+import com.yubai.blog.post.PostRevisionService;
 import com.yubai.blog.post.PostService;
 import com.yubai.blog.post.PostStatus;
 import com.yubai.blog.post.PostSummary;
@@ -35,12 +36,14 @@ public class AdminPostController {
     private final PostService service;
     private final PostMarkdownConversionService conversionService;
     private final SeriesService seriesService;
+    private final PostRevisionService revisionService;
 
     public AdminPostController(PostService service, PostMarkdownConversionService conversionService,
-                               SeriesService seriesService) {
+                               SeriesService seriesService, PostRevisionService revisionService) {
         this.service = service;
         this.conversionService = conversionService;
         this.seriesService = seriesService;
+        this.revisionService = revisionService;
     }
 
     /**
@@ -72,12 +75,33 @@ public class AdminPostController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PostResponse> create(@Valid @RequestBody PostRequest request) {
-        return ApiResponse.created(service.create(request));
+        var response = service.create(request);
+        revisionService.record(response.id()); // 4C：保存即快照一版
+        return ApiResponse.created(response);
     }
 
     @PutMapping("/{id}")
     public ApiResponse<PostResponse> update(@PathVariable long id, @Valid @RequestBody PostRequest request) {
-        return ApiResponse.ok(service.update(id, request));
+        var response = service.update(id, request);
+        revisionService.record(id);
+        return ApiResponse.ok(response);
+    }
+
+    // 4C：版本历史——列表/查看/恢复（恢复 = 回写正文字段并产生新版本）
+    @GetMapping("/{id}/revisions")
+    public ApiResponse<java.util.List<PostRevisionService.RevisionSummary>> revisions(@PathVariable long id) {
+        return ApiResponse.ok(revisionService.list(id));
+    }
+
+    @GetMapping("/{id}/revisions/{revisionId}")
+    public ApiResponse<PostRevisionService.RevisionDetail> revision(@PathVariable long id,
+                                                                    @PathVariable long revisionId) {
+        return ApiResponse.ok(revisionService.findOne(id, revisionId));
+    }
+
+    @PostMapping("/{id}/revisions/{revisionId}/restore")
+    public ApiResponse<PostResponse> restoreRevision(@PathVariable long id, @PathVariable long revisionId) {
+        return ApiResponse.ok(revisionService.restore(id, revisionId));
     }
 
     @DeleteMapping("/{id}")

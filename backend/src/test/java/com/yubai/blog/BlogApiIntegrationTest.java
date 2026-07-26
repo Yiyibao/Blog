@@ -1208,6 +1208,86 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(57)
+    void postRevisionsSnapshotOnSaveAndRestoreRollsBackContent() throws Exception {
+        // 4C：保存即快照→列表按新到旧→查看旧版→恢复回滚正文（恢复也产生新版本）→保留最近 10 版
+        String token = login();
+        rateLimiter.reset();
+
+        String bodyTemplate = """
+            {"slug":"revision-post","title":"%s","excerpt":"4C 验证",
+             "date":"2026-07-27","readTime":3,"category":"工程实践","tags":["revision"],
+             "color":"#112233","number":"R1","featured":false,"status":"DRAFT",
+             "contentFormat":"MARKDOWN","markdownContent":"%s"}
+            """;
+        long postId = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bodyTemplate.formatted("版本一", "# v1 正文")))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+
+        mockMvc.perform(put("/api/v1/admin/posts/" + postId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bodyTemplate.formatted("版本二", "# v2 正文")))
+            .andExpect(status().isOk());
+
+        // 列表：两版，新到旧
+        var revisions = objectMapper.readTree(mockMvc.perform(get("/api/v1/admin/posts/" + postId + "/revisions")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertEquals(2, revisions.size(), "创建+更新应各快照一版");
+        assertEquals("版本二", revisions.get(0).path("title").asText());
+        long firstRevisionId = revisions.get(1).path("id").asLong();
+
+        // 查看旧版正文
+        mockMvc.perform(get("/api/v1/admin/posts/" + postId + "/revisions/" + firstRevisionId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("版本一"))
+            .andExpect(jsonPath("$.data.markdownContent").value("# v1 正文"));
+
+        // 恢复旧版：正文回滚且 revisions +1
+        mockMvc.perform(post("/api/v1/admin/posts/" + postId + "/revisions/" + firstRevisionId + "/restore")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("版本一"))
+            .andExpect(jsonPath("$.data.markdownContent").value("# v1 正文"));
+        mockMvc.perform(get("/api/v1/admin/posts/" + postId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("版本一"));
+        assertEquals(3, objectMapper.readTree(mockMvc.perform(get("/api/v1/admin/posts/" + postId + "/revisions")
+                .header("Authorization", "Bearer " + token))
+            .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8)).path("data").size());
+
+        // 截断：继续保存到超限，只留最近 10 版
+        for (int i = 0; i < 9; i++) {
+            mockMvc.perform(put("/api/v1/admin/posts/" + postId)
+                    .header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(bodyTemplate.formatted("轮次" + i, "# 轮次 " + i)))
+                .andExpect(status().isOk());
+        }
+        assertEquals(10, objectMapper.readTree(mockMvc.perform(get("/api/v1/admin/posts/" + postId + "/revisions")
+                .header("Authorization", "Bearer " + token))
+            .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8)).path("data").size(),
+            "版本数应截断到最近 10 版");
+
+        // 越权别篇的版本号 404
+        mockMvc.perform(get("/api/v1/admin/posts/999999/revisions/" + firstRevisionId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound());
+
+        mockMvc.perform(delete("/api/v1/admin/posts/" + postId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(53)
     void stage3ViewCountsRssAndNeighborsWork() throws Exception {
         rateLimiter.reset();

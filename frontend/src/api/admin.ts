@@ -316,6 +316,32 @@ export function deleteSeries(id: number) {
   return api.delete(`/admin/series/${id}`, { headers: tokenHeader() })
 }
 
+// 4C：文章版本历史——保存即快照（后端保留最近 10 版），恢复=回写正文并产生新版本
+export interface PostRevisionSummary {
+  id: number
+  title: string
+  contentFormat: 'HTML' | 'MARKDOWN'
+  createdAt: string
+}
+
+export interface PostRevisionDetail extends PostRevisionSummary {
+  excerpt: string
+  content: string
+  markdownContent: string | null
+}
+
+export function fetchPostRevisions(postId: number) {
+  return unwrap<PostRevisionSummary[]>(api.get(`/admin/posts/${postId}/revisions`, { headers: tokenHeader() }))
+}
+
+export function fetchPostRevision(postId: number, revisionId: number) {
+  return unwrap<PostRevisionDetail>(api.get(`/admin/posts/${postId}/revisions/${revisionId}`, { headers: tokenHeader() }))
+}
+
+export function restorePostRevision(postId: number, revisionId: number) {
+  return unwrap<AdminPost>(api.post(`/admin/posts/${postId}/revisions/${revisionId}/restore`, null, { headers: tokenHeader() }))
+}
+
 // 3A-2：存量 HTML→Markdown 一次性转换（响应即人工校对清单）
 export interface MarkdownConversionReport {
   id: number
