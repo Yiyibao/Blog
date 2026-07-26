@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchDish, fetchDishes, fetchDishFavorites, favoriteDish, type DishFavoriteItem } from '../../api/content'
 import type { Dish } from '../../data'
 import { createSiteConfig, resolveUrl } from '../../config/site'
@@ -8,8 +8,10 @@ import { usePageMeta, cleanText } from '../../composables/usePageMeta'
 import { recipe, breadcrumbList, useStructuredData } from '../../composables/useStructuredData'
 import { useUiStore } from '../../stores/uiStore'
 import { removeLegacyKey } from '../../utils/localStore'
+import { useRequestToken } from '../../composables/useRequestToken'
 import DishPanel from './DishPanel.vue'
 const route = useRoute()
+const router = useRouter()
 const dishes = ref<Dish[]>([])
 const dishPage = ref(0)
 const dishTotal = ref(0)
@@ -141,18 +143,27 @@ async function openBySlug(slug: string, event?: Event) {
   await openDish(dish, event)
 }
 
+// FD-4：深链详情缓存——补取的菜不再插进列表头（会顶掉 featured 大卡、污染分页语义）
+const detailCache = new Map<string, Dish>()
+const detailToken = useRequestToken()
+
 async function openRouteDish() {
+  // 每次路由变化先作废在途详情请求：同步命中路径也要让迟到响应失效
+  const token = detailToken.next()
   const rawSlug = Array.isArray(route.query.dish) ? route.query.dish[0] : route.query.dish
   const slug = typeof rawSlug === 'string' ? rawSlug.trim() : ''
   if (!slug) {
     if (selectedDish.value) closeDish()
     return
   }
-  let dish = dishes.value.find(item => item.slug === slug)
+  if (selectedDish.value?.slug === slug) return
+  let dish = dishes.value.find(item => item.slug === slug) ?? detailCache.get(slug)
   if (!dish) {
     try {
-      dish = await fetchDish(slug)
-      dishes.value = [dish, ...dishes.value.filter(item => item.id !== dish?.id)]
+      const fetched = await fetchDish(slug)
+      if (!detailToken.isCurrent(token)) return
+      detailCache.set(slug, fetched)
+      dish = fetched
     } catch {
       return
     }
@@ -161,12 +172,21 @@ async function openRouteDish() {
 }
 
 async function openDish(dish: Dish, event?: Event) {
-  lastTrigger = event?.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  if (event) {
+    lastTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  }
   selectedDish.value = dish
+  if (route.query.dish !== dish.slug) {
+    void router.replace({ query: { ...route.query, dish: dish.slug } })
+  }
 }
 
 function closeDish() {
   selectedDish.value = null
+  if (route.query.dish) {
+    const { dish: _removed, ...rest } = route.query
+    void router.replace({ query: rest })
+  }
   nextTick(() => lastTrigger?.focus())
 }
 
