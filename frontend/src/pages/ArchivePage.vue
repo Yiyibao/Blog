@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchPosts, fetchDishes, fetchPublishedNotes } from '../api/content'
 import type { Post, Dish } from '../data'
 import type { AdminNote } from '../api/admin'
+import KnowledgeGraph from '../components/KnowledgeGraph.vue'
 
 type ArchiveContentType = 'ARTICLE' | 'NOTE' | 'DISH'
 
@@ -17,8 +18,6 @@ interface ArchiveEntry {
   tags: string[]
 }
 
-import KnowledgeGraph from '../components/KnowledgeGraph.vue'
-
 const route = useRoute()
 const router = useRouter()
 
@@ -28,14 +27,41 @@ const notes = ref<AdminNote[]>([])
 const loading = ref(true)
 const loadError = ref('')
 
+const viewMode = computed(() => {
+  const raw = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view
+  return raw === 'graph' ? 'graph' : 'timeline'
+})
+
 const typeFilter = computed(() => {
   const raw = Array.isArray(route.query.type) ? route.query.type[0] : route.query.type
   const valid = ['article', 'note', 'dish']
   return typeof raw === 'string' && valid.includes(raw) ? raw : 'all'
 })
 
-function setFilter(value: string) {
-  router.replace(value === 'all' ? { query: {} } : { query: { type: value } })
+const selectedRelation = computed(() => {
+  const raw = Array.isArray(route.query.relation) ? route.query.relation[0] : route.query.relation
+  return typeof raw === 'string' ? raw : ''
+})
+
+function updateQuery(patch: { view?: string; type?: string; relation?: string | null }) {
+  const query = { ...route.query }
+
+  if (patch.view !== undefined) {
+    if (patch.view === 'timeline' || !patch.view) delete query.view
+    else query.view = patch.view
+  }
+
+  if (patch.type !== undefined) {
+    if (patch.type === 'all' || !patch.type) delete query.type
+    else query.type = patch.type
+  }
+
+  if (patch.relation !== undefined) {
+    if (!patch.relation) delete query.relation
+    else query.relation = patch.relation
+  }
+
+  void router.replace({ query })
 }
 
 function normalizeDate(item: Post | Dish | AdminNote, type: ArchiveContentType): string {
@@ -71,7 +97,17 @@ const allEntries = computed(() => {
   if (typeFilter.value === 'all' || typeFilter.value === 'note') {
     result.push(...notes.value.map(n => toEntry(n, 'NOTE')))
   }
-  return result.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+
+  let filtered = result
+  if (selectedRelation.value) {
+    const rel = selectedRelation.value.toLowerCase()
+    filtered = result.filter(e =>
+      e.tags.some(t => t.toLowerCase() === rel) ||
+      e.category.toLowerCase() === rel
+    )
+  }
+
+  return filtered.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
 })
 
 interface MonthGroup {
@@ -122,6 +158,8 @@ const typeLabel: Record<string, string> = {
   DISH: '菜品',
 }
 
+const graphType = computed(() => ({ article: 'POST', note: 'NOTE', dish: 'DISH' } as const)[typeFilter.value as 'article' | 'note' | 'dish'] || 'ALL')
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -142,9 +180,14 @@ async function load() {
   loading.value = false
 }
 
-watch(() => route.query.type, () => {
-  if (!loading.value) load()
-})
+function handleSelectTag(tagText: string) {
+  updateQuery({ relation: tagText || null })
+}
+
+function handleGraphType(type: 'ALL' | 'POST' | 'NOTE' | 'DISH' | 'TAG') {
+  const queryType = ({ POST: 'article', NOTE: 'note', DISH: 'dish' } as const)[type as 'POST' | 'NOTE' | 'DISH'] || 'all'
+  updateQuery({ type: queryType })
+}
 
 onMounted(load)
 </script>
@@ -152,58 +195,98 @@ onMounted(load)
 <template>
   <section class="archive-page section-wrap">
     <header class="archive-head">
-      <p class="eyebrow"><span /> ARCHIVE / 内容存档</p>
+      <div class="head-top">
+        <p class="eyebrow"><span /> ARCHIVE / 内容存档</p>
+        <nav class="view-switch-nav" role="tablist" aria-label="视图模式">
+          <button
+            role="tab"
+            :aria-selected="viewMode === 'timeline'"
+            class="view-switch-btn"
+            :class="{ active: viewMode === 'timeline' }"
+            @click="updateQuery({ view: 'timeline' })"
+          >
+            <i>☰</i> 时间轴
+          </button>
+          <button
+            role="tab"
+            :aria-selected="viewMode === 'graph'"
+            class="view-switch-btn"
+            :class="{ active: viewMode === 'graph' }"
+            @click="updateQuery({ view: 'graph' })"
+          >
+            <i>✦</i> 关联图
+          </button>
+        </nav>
+      </div>
+
       <h1>从开始到现在，<br><em>所有记录都在这里。</em></h1>
-      <p>按时间倒序浏览所有公开的文章、学习笔记和菜谱。</p>
+      <p>按时间倒序浏览所有公开的文章、学习笔记和菜谱，或通过关联图谱发现知识脉络。</p>
     </header>
 
-    <KnowledgeGraph />
-
-    <div class="archive-toolbar">
-      <strong>{{ totalCount }} 条记录</strong>
-      <nav class="archive-filters" role="tablist" aria-label="内容类型筛选">
-        <button
-          v-for="opt in [['all', '全部'], ['article', '文章'], ['note', '学习笔记'], ['dish', '菜品']]"
-          :key="opt[0]"
-          role="tab"
-          :aria-selected="typeFilter === opt[0]"
-          :class="{ active: typeFilter === opt[0] }"
-          @click="setFilter(opt[0])"
-        >{{ opt[1] }}</button>
-      </nav>
+    <!-- Graph View -->
+    <div v-if="viewMode === 'graph'" class="archive-graph-view">
+      <KnowledgeGraph
+        :selected-relation="selectedRelation"
+        :selected-type="graphType"
+        @select-tag="handleSelectTag"
+        @select-type="handleGraphType"
+      />
     </div>
 
-    <div v-if="loading" class="archive-loading" role="status">
-      <span>正在加载归档数据…</span>
-    </div>
+    <!-- Timeline View -->
+    <div v-else-if="viewMode === 'timeline'" class="archive-timeline-view">
+      <div class="archive-toolbar">
+        <div class="toolbar-left">
+          <strong>{{ totalCount }} 条记录</strong>
+          <span v-if="selectedRelation" class="relation-pill">
+            关联: {{ selectedRelation }}
+            <button type="button" aria-label="清除关联筛选" @click="updateQuery({ relation: null })">✕</button>
+          </span>
+        </div>
+        <nav class="archive-filters" role="tablist" aria-label="内容类型筛选">
+          <button
+            v-for="opt in [['all', '全部'], ['article', '文章'], ['note', '学习笔记'], ['dish', '菜谱']]"
+            :key="opt[0]"
+            role="tab"
+            :aria-selected="typeFilter === opt[0]"
+            :class="{ active: typeFilter === opt[0] }"
+            @click="updateQuery({ type: opt[0] })"
+          >{{ opt[1] }}</button>
+        </nav>
+      </div>
 
-    <div v-else-if="loadError" class="archive-error" role="alert">
-      <h2>加载失败</h2>
-      <p>{{ loadError }}</p>
-      <button class="button primary" type="button" @click="load">重试</button>
-    </div>
+      <div v-if="loading" class="archive-loading" role="status">
+        <span>正在加载归档数据…</span>
+      </div>
 
-    <div v-else-if="totalCount === 0" class="archive-empty">
-      <h2>暂无记录</h2>
-      <p>没有符合条件的公开内容。</p>
-    </div>
+      <div v-else-if="loadError" class="archive-error" role="alert">
+        <h2>加载失败</h2>
+        <p>{{ loadError }}</p>
+        <button class="button primary" type="button" @click="load">重试</button>
+      </div>
 
-    <div v-else class="archive-body">
-      <div v-for="yearGroup in groups" :key="yearGroup.year" class="archive-year">
-        <h2 class="year-title">{{ yearGroup.year }}</h2>
-        <div v-for="monthGroup in yearGroup.months" :key="monthGroup.month" class="archive-month">
-          <h3 class="month-title">{{ monthGroup.label }}</h3>
-          <div class="archive-list">
-            <a
-              v-for="(entry, idx) in monthGroup.entries"
-              :key="`${entry.type}-${idx}-${entry.url}`"
-              :href="entry.url"
-              class="archive-entry"
-            >
-              <span class="entry-type" :class="`type-${entry.type.toLowerCase()}`">{{ typeLabel[entry.type] }}</span>
-              <span class="entry-title">{{ entry.title }}</span>
-              <span v-if="entry.category" class="entry-category">{{ entry.category }}</span>
-            </a>
+      <div v-else-if="totalCount === 0" class="archive-empty">
+        <h2>暂无记录</h2>
+        <p>没有符合条件的公开内容。</p>
+      </div>
+
+      <div v-else class="archive-body">
+        <div v-for="yearGroup in groups" :key="yearGroup.year" class="archive-year">
+          <h2 class="year-title">{{ yearGroup.year }}</h2>
+          <div v-for="monthGroup in yearGroup.months" :key="monthGroup.month" class="archive-month">
+            <h3 class="month-title">{{ monthGroup.label }}</h3>
+            <div class="archive-list">
+              <a
+                v-for="(entry, idx) in monthGroup.entries"
+                :key="`${entry.type}-${idx}-${entry.url}`"
+                :href="entry.url"
+                class="archive-entry"
+              >
+                <span class="entry-type" :class="`type-${entry.type.toLowerCase()}`">{{ typeLabel[entry.type] }}</span>
+                <span class="entry-title">{{ entry.title }}</span>
+                <span v-if="entry.category" class="entry-category">{{ entry.category }}</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -217,11 +300,22 @@ onMounted(load)
   padding-bottom: 110px;
 }
 .archive-head { margin-bottom: 40px; }
+.head-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.view-switch-nav { display: flex; gap: 4px; background: var(--surface); padding: 4px; border-radius: 999px; border: 1px solid var(--line); }
+.view-switch-btn { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; border: 0; background: transparent; color: var(--muted); font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: background 0.2s, color 0.2s; }
+.view-switch-btn.active { background: var(--ink); color: var(--paper); }
+.view-switch-btn i { font-style: normal; }
+
 .archive-head h1 { margin: 16px 0 0; font: 400 clamp(2.5rem, 5vw, 4.2rem)/1.04 Georgia, "Songti SC", serif; letter-spacing: -.05em; }
 .archive-head h1 em { color: var(--accent); font-style: normal; }
 .archive-head p { margin-top: 18px; color: var(--muted); font-size: .95rem; line-height: 1.7; max-width: 560px; }
+
 .archive-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-bottom: 36px; }
+.toolbar-left { display: flex; align-items: center; gap: 12px; }
 .archive-toolbar strong { font-size: .85rem; font-weight: 520; color: var(--muted); white-space: nowrap; }
+.relation-pill { display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.78rem; font-weight: 500; }
+.relation-pill button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0; font-size: 0.75rem; }
+
 .archive-filters { display: flex; gap: 4px; overflow-x: auto; }
 .archive-filters button { flex: 0 0 auto; padding: 8px 13px; color: var(--muted); background: transparent; border: 0; border-radius: 8px; font-size: .78rem; cursor: pointer; transition: color .15s, background .15s; }
 .archive-filters button:hover { color: var(--ink); }

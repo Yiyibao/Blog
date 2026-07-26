@@ -183,6 +183,11 @@ class BlogApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"username\":\"admin\",\"password\":\"wrong\"}"))
             .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/admin/ai/chat")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
+            .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -823,14 +828,34 @@ class BlogApiIntegrationTest {
     @Test
     @Order(17)
     void graphNodesArePublicAndReturnsConnectedData() throws Exception {
-        mockMvc.perform(get("/api/v1/graph/nodes"))
+        var body = mockMvc.perform(get("/api/v1/graph/nodes"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data.nodes").isArray())
             .andExpect(jsonPath("$.data.edges").isArray())
             .andExpect(jsonPath("$.data.nodes[0].type").isString())
             .andExpect(jsonPath("$.data.nodes[0].label").isString())
-            .andExpect(jsonPath("$.data.nodes[0].url").isString());
+            .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        var nodes = objectMapper.readTree(body).path("data").path("nodes");
+        assertTrue(nodes.size() > 0, "graph should expose nodes");
+
+        var sawTag = false;
+        var sawContent = false;
+        for (var node : nodes) {
+            var url = node.path("url");
+            if ("TAG".equals(node.path("type").asText())) {
+                sawTag = true;
+                // Public category pages were removed: TAG nodes are filter hubs with no URL.
+                assertTrue(url.isNull(), "TAG node url must be null but was " + url);
+            } else {
+                sawContent = true;
+                assertTrue(url.isTextual() && !url.asText().isBlank(), "content node must keep a real url");
+            }
+            assertFalse("/categories".equals(url.asText(null)), "no node may link to /categories");
+        }
+        assertTrue(sawTag, "graph should expose TAG nodes");
+        assertTrue(sawContent, "graph should expose content nodes");
     }
 
     @Test

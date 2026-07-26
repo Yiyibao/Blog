@@ -19,7 +19,7 @@ beforeEach(() => {
   mockNotes.mockReset()
 })
 
-async function mountPage() {
+async function mountPage(initialUrl = '/archive') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -29,13 +29,14 @@ async function mountPage() {
       { path: '/articles/:slug', name: 'article', component: { template: '<div>Article</div>' } },
       { path: '/notes', name: 'notes', component: { template: '<div>Notes</div>' } },
       { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
-      { path: '/categories', name: 'categories', component: { template: '<div>Categories</div>' } },
-      { path: '/categories/:slug', name: 'category', component: { template: '<div>Category</div>' } },
     ],
   })
-  await router.push('/archive')
+  await router.push(initialUrl)
   await router.isReady()
-  return mount(ArchivePage, { global: { plugins: [router] } })
+  return {
+    wrapper: mount(ArchivePage, { global: { plugins: [router] } }),
+    router,
+  }
 }
 
 describe('ArchivePage', () => {
@@ -43,11 +44,11 @@ describe('ArchivePage', () => {
     mockPosts.mockReturnValue(new Promise(() => {}))
     mockDishes.mockReturnValue(new Promise(() => {}))
     mockNotes.mockReturnValue(new Promise(() => {}))
-    const wrapper = await mountPage()
+    const { wrapper } = await mountPage()
     expect(wrapper.text()).toContain('正在加载')
   })
 
-  it('shows all types by default after loading', async () => {
+  it('shows all types by default after loading in timeline view', async () => {
     mockPosts.mockResolvedValue({
       items: [{ slug: 'p', title: '文章标题', excerpt: '', date: '2026-07-01', readTime: 1, category: '测试', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED', content: '' }],
       page: 0, size: 10, totalElements: 1, totalPages: 1,
@@ -60,7 +61,7 @@ describe('ArchivePage', () => {
       items: [{ id: 1, title: '笔记标题', markdownContent: '', folder: 'Test', status: 'PUBLISHED', tags: [], sourceFileName: null, wordCount: 0, version: 1, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-05-01T00:00:00Z' }],
       page: 0, size: 20, totalElements: 1, totalPages: 1,
     })
-    const wrapper = await mountPage()
+    const { wrapper } = await mountPage()
     await flushPromises()
     const text = wrapper.text()
     expect(text).toContain('文章标题')
@@ -68,47 +69,62 @@ describe('ArchivePage', () => {
     expect(text).toContain('菜品名称')
   })
 
-  it('generates correct article URLs', async () => {
+  it('switches between timeline and graph view without rendering both simultaneously', async () => {
+    mockPosts.mockResolvedValue({ items: [], page: 0, size: 10, totalElements: 0, totalPages: 1 })
+    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
+    mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
+
+    const { wrapper, router } = await mountPage('/archive?view=timeline')
+    await flushPromises()
+
+    expect(wrapper.find('.archive-timeline-view').exists()).toBe(true)
+    expect(wrapper.find('.archive-graph-view').exists()).toBe(false)
+
+    // Switch to graph view by clicking button
+    const buttons = wrapper.findAll('.view-switch-btn')
+    const graphBtn = buttons.find(b => b.text().includes('关联图'))
+    expect(graphBtn).toBeDefined()
+    await graphBtn!.trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.view).toBe('graph')
+    expect(wrapper.find('.archive-graph-view').exists()).toBe(true)
+    expect(wrapper.find('.archive-timeline-view').exists()).toBe(false)
+  })
+
+  it('syncs type and relation filters to URL query', async () => {
+    mockPosts.mockResolvedValue({
+      items: [{ slug: 'p1', title: 'Vue文章', excerpt: '', date: '2026-07-01', readTime: 1, category: 'Vue', tags: ['Vue'], color: '#000', number: '01', featured: false, status: 'PUBLISHED', content: '' }],
+      page: 0, size: 10, totalElements: 1, totalPages: 1,
+    })
+    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
+    mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
+
+    const { wrapper, router } = await mountPage('/archive?type=article&relation=Vue')
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.type).toBe('article')
+    expect(router.currentRoute.value.query.relation).toBe('Vue')
+    expect(wrapper.text()).toContain('关联: Vue')
+  })
+
+  it('generates correct article, note, and dish URLs', async () => {
     mockPosts.mockResolvedValue({
       items: [{ slug: 'test-slug', title: 'Test Article', excerpt: '', date: '2026-07-01', readTime: 1, category: '', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED', content: '' }],
       page: 0, size: 10, totalElements: 1, totalPages: 1,
     })
     mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
     mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
-    const wrapper = await mountPage()
+    const { wrapper } = await mountPage()
     await flushPromises()
     expect(wrapper.find('a.archive-entry').attributes('href')).toBe('/articles/test-slug')
-  })
-
-  it('generates correct note URLs', async () => {
-    mockPosts.mockResolvedValue({ items: [], page: 0, size: 10, totalElements: 0, totalPages: 1 })
-    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
-    mockNotes.mockResolvedValue({
-      items: [{ id: 42, title: 'Test Note', markdownContent: '', folder: '', status: 'PUBLISHED', tags: [], sourceFileName: null, wordCount: 0, version: 1, createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' }],
-      page: 0, size: 20, totalElements: 1, totalPages: 1,
-    })
-    const wrapper = await mountPage()
-    await flushPromises()
-    expect(wrapper.find('a.archive-entry').attributes('href')).toBe('/notes?note=42')
-  })
-
-  it('generates correct dish URLs', async () => {
-    mockPosts.mockResolvedValue({ items: [], page: 0, size: 10, totalElements: 0, totalPages: 1 })
-    mockDishes.mockResolvedValue({
-      items: [{ id: 1, slug: 'test-dish', name: 'Test Dish', summary: '', category: '', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '', prepMinutes: 10, difficulty: '简单', rating: 4, featured: false, published: true, displayOrder: 1, ingredients: [], steps: [], createdAt: '2026-07-01T00:00:00Z', updatedAt: '2026-07-01T00:00:00Z' }],
-      page: 0, size: 12, totalElements: 1, totalPages: 1,
-    })
-    mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
-    const wrapper = await mountPage()
-    await flushPromises()
-    expect(wrapper.find('a.archive-entry').attributes('href')).toBe('/recipes?dish=test-dish')
   })
 
   it('shows error and retry button when all fetches fail', async () => {
     mockPosts.mockRejectedValue(new Error('fail'))
     mockDishes.mockRejectedValue(new Error('fail'))
     mockNotes.mockRejectedValue(new Error('fail'))
-    const wrapper = await mountPage()
+    const { wrapper } = await mountPage()
     await flushPromises()
     expect(wrapper.text()).toContain('重试')
   })

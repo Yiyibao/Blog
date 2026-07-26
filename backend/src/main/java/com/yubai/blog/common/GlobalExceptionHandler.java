@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import com.yubai.blog.admin.ai.AiServiceException;
 import com.yubai.blog.note.InvalidNoteFileException;
 import com.yubai.blog.note.NoteVersionConflictException;
 
@@ -78,6 +79,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleUploadTooLarge() {
         return error(HttpStatus.PAYLOAD_TOO_LARGE, "上传文件不能超过 8 MB");
+    }
+
+    @ExceptionHandler(AiServiceException.class)
+    public ResponseEntity<Map<String, Object>> handleAiService(AiServiceException exception) {
+        return error(exception.getStatus(), exception.getMessage());
     }
 
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

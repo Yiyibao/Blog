@@ -147,30 +147,4 @@ export const posts: Post[] = [
   },
 ]
 
-export interface CategorySummary {
-  name: string
-  slug: string
-  description?: string
-  publishedPostCount: number
-}
-
-export interface PostSummary {
-  slug: string
-  title: string
-  excerpt: string
-  date: string
-  tags: string[]
-}
-
-export interface CategoryDetail {
-  name: string
-  slug: string
-  description?: string
-  total: number
-  posts: PostSummary[]
-  page: number
-  size: number
-  totalPages: number
-}
-
 export const categories = ['全部', ...new Set(posts.map((post) => post.category))]

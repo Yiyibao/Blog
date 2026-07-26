@@ -46,3 +46,13 @@ app:
   admin:
     username: ${APP_ADMIN_USERNAME:}
     password: ${APP_ADMIN_PASSWORD:}
+  ai:
+    enabled: ${AI_ENABLED:false}
+    base-url: ${AI_BASE_URL:https://api.deepseek.com}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:deepseek-v4-flash}
+    request-timeout: ${AI_REQUEST_TIMEOUT:60}
+    max-input-chars: ${AI_MAX_INPUT_CHARS:8000}
+    max-history-messages: ${AI_MAX_HISTORY_MESSAGES:20}
+    max-total-chars: ${AI_MAX_TOTAL_CHARS:40000}
+    max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:2048}

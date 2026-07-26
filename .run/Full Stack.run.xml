@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="BlogDemo - Full Stack" type="CompoundRunConfigurationType" factoryName="Compound">
+    <toRun name="BlogDemo - Backend" type="MavenRunConfiguration" />
+    <toRun name="BlogDemo - Frontend" type="js.build_tools.npm" />
+    <method v="2" />
+  </configuration>
+</component>

@@ -11,10 +11,9 @@ const AboutPage = defineAsyncComponent(() => import('../pages/AboutPage.vue'))
 const NotesPage = defineAsyncComponent(() => import('../pages/NotesPage.vue'))
 const ArchivePage = defineAsyncComponent(() => import('../pages/ArchivePage.vue'))
 const RecipesPage = defineAsyncComponent(() => import('../pages/RecipesPage.vue'))
-const CategoriesPage = defineAsyncComponent(() => import('../pages/CategoriesPage.vue'))
-const CategoryPage = defineAsyncComponent(() => import('../pages/CategoryPage.vue'))
 const AdminDashboardPage = defineAsyncComponent(() => import('../pages/AdminDashboardPage.vue'))
 const AdminNotesPage = defineAsyncComponent(() => import('../pages/AdminNotesPage.vue'))
+const AdminAiPage = defineAsyncComponent(() => import('../pages/AdminAiPage.vue'))
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,19 +24,18 @@ const router = createRouter({
     { path: '/about', name: 'about', component: AboutPage },
     { path: '/notes', name: 'notes', component: NotesPage },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
-    { path: '/admin', name: 'admin', component: AdminDashboardPage },
-    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage },
+    { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAdmin: true } },
+    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAdmin: true } },
+    { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAdmin: true } },
     { path: '/archive', name: 'archive', component: ArchivePage },
     { path: '/recipes', name: 'recipes', component: RecipesPage },
-    { path: '/categories', name: 'categories', component: CategoriesPage },
-    { path: '/categories/:slug', name: 'category', component: CategoryPage },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
   ],
   scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { top: 0 },
 })
 
 router.beforeEach((to, _from, next) => {
-  if (to.name === 'admin' || to.name === 'admin-notes') {
+  if (to.meta.requiresAdmin) {
     const auth = useAuthStore()
     if (!auth.isAuthenticated) {
       next({ name: 'admin-login' })

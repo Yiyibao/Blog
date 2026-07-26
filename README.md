@@ -82,8 +82,33 @@ mvn spring-boot:run
 - `GET|POST /api/v1/admin/notes/{id}/attachments`：列出或上传笔记图片
 - `DELETE /api/v1/admin/notes/{id}/attachments/{attachmentId}`：删除笔记图片
 
+- `POST /api/v1/admin/ai/chat`：向 DeepSeek 发送对话，需配置下方 AI 环境变量
+
 除登录外，所有管理接口都必须携带有效的管理员 Bearer Token。
 所有内容列表统一返回 `items/page/size/totalElements/totalPages`，页码从 `0` 开始，单页最大 `50` 条。
+
+## AI 对话（可选）
+
+管理员可以在 `.env.properties` 中启用 AI 对话：
+
+```properties
+AI_ENABLED=true
+AI_API_KEY=sk-your-deepseek-api-key
+```
+
+启用后 `POST /api/v1/admin/ai/chat` 会通过 DeepSeek 官方 API 返回回复。其他可选项：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `AI_BASE_URL` | `https://api.deepseek.com` | API 基础地址 |
+| `AI_MODEL` | `deepseek-v4-flash` | 模型名称 |
+| `AI_REQUEST_TIMEOUT` | `60` | 请求超时（秒） |
+| `AI_MAX_INPUT_CHARS` | `8000` | 单条消息最大字符数 |
+| `AI_MAX_HISTORY_MESSAGES` | `20` | 历史消息条数上限 |
+| `AI_MAX_TOTAL_CHARS` | `40000` | 所有消息累计字符数上限 |
+| `AI_MAX_OUTPUT_TOKENS` | `2048` | 最大输出 token 数 |
+
+如果 `AI_ENABLED` 为 `false` 或 `AI_API_KEY` 为空，该接口返回 `503`。前端不会看到 API key、模型、base URL 或 system role。
 
 ## 启动前端
 
@@ -96,6 +121,16 @@ npm run dev
 ```
 
 前端默认地址为 `http://localhost:5173`，开发代理会把 `/api` 请求转发到 Spring Boot。后端暂未启动时，页面会使用内置内容作为安全回退，不影响现有公开站点。
+
+## IDE 一键启动
+
+仓库内的 `.run` 目录提供 JetBrains IDE 共享运行配置。使用 IntelliJ IDEA 打开项目并等待 Maven 与 npm 完成索引后，在右上角运行配置中选择：
+
+```text
+BlogDemo - Full Stack
+```
+
+点击运行即可同时启动后端 `spring-boot:run` 和前端 `npm run dev`。也可以分别选择 `BlogDemo - Backend` 或 `BlogDemo - Frontend` 单独启动。后端仍从 `backend/.env.properties` 读取本地数据库、管理员和 AI 配置。
 
 美食模块入口为 `http://localhost:5173/recipes`，页面从 PostgreSQL 菜品 API 读取真实内容，提供分类筛选、Bento 菜谱画廊、评分排行、食材清单、制作步骤和图片来源，并支持键盘关闭详情面板。管理员可在内容工作台的“菜品管理”中增删改查菜品。
 

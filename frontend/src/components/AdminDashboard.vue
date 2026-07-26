@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   clearAdminSession, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPosts,
   fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish, type AdminNote,
@@ -9,8 +9,24 @@ import {
 } from '../api/admin'
 import type { PostStatus } from '../data'
 
+import AdminSidebar from './AdminSidebar.vue'
+
 const router = useRouter()
+const route = useRoute()
 const tab = ref<'posts' | 'dishes'>('posts')
+
+function syncTabFromQuery() {
+  const section = Array.isArray(route.query.section) ? route.query.section[0] : route.query.section
+  if (section === 'dishes') tab.value = 'dishes'
+  else tab.value = 'posts'
+}
+
+watch(() => route.query.section, syncTabFromQuery, { immediate: true })
+
+function setTab(nextTab: 'posts' | 'dishes') {
+  tab.value = nextTab
+  void router.push({ path: '/admin', query: { section: nextTab } })
+}
 const posts = ref<AdminPost[]>([])
 const dishes = ref<AdminDish[]>([])
 const notes = ref<AdminNote[]>([])
@@ -198,18 +214,7 @@ onMounted(load)
 
 <template>
   <section class="admin-console">
-    <aside class="admin-sidebar">
-      <RouterLink class="admin-brand" to="/admin"><span>余</span><div><strong>余白后台</strong><small>ADMIN CONSOLE</small></div></RouterLink>
-      <nav aria-label="后台导航">
-        <p>工作空间</p>
-        <RouterLink class="active" to="/admin"><i>⌂</i><span>总览</span></RouterLink>
-        <button :class="{ active: tab === 'posts' }" @click="tab = 'posts'"><i>▤</i><span>文章管理</span><b>{{ postTotal }}</b></button>
-        <button :class="{ active: tab === 'dishes' }" @click="tab = 'dishes'"><i>◉</i><span>菜品管理</span><b>{{ dishTotal }}</b></button>
-        <p>创作</p>
-        <RouterLink class="notes-nav" to="/admin/notes"><i>✎</i><span>学习笔记</span><b>{{ noteTotal }}</b></RouterLink>
-      </nav>
-      <footer><div class="admin-avatar">{{ username.slice(0, 1).toUpperCase() }}</div><div><strong>{{ username }}</strong><small>Administrator</small></div><button title="退出登录" @click="logout">↪</button></footer>
-    </aside>
+    <AdminSidebar :post-total="postTotal" :dish-total="dishTotal" :note-total="noteTotal" />
 
     <main class="admin-main">
       <header class="admin-topbar"><div><span class="admin-breadcrumb">后台管理 / 总览</span><h1>{{ greeting }}，{{ username }}</h1></div><div><RouterLink to="/">查看博客 ↗</RouterLink><button @click="logout">退出登录</button></div></header>
@@ -222,7 +227,7 @@ onMounted(load)
       <section class="admin-stat-grid"><article><span>文章</span><strong>{{ postTotal }}</strong><small>POSTS</small></article><article><span>菜品</span><strong>{{ dishTotal }}</strong><small>DISHES</small></article><article><span>学习笔记</span><strong>{{ noteTotal }}</strong><small>NOTES</small></article></section>
 
       <section class="admin-content-section">
-        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="tab = 'posts'">文章</button><button :class="{ active: tab === 'dishes' }" @click="tab = 'dishes'">菜品</button></div><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></header>
+        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></header>
         <div v-if="tab === 'posts'" class="admin-tabs" style="margin-bottom: 16px">
           <button :class="{ active: postStatusFilter === '' }" @click="postStatusFilter = ''">全部</button>
           <button :class="{ active: postStatusFilter === 'PUBLISHED' }" @click="postStatusFilter = 'PUBLISHED'">已发布</button>

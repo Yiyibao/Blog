@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 export interface GraphNode {
   id: string
   label: string
   type: 'POST' | 'NOTE' | 'DISH' | 'TAG'
-  url: string
-  x?: number
-  y?: number
-  vx?: number
-  vy?: number
-  radius?: number
+  url?: string | null
+  category?: string
+  summary?: string
 }
 
 export interface GraphEdge {
@@ -19,323 +16,253 @@ export interface GraphEdge {
   target: string
 }
 
+type GraphFilterType = 'ALL' | 'POST' | 'NOTE' | 'DISH' | 'TAG'
+
 const props = withDefaults(
   defineProps<{
     initialNodes?: GraphNode[]
     initialEdges?: GraphEdge[]
+    selectedRelation?: string
+    selectedType?: GraphFilterType
   }>(),
   {
     initialNodes: () => [],
     initialEdges: () => [],
+    selectedRelation: '',
+    selectedType: 'ALL',
   }
 )
 
+const emit = defineEmits<{
+  (e: 'selectTag', tag: string): void
+  (e: 'selectNode', node: GraphNode | null): void
+  (e: 'selectType', type: GraphFilterType): void
+}>()
+
 const router = useRouter()
-const canvasRef = ref<HTMLCanvasElement | null>(null)
 const isFullscreen = ref(false)
-const filterType = ref<'ALL' | 'POST' | 'NOTE' | 'DISH' | 'TAG'>('ALL')
-
-// Built-in fallback demo nodes if API data is loading/unavailable
-const defaultNodes: GraphNode[] = [
-  { id: 'p1', label: '设计系统与透明度', type: 'POST', url: '/articles/clarity-by-design' },
-  { id: 'p2', label: 'Vue 3 响应式原理深度拆解', type: 'POST', url: '/articles' },
-  { id: 'p3', label: 'TypeScript 高级类型体操', type: 'POST', url: '/articles' },
-  { id: 'n1', label: 'Canvas 性能优化指南', type: 'NOTE', url: '/notes' },
-  { id: 'n2', label: 'Web Audio 音频合成实践', type: 'NOTE', url: '/notes' },
-  { id: 'd1', label: '糖醋排骨制作心得', type: 'DISH', url: '/recipes?dish=sweet-sour-pork' },
-  { id: 'd2', label: '麻婆豆腐秘制高汤', type: 'DISH', url: '/recipes' },
-  { id: 't1', label: '#前端架构', type: 'TAG', url: '/categories' },
-  { id: 't2', label: '#美食生活', type: 'TAG', url: '/categories' },
-  { id: 't3', label: '#TypeScript', type: 'TAG', url: '/categories' },
-]
-
-const defaultEdges: GraphEdge[] = [
-  { source: 'p1', target: 't1' },
-  { source: 'p2', target: 't1' },
-  { source: 'p3', target: 't3' },
-  { source: 'n1', target: 't1' },
-  { source: 'n2', target: 't1' },
-  { source: 'd1', target: 't2' },
-  { source: 'd2', target: 't2' },
-  { source: 'p1', target: 'n1' },
-  { source: 'p2', target: 'p3' },
-]
-
+const filterType = ref<GraphFilterType>(props.selectedType)
 const nodes = ref<GraphNode[]>([])
 const edges = ref<GraphEdge[]>([])
-let animFrameId: number | null = null
-let hoveredNodeId: string | null = null
-let draggedNode: GraphNode | null = null
-let isDragging = false
+const loading = ref(false)
+const loadError = ref('')
+const selectedNodeId = ref<string | null>(null)
+const hoveredNodeId = ref<string | null>(null)
 
-// Canvas pan & zoom offset
-const scale = ref(1)
-const panX = ref(0)
-const panY = ref(0)
-let startPanX = 0
-let startPanY = 0
-let startMouseX = 0
-let startMouseY = 0
+// Maximum nodes to display for clarity
+const MAX_DISPLAY_NODES = 40
 
-function getNodeColor(type: GraphNode['type']): string {
-  switch (type) {
-    case 'POST': return '#3b82f6' // Blue
-    case 'NOTE': return '#10b981' // Emerald
-    case 'DISH': return '#f59e0b' // Amber
-    case 'TAG': return '#8b5cf6'  // Purple
+async function loadGraphData() {
+  if (props.initialNodes && props.initialNodes.length > 0) {
+    nodes.value = props.initialNodes
+    edges.value = props.initialEdges
+    return
   }
-}
 
-function getNodeRadius(type: GraphNode['type']): number {
-  return type === 'TAG' ? 18 : 22
-}
-
-async function fetchRemoteGraphData() {
+  loading.value = true
+  loadError.value = ''
   try {
     const res = await fetch('/api/v1/graph/nodes')
     if (res.ok) {
       const json = await res.json()
       if (json.code === 200 && json.data) {
-        nodes.value = json.data.nodes || defaultNodes
-        edges.value = json.data.edges || defaultEdges
-        initPhysicsPositions()
+        nodes.value = json.data.nodes || []
+        edges.value = json.data.edges || []
+        loading.value = false
         return
       }
     }
+    loadError.value = '关联图谱数据加载失败'
   } catch {
-    // fallback
+    loadError.value = '无法连接网络，图谱数据加载失败'
+  } finally {
+    loading.value = false
   }
-  nodes.value = props.initialNodes.length ? props.initialNodes : defaultNodes
-  edges.value = props.initialEdges.length ? props.initialEdges : defaultEdges
-  initPhysicsPositions()
 }
 
-function initPhysicsPositions() {
-  const canvas = canvasRef.value
-  const width = canvas ? canvas.width : 800
-  const height = canvas ? canvas.height : 450
+watch(
+  () => props.initialNodes,
+  (newNodes) => {
+    if (newNodes && newNodes.length > 0) {
+      nodes.value = newNodes
+      edges.value = props.initialEdges || []
+      loadError.value = ''
+    }
+  },
+  { immediate: true }
+)
+
+const nodeDegree = computed(() => {
+  const degree = new Map<string, number>()
+  edges.value.forEach((edge) => {
+    degree.set(edge.source, (degree.get(edge.source) || 0) + 1)
+    degree.set(edge.target, (degree.get(edge.target) || 0) + 1)
+  })
+  return degree
+})
+
+const filteredNodes = computed(() => {
+  const tags = nodes.value
+    .filter((node) => node.type === 'TAG')
+    .sort((a, b) => (nodeDegree.value.get(b.id) || 0) - (nodeDegree.value.get(a.id) || 0) || a.id.localeCompare(b.id))
+  const content = nodes.value
+    .filter((node) => node.type !== 'TAG')
+    .sort((a, b) => a.id.localeCompare(b.id))
+
+  if (filterType.value === 'TAG') return tags.slice(0, MAX_DISPLAY_NODES)
+  if (filterType.value === 'ALL') {
+    return [...tags.slice(0, 12), ...content.slice(0, MAX_DISPLAY_NODES - 12)]
+  }
+
+  const filteredContent = content.filter((node) => node.type === filterType.value).slice(0, 30)
+  const contentIds = new Set(filteredContent.map((node) => node.id))
+  const relatedTagIds = new Set<string>()
+  edges.value.forEach((edge) => {
+    if (contentIds.has(edge.source)) relatedTagIds.add(edge.target)
+    if (contentIds.has(edge.target)) relatedTagIds.add(edge.source)
+  })
+  return [...tags.filter((node) => relatedTagIds.has(node.id)).slice(0, 10), ...filteredContent]
+})
+
+const activeNodeIds = computed(() => new Set(filteredNodes.value.map((n) => n.id)))
+
+const filteredEdges = computed(() => {
+  return edges.value.filter((e) => activeNodeIds.value.has(e.source) && activeNodeIds.value.has(e.target))
+})
+
+// Deterministic layout algorithm: 100% stable SVG coordinates
+const positionedNodes = computed(() => {
+  const list = [...filteredNodes.value].sort((a, b) => {
+    const typeOrder: Record<string, number> = { TAG: 1, POST: 2, NOTE: 3, DISH: 4 }
+    const diff = (typeOrder[a.type] || 9) - (typeOrder[b.type] || 9)
+    if (diff !== 0) return diff
+    return a.id.localeCompare(b.id)
+  })
+
+  const width = 800
+  const height = 480
   const cx = width / 2
   const cy = height / 2
 
-  nodes.value.forEach((node, idx) => {
-    const angle = (idx / nodes.value.length) * Math.PI * 2
-    const radius = 140 + Math.random() * 80
-    node.x = cx + Math.cos(angle) * radius
-    node.y = cy + Math.sin(angle) * radius
-    node.vx = (Math.random() - 0.5) * 0.5
-    node.vy = (Math.random() - 0.5) * 0.5
-    node.radius = getNodeRadius(node.type)
-  })
-}
+  const tagNodes = list.filter((n) => n.type === 'TAG')
+  const contentNodes = list.filter((n) => n.type !== 'TAG')
 
-function updatePhysics() {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const width = canvas.width
-  const height = canvas.height
-  const center = { x: width / 2, y: height / 2 }
+  const map = new Map<string, GraphNode & { x: number; y: number; radius: number }>()
 
-  // Simple Spring Physics simulation
-  nodes.value.forEach((node) => {
-    if (node === draggedNode) return
-
-    // Gravity pull toward center
-    const dx = center.x - (node.x || 0)
-    const dy = center.y - (node.y || 0)
-    node.vx = (node.vx || 0) + dx * 0.0003
-    node.vy = (node.vy || 0) + dy * 0.0003
-
-    // Node Repulsion
-    nodes.value.forEach((other) => {
-      if (node === other) return
-      const rx = (node.x || 0) - (other.x || 0)
-      const ry = (node.y || 0) - (other.y || 0)
-      const distSq = rx * rx + ry * ry + 0.1
-      if (distSq < 15000) {
-        const force = 30 / distSq
-        node.vx = (node.vx || 0) + rx * force
-        node.vy = (node.vy || 0) + ry * force
-      }
+  tagNodes.forEach((node, idx) => {
+    const total = tagNodes.length
+    const angle = total === 1 ? 0 : (idx / total) * Math.PI * 2 - Math.PI / 2
+    map.set(node.id, {
+      ...node,
+      x: cx + Math.cos(angle) * 90,
+      y: cy + Math.sin(angle) * 90,
+      radius: 18,
     })
-
-    // Friction
-    node.vx *= 0.92
-    node.vy *= 0.92
-
-    node.x = (node.x || 0) + node.vx
-    node.y = (node.y || 0) + node.vy
-  })
-}
-
-function drawCanvas() {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  ctx.save()
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.translate(panX.value, panY.value)
-  ctx.scale(scale.value, scale.value)
-
-  // Filter visible nodes
-  const activeNodes = nodes.value.filter((n) => filterType.value === 'ALL' || n.type === filterType.value)
-  const activeIds = new Set(activeNodes.map((n) => n.id))
-
-  // Draw Edges
-  edges.value.forEach((edge) => {
-    if (!activeIds.has(edge.source) || !activeIds.has(edge.target)) return
-    const sourceNode = nodes.value.find((n) => n.id === edge.source)
-    const targetNode = nodes.value.find((n) => n.id === edge.target)
-    if (!sourceNode || !targetNode) return
-
-    const isHighlighted = hoveredNodeId === edge.source || hoveredNodeId === edge.target
-    ctx.beginPath()
-    ctx.moveTo(sourceNode.x || 0, sourceNode.y || 0)
-    ctx.lineTo(targetNode.x || 0, targetNode.y || 0)
-    ctx.strokeStyle = isHighlighted ? '#f43f5e' : 'rgba(150, 150, 150, 0.25)'
-    ctx.lineWidth = isHighlighted ? 2.5 : 1
-    ctx.stroke()
   })
 
-  // Draw Nodes
-  activeNodes.forEach((node) => {
-    const isHovered = hoveredNodeId === node.id
-    const color = getNodeColor(node.type)
-    const r = (node.radius || 20) * (isHovered ? 1.25 : 1)
-
-    // Outer Glow ring on hover
-    if (isHovered) {
-      ctx.beginPath()
-      ctx.arc(node.x || 0, node.y || 0, r + 8, 0, Math.PI * 2)
-      ctx.fillStyle = color + '33'
-      ctx.fill()
-    }
-
-    // Node Circle
-    ctx.beginPath()
-    ctx.arc(node.x || 0, node.y || 0, r, 0, Math.PI * 2)
-    ctx.fillStyle = color
-    ctx.shadowColor = color
-    ctx.shadowBlur = isHovered ? 16 : 6
-    ctx.fill()
-    ctx.shadowBlur = 0
-
-    // Label
-    ctx.font = `${isHovered ? '600 13px' : '500 12px'} system-ui, -apple-system, sans-serif`
-    ctx.fillStyle = isHovered ? '#ffffff' : 'var(--ink)'
-    ctx.textAlign = 'center'
-    ctx.fillText(node.label, node.x || 0, (node.y || 0) + r + 18)
+  contentNodes.forEach((node, idx) => {
+    const total = contentNodes.length
+    const angle = total === 1 ? 0 : (idx / total) * Math.PI * 2 - Math.PI / 2
+    const radius = 175 + (idx % 2) * 45
+    map.set(node.id, {
+      ...node,
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+      radius: 20,
+    })
   })
 
-  ctx.restore()
+  return map
+})
 
-  updatePhysics()
-  animFrameId = requestAnimationFrame(drawCanvas)
-}
+const activeHighlightId = computed(() => selectedNodeId.value || hoveredNodeId.value)
 
-function handleMouseDown(e: MouseEvent) {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const rect = canvas.getBoundingClientRect()
-  const mouseX = (e.clientX - rect.left - panX.value) / scale.value
-  const mouseY = (e.clientY - rect.top - panY.value) / scale.value
-
-  const clicked = nodes.value.find((n) => {
-    const dx = (n.x || 0) - mouseX
-    const dy = (n.y || 0) - mouseY
-    return Math.sqrt(dx * dx + dy * dy) <= (n.radius || 20)
+const neighborNodeIds = computed(() => {
+  if (!activeHighlightId.value) return new Set<string>()
+  const targetId = activeHighlightId.value
+  const set = new Set<string>([targetId])
+  edges.value.forEach((e) => {
+    if (e.source === targetId) set.add(e.target)
+    if (e.target === targetId) set.add(e.source)
   })
+  return set
+})
 
-  if (clicked) {
-    draggedNode = clicked
-    isDragging = true
-  } else {
-    isDragging = false
-    startMouseX = e.clientX
-    startMouseY = e.clientY
-    startPanX = panX.value
-    startPanY = panY.value
+const selectedNode = computed(() => {
+  if (!selectedNodeId.value) return null
+  return nodes.value.find((n) => n.id === selectedNodeId.value) || null
+})
+
+function getNodeColor(type: GraphNode['type']): string {
+  switch (type) {
+    case 'POST': return '#3b82f6'
+    case 'NOTE': return '#10b981'
+    case 'DISH': return '#f59e0b'
+    case 'TAG': return '#8b5cf6'
   }
 }
 
-function handleMouseMove(e: MouseEvent) {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const rect = canvas.getBoundingClientRect()
-  const mouseX = (e.clientX - rect.left - panX.value) / scale.value
-  const mouseY = (e.clientY - rect.top - panY.value) / scale.value
-
-  if (draggedNode) {
-    draggedNode.x = mouseX
-    draggedNode.y = mouseY
+function handleNodeClick(node: GraphNode) {
+  if (selectedNodeId.value === node.id) {
+    if (node.type === 'TAG') emit('selectTag', '')
+    selectedNodeId.value = null
+    emit('selectNode', null)
     return
   }
+  selectedNodeId.value = node.id
+  emit('selectNode', node)
 
-  if (e.buttons === 1 && !draggedNode) {
-    panX.value = startPanX + (e.clientX - startMouseX)
-    panY.value = startPanY + (e.clientY - startMouseY)
-    return
+  if (node.type === 'TAG') {
+    const tagText = node.label.replace(/^#/, '')
+    emit('selectTag', tagText)
   }
-
-  // Hover detection
-  const hovered = nodes.value.find((n) => {
-    const dx = (n.x || 0) - mouseX
-    const dy = (n.y || 0) - mouseY
-    return Math.sqrt(dx * dx + dy * dy) <= (n.radius || 20)
-  })
-  hoveredNodeId = hovered ? hovered.id : null
-  canvas.style.cursor = isDragging ? 'grabbing' : (hovered ? 'pointer' : 'grab')
 }
 
-function handleMouseUp(e: MouseEvent) {
-  if (draggedNode) {
-    const canvas = canvasRef.value
-    if (canvas) {
-      const rect = canvas.getBoundingClientRect()
-      const mouseX = (e.clientX - rect.left - panX.value) / scale.value
-      const mouseY = (e.clientY - rect.top - panY.value) / scale.value
-      const dx = (draggedNode.x || 0) - mouseX
-      const dy = (draggedNode.y || 0) - mouseY
-      if (Math.sqrt(dx * dx + dy * dy) < 5 && draggedNode.url) {
-        void router.push(draggedNode.url)
-      }
-    }
-  }
-  draggedNode = null
+function setFilterType(type: GraphFilterType) {
+  filterType.value = type
+  emit('selectType', type)
 }
 
-function handleWheel(e: WheelEvent) {
-  e.preventDefault()
-  const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
-  scale.value = Math.max(0.4, Math.min(2.5, scale.value * zoomFactor))
+function clearSelection() {
+  if (selectedNode.value?.type === 'TAG') emit('selectTag', '')
+  selectedNodeId.value = null
+  emit('selectNode', null)
 }
 
-function resizeCanvas() {
-  const canvas = canvasRef.value
-  if (!canvas) return
-  const parent = canvas.parentElement
-  if (parent) {
-    canvas.width = parent.clientWidth
-    canvas.height = isFullscreen.value ? window.innerHeight - 80 : 420
+function handleOpenContent() {
+  if (selectedNode.value && selectedNode.value.url && selectedNode.value.type !== 'TAG') {
+    void router.push(selectedNode.value.url)
   }
 }
 
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value
-  setTimeout(resizeCanvas, 50)
 }
 
 onMounted(() => {
-  resizeCanvas()
-  window.addEventListener('resize', resizeCanvas)
-  void fetchRemoteGraphData()
-  animFrameId = requestAnimationFrame(drawCanvas)
+  void loadGraphData()
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', resizeCanvas)
-  if (animFrameId) cancelAnimationFrame(animFrameId)
+watch(() => props.selectedType, (type) => {
+  filterType.value = type
+})
+
+watch([() => props.selectedRelation, nodes], ([relation]) => {
+  const normalized = relation.trim().toLocaleLowerCase()
+  if (!normalized) {
+    if (selectedNode.value?.type === 'TAG') selectedNodeId.value = null
+    return
+  }
+  const matchingTag = nodes.value.find((node) => node.type === 'TAG'
+    && node.label.replace(/^#/, '').trim().toLocaleLowerCase() === normalized)
+  selectedNodeId.value = matchingTag?.id || null
+}, { immediate: true })
+
+watch(filteredNodes, (visibleNodes) => {
+  if (selectedNodeId.value && !visibleNodes.some((node) => node.id === selectedNodeId.value)) {
+    selectedNodeId.value = null
+    emit('selectNode', null)
+  }
 })
 </script>
 
@@ -359,7 +286,7 @@ onBeforeUnmount(() => {
           type="button"
           class="filter-pill"
           :class="{ active: filterType === t.id }"
-          @click="filterType = (t.id as any)"
+          @click="setFilterType(t.id as GraphFilterType)"
         >
           {{ t.name }}
         </button>
@@ -369,19 +296,128 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div class="canvas-wrapper">
-      <canvas
-        ref="canvasRef"
-        @mousedown="handleMouseDown"
-        @mousemove="handleMouseMove"
-        @mouseup="handleMouseUp"
-        @wheel="handleWheel"
-      />
+    <div v-if="loading" class="graph-state graph-loading" role="status">
+      <span>正在加载关联图谱…</span>
+    </div>
+
+    <div v-else-if="loadError" class="graph-state graph-error" role="alert">
+      <p>{{ loadError }}</p>
+      <button class="button primary" type="button" @click="loadGraphData">重试</button>
+    </div>
+
+    <div v-else-if="filteredNodes.length === 0" class="graph-state graph-empty">
+      <p>暂无符合条件的关联节点。</p>
+    </div>
+
+    <div v-else class="svg-wrapper">
+      <svg
+        viewBox="0 0 800 480"
+        preserveAspectRatio="xMidYMid meet"
+        aria-label="知识关联图谱"
+      >
+        <!-- Edges -->
+        <g class="graph-edges">
+          <line
+            v-for="(edge, idx) in filteredEdges"
+            :key="`edge-${idx}-${edge.source}-${edge.target}`"
+            :x1="positionedNodes.get(edge.source)?.x"
+            :y1="positionedNodes.get(edge.source)?.y"
+            :x2="positionedNodes.get(edge.target)?.x"
+            :y2="positionedNodes.get(edge.target)?.y"
+            class="graph-edge"
+            :class="{
+              highlighted: activeHighlightId && (edge.source === activeHighlightId || edge.target === activeHighlightId),
+              faded: activeHighlightId && !(edge.source === activeHighlightId || edge.target === activeHighlightId)
+            }"
+          />
+        </g>
+
+        <!-- Nodes -->
+        <g class="graph-nodes">
+          <g
+            v-for="[id, node] in positionedNodes"
+            :key="id"
+            class="graph-node"
+            :class="{
+              selected: selectedNodeId === id,
+              highlighted: activeHighlightId && neighborNodeIds.has(id),
+              faded: activeHighlightId && !neighborNodeIds.has(id)
+            }"
+            tabindex="0"
+            role="button"
+            :aria-label="`${node.label} (${node.type})`"
+            @click="handleNodeClick(node)"
+            @mouseenter="hoveredNodeId = id"
+            @mouseleave="hoveredNodeId = null"
+            @keydown.enter.prevent="handleNodeClick(node)"
+            @keydown.space.prevent="handleNodeClick(node)"
+          >
+            <!-- 44x44 minimum touch/pointer target area -->
+            <circle :cx="node.x" :cy="node.y" r="22" fill="transparent" class="hit-target" />
+
+            <!-- Selection ring -->
+            <circle
+              v-if="selectedNodeId === id"
+              :cx="node.x"
+              :cy="node.y"
+              :r="node.radius + 6"
+              fill="none"
+              stroke="var(--accent)"
+              stroke-width="2"
+              class="selection-ring"
+            />
+
+            <!-- Main Circle -->
+            <circle
+              :cx="node.x"
+              :cy="node.y"
+              :r="node.radius"
+              :fill="getNodeColor(node.type)"
+              class="node-circle"
+            />
+
+            <!-- Label -->
+            <text
+              :x="node.x"
+              :y="node.y + node.radius + 14"
+              text-anchor="middle"
+              class="node-label"
+            >
+              {{ node.label }}
+            </text>
+          </g>
+        </g>
+      </svg>
+
+      <!-- Selection Panel / Card -->
+      <div v-if="selectedNode" class="graph-selection-panel">
+        <div class="panel-content">
+          <span class="panel-type" :style="{ background: getNodeColor(selectedNode.type) }">
+            {{ selectedNode.type === 'POST' ? '文章' : selectedNode.type === 'NOTE' ? '笔记' : selectedNode.type === 'DISH' ? '菜谱' : '标签' }}
+          </span>
+          <strong class="panel-title">{{ selectedNode.label }}</strong>
+          <span v-if="selectedNode.category" class="panel-category">{{ selectedNode.category }}</span>
+        </div>
+        <div class="panel-actions">
+          <button
+            v-if="selectedNode.type !== 'TAG' && selectedNode.url"
+            type="button"
+            class="open-content-btn"
+            @click="handleOpenContent"
+          >
+            打开内容 ↗
+          </button>
+          <button type="button" class="close-panel-btn" @click="clearSelection">
+            关闭
+          </button>
+        </div>
+      </div>
+
       <div class="canvas-legend">
         <span><i style="background: #3b82f6;" /> 文章</span>
         <span><i style="background: #10b981;" /> 学习笔记</span>
         <span><i style="background: #f59e0b;" /> 美食菜谱</span>
-        <span><i style="background: #8b5cf6;" /> 标签分类</span>
+        <span><i style="background: #8b5cf6;" /> 标签</span>
       </div>
     </div>
   </div>
@@ -395,7 +431,7 @@ onBeforeUnmount(() => {
   background: var(--surface-solid);
   border: 1px solid var(--line-strong);
   box-shadow: var(--shadow-md);
-  transition: all 0.3s var(--ease);
+  transition: opacity 0.2s ease, border-color 0.2s ease;
 }
 .knowledge-graph-container.is-fullscreen {
   position: fixed;
@@ -403,6 +439,7 @@ onBeforeUnmount(() => {
   z-index: 1300;
   margin: 0;
   border-radius: 0;
+  overflow: auto;
 }
 
 .graph-toolbar {
@@ -433,6 +470,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 .filter-pill {
+  min-height: 44px;
   padding: 5px 12px;
   border-radius: 999px;
   background: var(--surface);
@@ -440,7 +478,7 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s, color 0.2s;
 }
 .filter-pill:hover {
   color: var(--ink);
@@ -453,6 +491,7 @@ onBeforeUnmount(() => {
 }
 
 .fullscreen-btn {
+  min-height: 44px;
   padding: 5px 14px;
   border-radius: 999px;
   background: var(--surface);
@@ -461,14 +500,18 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-}
-.fullscreen-btn:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
 }
 
-.canvas-wrapper {
+.graph-state {
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.svg-wrapper {
   position: relative;
   width: 100%;
   border-radius: 16px;
@@ -476,9 +519,121 @@ onBeforeUnmount(() => {
   border: 1px solid var(--line);
   overflow: hidden;
 }
-canvas {
+svg {
   display: block;
   width: 100%;
+  height: auto;
+  max-height: 500px;
+}
+
+.graph-edge {
+  stroke: var(--line-strong);
+  stroke-opacity: 0.4;
+  stroke-width: 1.5px;
+  transition: stroke 0.2s, stroke-opacity 0.2s, stroke-width 0.2s;
+}
+.graph-edge.highlighted {
+  stroke: var(--accent);
+  stroke-opacity: 1;
+  stroke-width: 2.5px;
+}
+.graph-edge.faded {
+  stroke-opacity: 0.1;
+}
+
+.graph-node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.2s;
+}
+.graph-node:focus-visible .node-circle {
+  stroke: var(--accent);
+  stroke-width: 3px;
+}
+.graph-node.faded {
+  opacity: 0.2;
+}
+
+.node-circle {
+  transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+.node-label {
+  font-size: 12px;
+  font-weight: 500;
+  fill: var(--ink);
+  pointer-events: none;
+  user-select: none;
+}
+
+.graph-selection-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--surface-solid);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-md);
+  max-width: 380px;
+  z-index: 10;
+}
+.panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.panel-type {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+.panel-title {
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-category {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.open-content-btn {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.close-panel-btn {
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .canvas-legend {
@@ -504,5 +659,23 @@ canvas {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .knowledge-graph-container,
+  .graph-edge,
+  .graph-node,
+  .node-circle {
+    transition: none !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .knowledge-graph-container { padding: 14px; border-radius: 16px; }
+  .graph-filters { gap: 4px; }
+  .filter-pill, .fullscreen-btn { flex: 1 1 auto; }
+  .graph-selection-panel { position: static; max-width: none; margin: 12px; flex-direction: column; align-items: stretch; }
+  .panel-actions { justify-content: flex-end; }
+  .canvas-legend { position: static; margin: 12px; flex-wrap: wrap; border-radius: 10px; }
 }
 </style>

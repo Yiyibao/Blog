@@ -284,3 +284,26 @@ export interface AdminStats {
 export function fetchAdminStats() {
   return unwrap<AdminStats>(api.get('/admin/stats', { headers: tokenHeader() }))
 }
+
+export type AiChatRole = 'user' | 'assistant'
+
+export interface AiChatMessage {
+  role: AiChatRole
+  content: string
+}
+
+export interface AiChatResult {
+  content: string
+  model: string
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  } | null
+}
+
+export function sendAiChat(messages: AiChatMessage[]) {
+  return unwrap<AiChatResult>(
+    api.post('/admin/ai/chat', { messages }, { timeout: 120000, headers: tokenHeader() }),
+  )
+}
