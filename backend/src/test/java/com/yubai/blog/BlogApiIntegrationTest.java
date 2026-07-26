@@ -460,8 +460,10 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/note-assets/" + publicId))
             .andExpect(status().isOk())
             .andExpect(result -> {
-                if (!"no-store".equals(result.getResponse().getHeader("Cache-Control"))) {
-                    throw new AssertionError("revocable note attachments must not be cached");
+                // P1-6：publicId 不可变，公开附件允许长缓存（撤回后服务端仍 404，已缓存副本残留为计划批准的取舍）
+                var cacheControl = result.getResponse().getHeader("Cache-Control");
+                if (cacheControl == null || !cacheControl.contains("max-age=31536000") || !cacheControl.contains("immutable")) {
+                    throw new AssertionError("immutable note attachments should be long-cached, got: " + cacheControl);
                 }
                 if (result.getResponse().getContentAsByteArray().length != PNG_SAMPLE.length) throw new AssertionError("attachment bytes were not read from database");
             });
@@ -836,6 +838,27 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data.slug").value("clarity-by-design"))
             .andExpect(jsonPath("$.data.viewsCount").isNumber())
             .andExpect(jsonPath("$.data.likeCount").isNumber());
+    }
+
+    @Test
+    @Order(40)
+    void postDetailReadCountsViewOncePerIpWindow() throws Exception {
+        // P1-8：详情读计真实浏览量；同 IP 同文章去重窗口内重复访问只计一次
+        MvcResult beforeResult = mockMvc.perform(get("/api/v1/posts/clarity-by-design/stats"))
+            .andExpect(status().isOk())
+            .andReturn();
+        int before = objectMapper.readTree(beforeResult.getResponse().getContentAsString())
+            .path("data").path("viewsCount").asInt();
+
+        mockMvc.perform(get("/api/v1/posts/clarity-by-design")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/posts/clarity-by-design")).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/posts/clarity-by-design/stats"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.viewsCount").value(before + 1));
+
+        // 不存在的 slug：不计数、正常 404，不影响详情读取流程
+        mockMvc.perform(get("/api/v1/posts/view-count-no-such-post")).andExpect(status().isNotFound());
     }
 
     @Test

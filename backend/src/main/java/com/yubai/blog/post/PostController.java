@@ -24,6 +24,9 @@ public class PostController {
     static final int LIKE_LIMIT = 10;
     static final Duration LIKE_WINDOW = Duration.ofMinutes(1);
 
+    /** P1-8：浏览量去重窗口——同 IP 同文章 10 分钟内只计一次（复用限流器基建，IP 仅存于进程内窗口，不落库）。 */
+    static final Duration VIEW_DEDUP_WINDOW = Duration.ofMinutes(10);
+
     private final PostService service;
     private final RateLimiter rateLimiter;
 
@@ -46,7 +49,13 @@ public class PostController {
     }
 
     @GetMapping({"/posts/{slug}"})
-    public ApiResponse<PostResponse> findBySlug(@PathVariable String slug) {
+    public ApiResponse<PostResponse> findBySlug(@PathVariable String slug, HttpServletRequest request) {
+        // P1-8：详情读即计浏览量；先原子 +1 再取详情，响应携带最新计数。
+        // 去重窗口内的重复访问与不存在/未发布的 slug 都不会计数（UPDATE 命中 0 行即静默）。
+        var clientIp = ClientIps.resolve(request);
+        if (rateLimiter.tryAcquire("view:" + clientIp + ":" + slug, 1, VIEW_DEDUP_WINDOW)) {
+            service.registerView(slug);
+        }
         return ApiResponse.ok(service.findPublishedBySlug(slug));
     }
 

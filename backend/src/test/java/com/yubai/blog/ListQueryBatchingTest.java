@@ -35,11 +35,12 @@ import com.yubai.blog.post.PostStatus;
 import jakarta.persistence.EntityManager;
 
 /**
- * P1-1：EAGER @ElementCollection 的 1+N 回归防线。
+ * P1-1/L-12：列表查询次数与投影回归防线。
  *
- * <p>列表页一次取 N 条实体时，tags/ingredients/steps 集合不得逐行发 SELECT；
- * 通过 @BatchSize 批量抓取后，单个列表查询的 JDBC prepare 次数必须 ≤3
- * （1 条主查询 + 每类集合 1 条 IN 批量查询；page size 大于总行数时无 count 查询）。
+ * <p>文章/笔记列表自 L-12 起走 Service 层「投影行 + 一次标签 IN 批查询」，
+ * prepare 次数必须 ≤2 且不触正文列；菜谱列表仍为实体路径，@BatchSize 批量抓取
+ * 后 prepare 次数必须 ≤3（1 条主查询 + ingredients/steps 各 1 条 IN 批量查询；
+ * page size 大于总行数时无 count 查询）。
  */
 @DataJpaTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -78,12 +79,13 @@ class ListQueryBatchingTest {
                 false, PostStatus.PUBLISHED, "<p>正文 " + i + "</p>"
             ), sanitizer));
         }
+        var service = new com.yubai.blog.post.PostService(postRepository, sanitizer);
         long prepares = measure(() ->
-            postRepository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, PageRequest.of(0, 50))
-                .forEach(post -> assertThat(post.getTags()).isNotEmpty()));
+            service.findPublished(0, 50, null, null).items()
+                .forEach(post -> assertThat(post.tags()).isNotEmpty()));
         assertThat(prepares)
-            .as("文章列表页 JDBC prepare 次数（主查询 + tags 批量查询）")
-            .isLessThanOrEqualTo(3);
+            .as("L-12 后文章列表 JDBC prepare 次数（投影主查询 + 标签 IN 批查询）")
+            .isLessThanOrEqualTo(2);
     }
 
     @Test
@@ -94,12 +96,13 @@ class ListQueryBatchingTest {
                 List.of("标签A", "标签B"), 0L
             )));
         }
+        var service = new com.yubai.blog.note.NoteService(noteRepository);
         long prepares = measure(() ->
-            noteRepository.findAllByStatusOrderByUpdatedAtDesc(NoteStatus.DRAFT, PageRequest.of(0, 50))
-                .forEach(note -> assertThat(note.getTags()).isNotEmpty()));
+            service.findAll(NoteStatus.DRAFT, 0, 50).items()
+                .forEach(note -> assertThat(note.tags()).isNotEmpty()));
         assertThat(prepares)
-            .as("笔记列表页 JDBC prepare 次数（主查询 + tags 批量查询）")
-            .isLessThanOrEqualTo(3);
+            .as("L-12 后笔记列表 JDBC prepare 次数（投影主查询 + 标签 IN 批查询）")
+            .isLessThanOrEqualTo(2);
     }
 
     @Test

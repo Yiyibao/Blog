@@ -32,4 +32,14 @@ public record PostSummary(
             post.getLikeCount(), post.getViewsCount()
         );
     }
+
+    /** L-12：由轻量投影行 + 批量补取的标签组装，列表路径不再触碰正文列。 */
+    static PostSummary of(PostRepository.PostListRow row, List<String> tags) {
+        return new PostSummary(
+            row.getId(), row.getSlug(), row.getTitle(), row.getExcerpt(), row.getDate(),
+            row.getReadTime(), row.getCategory(), row.getCategorySlug(), tags,
+            row.getColor(), row.getNumber(), row.getFeatured(), row.getStatus(),
+            row.getLikeCount(), row.getViewsCount()
+        );
+    }
 }

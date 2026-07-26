@@ -1,8 +1,12 @@
 package com.yubai.blog.post;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.PageRequests;
+import com.yubai.blog.config.CacheConfig;
 
 @Service
 @Transactional(readOnly = true)
@@ -40,7 +45,7 @@ public class PostService {
             : (oldestFirst
                 ? repository.findAllByStatusOrderByDateAsc(PostStatus.PUBLISHED, pageable)
                 : repository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, pageable));
-        return PageResponse.from(result.map(PostSummary::from));
+        return toSummaryPage(result);
     }
 
     /** P1-2：管理端列表同样只出摘要，编辑时经 findOne 拉取全文。 */
@@ -49,7 +54,16 @@ public class PostService {
         var result = status == null
             ? repository.findAllByOrderByDateDesc(pageable)
             : repository.findAllByStatusOrderByDateDesc(status, pageable);
-        return PageResponse.from(result.map(PostSummary::from));
+        return toSummaryPage(result);
+    }
+
+    /** L-12：投影分页行 + 一次 IN 批量补标签，列表路径全程不读正文列。 */
+    private PageResponse<PostSummary> toSummaryPage(Page<PostRepository.PostListRow> page) {
+        var ids = page.stream().map(PostRepository.PostListRow::getId).toList();
+        Map<Long, List<String>> tags = ids.isEmpty() ? Map.of() : repository.findTagRows(ids).stream()
+            .collect(Collectors.groupingBy(row -> (Long) row[0],
+                Collectors.mapping(row -> (String) row[1], Collectors.toList())));
+        return PageResponse.from(page.map(row -> PostSummary.of(row, tags.getOrDefault(row.getId(), List.of()))));
     }
 
     public PostResponse findPublishedBySlug(String slug) {
@@ -67,6 +81,12 @@ public class PostService {
         var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
             .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
         return PostLikeResponse.from(post);
+    }
+
+    /** P1-8：详情读带来的真实浏览计数；未命中（不存在/未发布）静默为 0，不影响详情读取流程。 */
+    @Transactional
+    public int registerView(String slug) {
+        return repository.incrementViewsCount(slug);
     }
 
     public PostStatsResponse getStats(String slug) {
@@ -97,17 +117,18 @@ public class PostService {
             throw new NotFoundException("分类不存在：" + slug);
         }
         String categoryName = postsPage.getContent().isEmpty() ? slug : postsPage.getContent().get(0).getCategory();
-        var pageResponse = PageResponse.from(postsPage.map(PostSummary::from));
-        return CategoryDetail.from(categoryName, slug, null, pageResponse);
+        return CategoryDetail.from(categoryName, slug, null, toSummaryPage(postsPage));
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public PostResponse create(PostRequest request) {
         requireUniqueSlug(request.slug(), null);
         return PostResponse.from(repository.save(PostEntity.create(request, sanitizer)));
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public PostResponse update(long id, PostRequest request) {
         var post = entity(id);
         requireUniqueSlug(request.slug(), id);
@@ -116,6 +137,7 @@ public class PostService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public void delete(long id) {
         if (!repository.existsById(id)) {
             throw new NotFoundException("文章不存在：" + id);

@@ -9,8 +9,10 @@ import java.util.List;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import com.yubai.blog.config.CacheConfig;
 import com.yubai.blog.config.SiteUrlConfig;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.note.NoteRepository;
@@ -32,6 +34,8 @@ public class SitemapService {
         this.noteRepository = noteRepository;
     }
 
+    /** P1-5：整份 XML 缓存（TTL 兜底 + admin 写操作 evict），四个全量投影查询不再逐请求执行。 */
+    @Cacheable(CacheConfig.SITEMAP)
     public String buildSitemapXml() {
         var entries = collectEntries();
         return serializeToXml(entries);

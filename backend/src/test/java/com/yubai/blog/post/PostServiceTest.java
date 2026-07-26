@@ -45,23 +45,56 @@ class PostServiceTest {
             5, "工程实践", List.of("tag1"), "#000000", "01", false, PostStatus.PUBLISHED, "<p>content</p>"), sanitizer);
     }
 
+    /** L-12：列表路径 stub 轻量投影行（标签由 findTagRows 批量补取，未 stub 时 Mockito 返回空列表即空标签）。 */
+    private PostRepository.PostListRow sampleRow() {
+        return new PostRepository.PostListRow() {
+            @Override public Long getId() { return 1L; }
+            @Override public String getSlug() { return "test-slug"; }
+            @Override public String getTitle() { return "Test Title"; }
+            @Override public String getExcerpt() { return "Excerpt"; }
+            @Override public LocalDate getDate() { return LocalDate.of(2026, 1, 1); }
+            @Override public int getReadTime() { return 5; }
+            @Override public String getCategory() { return "工程实践"; }
+            @Override public String getCategorySlug() { return "gongchengshijian"; }
+            @Override public String getColor() { return "#000000"; }
+            @Override public String getNumber() { return "01"; }
+            @Override public boolean getFeatured() { return false; }
+            @Override public PostStatus getStatus() { return PostStatus.PUBLISHED; }
+            @Override public int getLikeCount() { return 0; }
+            @Override public int getViewsCount() { return 0; }
+        };
+    }
+
     @Test
     void findPublishedDelegatesToRepository() {
-        var posts = List.of(samplePost());
+        var rows = List.of(sampleRow());
         when(repository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(posts));
+            .thenReturn(new PageImpl<>(rows));
 
         var result = service.findPublished(0, 10, null, null);
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().get(0).slug()).isEqualTo("test-slug");
     }
 
+    // L-12：列表标签经 findTagRows 一次 IN 查询补齐
+    @Test
+    void findPublishedAssemblesTagsFromBatchQuery() {
+        var rows = List.of(sampleRow());
+        when(repository.findAllByStatusOrderByDateDesc(PostStatus.PUBLISHED, PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(rows));
+        when(repository.findTagRows(List.of(1L)))
+            .thenReturn(List.<Object[]>of(new Object[]{1L, "tag1"}, new Object[]{1L, "tag2"}));
+
+        var result = service.findPublished(0, 10, null, null);
+        assertThat(result.items().get(0).tags()).containsExactly("tag1", "tag2");
+    }
+
     // P1-2：sort=asc 走「最早优先」查询
     @Test
     void findPublishedSupportsAscendingSort() {
-        var posts = List.of(samplePost());
+        var rows = List.of(sampleRow());
         when(repository.findAllByStatusOrderByDateAsc(PostStatus.PUBLISHED, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(posts));
+            .thenReturn(new PageImpl<>(rows));
 
         var result = service.findPublished(0, 10, "", "asc");
         assertThat(result.items()).hasSize(1);
@@ -70,9 +103,9 @@ class PostServiceTest {
     // P1-2：categorySlug 非空时走分类过滤查询
     @Test
     void findPublishedSupportsCategoryFilter() {
-        var posts = List.of(samplePost());
+        var rows = List.of(sampleRow());
         when(repository.findByCategorySlugAndStatusOrderByDateDesc("engineering", PostStatus.PUBLISHED, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(posts));
+            .thenReturn(new PageImpl<>(rows));
 
         var result = service.findPublished(0, 10, "engineering", "desc");
         assertThat(result.items()).hasSize(1);
@@ -80,9 +113,9 @@ class PostServiceTest {
 
     @Test
     void findPublishedSupportsCategoryFilterWithAscendingSort() {
-        var posts = List.of(samplePost());
+        var rows = List.of(sampleRow());
         when(repository.findByCategorySlugAndStatusOrderByDateAsc("engineering", PostStatus.PUBLISHED, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(posts));
+            .thenReturn(new PageImpl<>(rows));
 
         var result = service.findPublished(0, 10, "engineering", "asc");
         assertThat(result.items()).hasSize(1);
@@ -90,8 +123,8 @@ class PostServiceTest {
 
     @Test
     void findAdminWithoutStatusReturnsAll() {
-        var posts = List.of(samplePost());
-        when(repository.findAllByOrderByDateDesc(any(Pageable.class))).thenReturn(new PageImpl<>(posts));
+        var rows = List.of(sampleRow());
+        when(repository.findAllByOrderByDateDesc(any(Pageable.class))).thenReturn(new PageImpl<>(rows));
 
         var result = service.findAdmin(null, 0, 10);
         assertThat(result.items()).hasSize(1);
@@ -99,9 +132,9 @@ class PostServiceTest {
 
     @Test
     void findAdminWithStatusFiltersByStatus() {
-        var posts = List.of(samplePost());
+        var rows = List.of(sampleRow());
         when(repository.findAllByStatusOrderByDateDesc(PostStatus.DRAFT, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(posts));
+            .thenReturn(new PageImpl<>(rows));
 
         var result = service.findAdmin(PostStatus.DRAFT, 0, 10);
         assertThat(result.items()).hasSize(1);
@@ -114,6 +147,15 @@ class PostServiceTest {
 
         var result = service.findPublishedBySlug("test-slug");
         assertThat(result.slug()).isEqualTo("test-slug");
+    }
+
+    /** P1-8：浏览量走数据库端原子自增（与 likeCount 同一并发安全机制）。 */
+    @Test
+    void registerViewDelegatesToAtomicIncrement() {
+        when(repository.incrementViewsCount("test-slug")).thenReturn(1);
+
+        assertThat(service.registerView("test-slug")).isEqualTo(1);
+        verify(repository).incrementViewsCount("test-slug");
     }
 
     /** P1-3：写入已消毒，读路径必须直接返回存储值、零消毒调用（消除每次详情读的整篇 jsoup 遍历）。 */

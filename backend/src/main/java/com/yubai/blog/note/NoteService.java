@@ -1,9 +1,14 @@
 package com.yubai.blog.note;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.PageRequests;
+import com.yubai.blog.config.CacheConfig;
 
 @Service
 @Transactional(readOnly = true)
@@ -27,13 +33,22 @@ public class NoteService {
         var result = status == null
             ? repository.findAllByOrderByUpdatedAtDesc(pageable)
             : repository.findAllByStatusOrderByUpdatedAtDesc(status, pageable);
-        return PageResponse.from(result.map(NoteSummary::from));
+        return toSummaryPage(result);
     }
 
     /** P1-2：公开列表只出摘要（不含正文）。 */
     public PageResponse<NoteSummary> findPublished(int page, int size) {
-        return PageResponse.from(repository.findAllByStatusOrderByUpdatedAtDesc(
-            NoteStatus.PUBLISHED, PageRequests.of(page, size)).map(NoteSummary::from));
+        return toSummaryPage(repository.findAllByStatusOrderByUpdatedAtDesc(
+            NoteStatus.PUBLISHED, PageRequests.of(page, size)));
+    }
+
+    /** L-12：投影分页行 + 一次 IN 批量补标签，列表路径全程不读正文列。 */
+    private PageResponse<NoteSummary> toSummaryPage(Page<NoteRepository.NoteListRow> page) {
+        var ids = page.stream().map(NoteRepository.NoteListRow::getId).toList();
+        Map<Long, List<String>> tags = ids.isEmpty() ? Map.of() : repository.findTagRows(ids).stream()
+            .collect(Collectors.groupingBy(row -> (Long) row[0],
+                Collectors.mapping(row -> (String) row[1], Collectors.toList())));
+        return PageResponse.from(page.map(row -> NoteSummary.of(row, tags.getOrDefault(row.getId(), List.of()))));
     }
 
     public NoteResponse findOne(long id) { return NoteResponse.from(entity(id)); }
@@ -45,9 +60,11 @@ public class NoteService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse create(NoteRequest request) { return NoteResponse.from(repository.saveAndFlush(NoteEntity.create(request))); }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse update(long id, NoteRequest request) {
         var note = entity(id);
         if (note.getVersion() != request.version()) throw new NoteVersionConflictException();
@@ -56,21 +73,25 @@ public class NoteService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse publish(long id, long version) {
         return changeStatus(id, version, NoteStatus.PUBLISHED);
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse unpublish(long id, long version) {
         return changeStatus(id, version, NoteStatus.DRAFT);
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse archive(long id, long version) {
         return changeStatus(id, version, NoteStatus.ARCHIVED);
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse importMarkdown(MultipartFile file) {
         var filename = file.getOriginalFilename() == null ? "imported-note.md" : file.getOriginalFilename();
         var normalized = filename.toLowerCase(Locale.ROOT);
@@ -91,6 +112,7 @@ public class NoteService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public void delete(long id) { repository.delete(entity(id)); }
 
     private NoteResponse changeStatus(long id, long version, NoteStatus status) {

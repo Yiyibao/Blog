@@ -17,4 +17,11 @@ public record NoteSummary(
             note.getTags(), note.getSourceFileName(), note.getWordCount(), note.getVersion(),
             note.getCreatedAt(), note.getUpdatedAt());
     }
+
+    /** L-12：由轻量投影行 + 批量补取的标签组装，列表路径不再触碰正文列。 */
+    static NoteSummary of(NoteRepository.NoteListRow row, List<String> tags) {
+        return new NoteSummary(row.getId(), row.getTitle(), row.getFolder(), row.getStatus(),
+            tags, row.getSourceFileName(), row.getWordCount(), row.getVersion(),
+            row.getCreatedAt(), row.getUpdatedAt());
+    }
 }

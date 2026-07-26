@@ -18,14 +18,54 @@ public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
 
     @Query("SELECT n.id as id, n.updatedAt as updatedAt FROM NoteEntity n WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
     List<NoteSitemapProjection> findPublishedSitemap();
-    @Query("SELECT n FROM NoteEntity n LEFT JOIN FETCH n.tags WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
-    List<NoteEntity> findAllPublishedWithTags();
 
-    Page<NoteEntity> findAllByOrderByUpdatedAtDesc(Pageable pageable);
-    Page<NoteEntity> findAllByStatusOrderByUpdatedAtDesc(NoteStatus status, Pageable pageable);
+    /** L-12：列表专用轻量行——正文列（markdown_content）不再随分页读出。 */
+    interface NoteListRow {
+        Long getId();
+        String getTitle();
+        String getFolder();
+        NoteStatus getStatus();
+        String getSourceFileName();
+        int getWordCount();
+        long getVersion();
+        Instant getCreatedAt();
+        Instant getUpdatedAt();
+    }
+
+    /** NB-5：图谱只需 id/标题/目录。 */
+    interface NoteGraphRow {
+        Long getId();
+        String getTitle();
+        String getFolder();
+    }
+
+    /** NB-5：搜索命中投影——摘要源用 SUBSTRING 截前 400 字符，不捞全文。 */
+    interface NoteSearchRow {
+        Long getId();
+        String getTitle();
+        String getFolder();
+        String getExcerptSource();
+    }
+
+    Page<NoteListRow> findAllByOrderByUpdatedAtDesc(Pageable pageable);
+    Page<NoteListRow> findAllByStatusOrderByUpdatedAtDesc(NoteStatus status, Pageable pageable);
+
+    /** L-12：给一页笔记批量补标签（一次 IN 查询），行结构 [noteId, tag]。 */
+    @Query("SELECT n.id, t FROM NoteEntity n JOIN n.tags t WHERE n.id IN :ids ORDER BY n.id")
+    List<Object[]> findTagRows(@Param("ids") java.util.Collection<Long> ids);
+
+    /** NB-5：图谱节点行（不载正文）。 */
+    @Query("SELECT n.id as id, n.title as title, n.folder as folder FROM NoteEntity n WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
+    List<NoteGraphRow> findPublishedGraphRows();
+
+    /** NB-5：图谱标签边（[noteId, tag]，仅已发布）。 */
+    @Query("SELECT n.id, t FROM NoteEntity n JOIN n.tags t WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED ORDER BY n.id")
+    List<Object[]> findPublishedTagRows();
 
     @Query(value = """
-        SELECT DISTINCT n FROM NoteEntity n
+        SELECT DISTINCT n.id as id, n.title as title, n.folder as folder,
+               SUBSTRING(n.markdownContent, 1, 400) as excerptSource, n.updatedAt as updatedAt
+        FROM NoteEntity n
         LEFT JOIN n.tags tag
         WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED
           AND (LOWER(n.title) LIKE LOWER(:query)
@@ -42,5 +82,5 @@ public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
             OR LOWER(n.markdownContent) LIKE LOWER(:query)
             OR LOWER(tag) LIKE LOWER(:query))
         """)
-    Page<NoteEntity> searchPublished(@Param("query") String query, Pageable pageable);
+    Page<NoteSearchRow> searchPublished(@Param("query") String query, Pageable pageable);
 }

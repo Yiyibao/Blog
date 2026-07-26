@@ -18,6 +18,43 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         LocalDate getDate();
     }
 
+    /** L-12：列表专用轻量行——闭合接口投影使 Hibernate 只 SELECT 这些列，正文列不再随分页读出。 */
+    interface PostListRow {
+        Long getId();
+        String getSlug();
+        String getTitle();
+        String getExcerpt();
+        LocalDate getDate();
+        int getReadTime();
+        String getCategory();
+        String getCategorySlug();
+        String getColor();
+        String getNumber();
+        boolean getFeatured();
+        PostStatus getStatus();
+        int getLikeCount();
+        int getViewsCount();
+    }
+
+    /** NB-5：图谱只需 id/标题/slug/分类。 */
+    interface PostGraphRow {
+        Long getId();
+        String getTitle();
+        String getSlug();
+        String getCategory();
+    }
+
+    /** NB-5：搜索命中只取展示所需列，不再为拼 URL/摘要捞整实体（含全文）。 */
+    interface PostSearchRow {
+        Long getId();
+        String getTitle();
+        String getExcerpt();
+        String getCategory();
+        String getSlug();
+        String getColor();
+        String getNumber();
+    }
+
     public interface CategoryCountProjection {
         String getCategory();
         String getCategorySlug();
@@ -27,12 +64,12 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     @Query("SELECT p.slug as slug, p.date as date FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
     List<PostSitemapProjection> findPublishedSitemap();
 
-    Page<PostEntity> findAllByOrderByDateDesc(Pageable pageable);
+    Page<PostListRow> findAllByOrderByDateDesc(Pageable pageable);
 
-    Page<PostEntity> findAllByStatusOrderByDateDesc(PostStatus status, Pageable pageable);
+    Page<PostListRow> findAllByStatusOrderByDateDesc(PostStatus status, Pageable pageable);
 
     /** P1-2：公开列表「最早优先」排序。 */
-    Page<PostEntity> findAllByStatusOrderByDateAsc(PostStatus status, Pageable pageable);
+    Page<PostListRow> findAllByStatusOrderByDateAsc(PostStatus status, Pageable pageable);
 
     Optional<PostEntity> findBySlugAndStatus(String slug, PostStatus status);
 
@@ -42,13 +79,27 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     boolean existsBySlugAndIdNot(String slug, long id);
 
-    @Query("SELECT p FROM PostEntity p LEFT JOIN FETCH p.tags WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
-    List<PostEntity> findAllPublishedWithTags();
+    /** L-12：给一页文章批量补标签（一次 IN 查询），行结构 [postId, tag]。 */
+    @Query("SELECT p.id, t FROM PostEntity p JOIN p.tags t WHERE p.id IN :ids ORDER BY p.id")
+    List<Object[]> findTagRows(@Param("ids") java.util.Collection<Long> ids);
+
+    /** NB-5：图谱节点行（不载正文）。 */
+    @Query("SELECT p.id as id, p.title as title, p.slug as slug, p.category as category FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
+    List<PostGraphRow> findPublishedGraphRows();
+
+    /** NB-5：图谱标签边（[postId, tag]，仅已发布）。 */
+    @Query("SELECT p.id, t FROM PostEntity p JOIN p.tags t WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED ORDER BY p.id")
+    List<Object[]> findPublishedTagRows();
 
     /** P0-4：数据库端原子自增，消除读-改-写并发丢失更新。 */
     @Modifying
     @Query("UPDATE PostEntity p SET p.likeCount = p.likeCount + 1 WHERE p.slug = :slug AND p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
     int incrementLikeCount(@Param("slug") String slug);
+
+    /** P1-8：浏览量同样走数据库端原子自增（IP+slug 短窗去重在 Controller 层，不落 IP 明文）。 */
+    @Modifying
+    @Query("UPDATE PostEntity p SET p.viewsCount = p.viewsCount + 1 WHERE p.slug = :slug AND p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
+    int incrementViewsCount(@Param("slug") String slug);
 
     @Query("select distinct p.category from PostEntity p where p.status = com.yubai.blog.post.PostStatus.PUBLISHED order by p.category")
     List<String> findDistinctPublishedCategories();
@@ -62,19 +113,21 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         """)
     List<CategoryCountProjection> findPublishedCategoriesWithCount();
 
-    Page<PostEntity> findByCategoryAndStatusOrderByDateDesc(String category, PostStatus status, Pageable pageable);
+    Page<PostListRow> findByCategoryAndStatusOrderByDateDesc(String category, PostStatus status, Pageable pageable);
 
-    Page<PostEntity> findByCategorySlugAndStatusOrderByDateDesc(String categorySlug, PostStatus status, Pageable pageable);
+    Page<PostListRow> findByCategorySlugAndStatusOrderByDateDesc(String categorySlug, PostStatus status, Pageable pageable);
 
     /** P1-2：分类过滤 + 最早优先。 */
-    Page<PostEntity> findByCategorySlugAndStatusOrderByDateAsc(String categorySlug, PostStatus status, Pageable pageable);
+    Page<PostListRow> findByCategorySlugAndStatusOrderByDateAsc(String categorySlug, PostStatus status, Pageable pageable);
 
     long countByCategoryAndStatus(String category, PostStatus status);
 
     long countByCategorySlugAndStatus(String categorySlug, PostStatus status);
 
     @Query(value = """
-        SELECT DISTINCT p FROM PostEntity p
+        SELECT DISTINCT p.id as id, p.title as title, p.excerpt as excerpt, p.category as category,
+               p.slug as slug, p.color as color, p.number as number, p.date as date
+        FROM PostEntity p
         LEFT JOIN p.tags tag
         WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
           AND (LOWER(p.title) LIKE LOWER(:query)
@@ -93,5 +146,5 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
             OR LOWER(p.content) LIKE LOWER(:query)
             OR LOWER(tag) LIKE LOWER(:query))
         """)
-    Page<PostEntity> searchPublished(@Param("query") String query, Pageable pageable);
+    Page<PostSearchRow> searchPublished(@Param("query") String query, Pageable pageable);
 }

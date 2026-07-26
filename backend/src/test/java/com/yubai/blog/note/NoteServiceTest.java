@@ -47,10 +47,30 @@ class NoteServiceTest {
         };
     }
 
+    /** L-12：列表路径 stub 轻量投影行（标签由 findTagRows 批量补取，未 stub 时为空列表即空标签）。 */
+    private NoteRepository.NoteListRow mockRow(long id, String title, String status, long version) {
+        var s = switch (status) {
+            case "PUBLISHED" -> NoteStatus.PUBLISHED;
+            case "ARCHIVED" -> NoteStatus.ARCHIVED;
+            default -> NoteStatus.DRAFT;
+        };
+        return new NoteRepository.NoteListRow() {
+            @Override public Long getId() { return id; }
+            @Override public String getTitle() { return title; }
+            @Override public String getFolder() { return "Dev"; }
+            @Override public NoteStatus getStatus() { return s; }
+            @Override public String getSourceFileName() { return null; }
+            @Override public int getWordCount() { return title.length(); }
+            @Override public long getVersion() { return version; }
+            @Override public java.time.Instant getCreatedAt() { return java.time.Instant.EPOCH; }
+            @Override public java.time.Instant getUpdatedAt() { return java.time.Instant.EPOCH; }
+        };
+    }
+
     @Test
     void findAllWithoutStatusReturnsAll() {
-        var note = mockNote(1L, "Draft", "DRAFT", 0);
-        when(repository.findAllByOrderByUpdatedAtDesc(any())).thenReturn(new PageImpl<>(List.of(note)));
+        var row = mockRow(1L, "Draft", "DRAFT", 0);
+        when(repository.findAllByOrderByUpdatedAtDesc(any())).thenReturn(new PageImpl<>(List.of(row)));
 
         var result = service.findAll(null, 0, 10);
         assertThat(result.items()).hasSize(1);
@@ -58,22 +78,25 @@ class NoteServiceTest {
 
     @Test
     void findAllWithStatusFiltersByStatus() {
-        var note = mockNote(1L, "Draft", "DRAFT", 0);
+        var row = mockRow(1L, "Draft", "DRAFT", 0);
         when(repository.findAllByStatusOrderByUpdatedAtDesc(NoteStatus.DRAFT, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(List.of(note)));
+            .thenReturn(new PageImpl<>(List.of(row)));
 
         var result = service.findAll(NoteStatus.DRAFT, 0, 10);
         assertThat(result.items()).hasSize(1);
     }
 
+    // L-12：列表标签经 findTagRows 一次 IN 查询补齐
     @Test
     void findPublishedReturnsPublishedOnly() {
-        var note = mockNote(2L, "Published", "PUBLISHED", 1);
+        var row = mockRow(2L, "Published", "PUBLISHED", 1);
         when(repository.findAllByStatusOrderByUpdatedAtDesc(NoteStatus.PUBLISHED, PageRequests.of(0, 10)))
-            .thenReturn(new PageImpl<>(List.of(note)));
+            .thenReturn(new PageImpl<>(List.of(row)));
+        when(repository.findTagRows(List.of(2L))).thenReturn(List.<Object[]>of(new Object[]{2L, "vue"}));
 
         var result = service.findPublished(0, 10);
         assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).tags()).containsExactly("vue");
     }
 
     @Test

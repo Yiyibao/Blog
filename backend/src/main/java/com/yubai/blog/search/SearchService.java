@@ -37,29 +37,15 @@ public class SearchService {
         var likePattern = "%" + escapeLike(normalized) + "%";
 
         var articles = postRepository.searchPublished(likePattern, pageable).stream()
-            .map(post -> new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
-                post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug()))
+            .map(SearchService::toResult)
             .toList();
 
         var dishes = dishRepository.searchPublished(likePattern, pageable).stream()
-            .map(dish -> new SearchResult("DISH", dish.getId(), dish.getName(), dish.getSummary(),
-                dish.getCategory(), "/recipes?dish=" + dish.getSlug(), null, null, dish.getSlug()))
+            .map(SearchService::toResult)
             .toList();
 
         var notes = noteRepository.searchPublished(likePattern, pageable).stream()
-            .map(note -> {
-                var excerpt = note.getMarkdownContent()
-                    .replaceAll("(?m)^#{1,6}\\s+|[#*_~`>\\[\\]()-]", "")
-                    .replaceAll("\\s+", " ").trim();
-                if (excerpt.length() > 200) {
-                    excerpt = excerpt.substring(0, 200).trim() + "...";
-                }
-                if (excerpt.isBlank()) {
-                    excerpt = note.getFolder();
-                }
-                return new SearchResult("NOTE", note.getId(), note.getTitle(), excerpt,
-                    note.getFolder(), "/notes?note=" + note.getId(), null, null, null);
-            })
+            .map(SearchService::toResult)
             .toList();
 
         return new SearchResponse(articles, notes, dishes, articles.size() + notes.size() + dishes.size());
@@ -83,29 +69,9 @@ public class SearchService {
             var notes = noteRepository.searchPublished(likePattern, allPageable);
 
             List<SearchResult> allResults = new ArrayList<>();
-            allResults.addAll(posts.stream()
-                .map(p -> new SearchResult("POST", p.getId(), p.getTitle(), p.getExcerpt(),
-                    p.getCategory(), "/articles/" + p.getSlug(), p.getColor(), p.getNumber(), p.getSlug()))
-                .toList());
-            allResults.addAll(dishes.stream()
-                .map(d -> new SearchResult("DISH", d.getId(), d.getName(), d.getSummary(),
-                    d.getCategory(), "/recipes?dish=" + d.getSlug(), null, null, d.getSlug()))
-                .toList());
-            allResults.addAll(notes.stream()
-                .map(n -> {
-                    var excerpt = n.getMarkdownContent()
-                        .replaceAll("(?m)^#{1,6}\\s+|[#*_~`>\\[\\]()-]", "")
-                        .replaceAll("\\s+", " ").trim();
-                    if (excerpt.length() > 200) {
-                        excerpt = excerpt.substring(0, 200).trim() + "...";
-                    }
-                    if (excerpt.isBlank()) {
-                        excerpt = n.getFolder();
-                    }
-                    return new SearchResult("NOTE", n.getId(), n.getTitle(), excerpt,
-                        n.getFolder(), "/notes?note=" + n.getId(), null, null, null);
-                })
-                .toList());
+            allResults.addAll(posts.stream().map(SearchService::toResult).toList());
+            allResults.addAll(dishes.stream().map(SearchService::toResult).toList());
+            allResults.addAll(notes.stream().map(SearchService::toResult).toList());
 
             long total = posts.getTotalElements() + dishes.getTotalElements() + notes.getTotalElements();
             return new SearchPostResponse("ALL", request.query(), allResults, 0, allResults.size(), total, 1);
@@ -113,46 +79,58 @@ public class SearchService {
 
         if (type == SearchType.POST) {
             var page = postRepository.searchPublished(likePattern, pageable);
-            var results = page.stream()
-                .map(p -> new SearchResult("POST", p.getId(), p.getTitle(), p.getExcerpt(),
-                    p.getCategory(), "/articles/" + p.getSlug(), p.getColor(), p.getNumber(), p.getSlug()))
-                .toList();
-            return new SearchPostResponse("POST", request.query(), results,
+            return new SearchPostResponse("POST", request.query(),
+                page.stream().map(SearchService::toResult).toList(),
                 page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
         }
 
         if (type == SearchType.DISH) {
             var page = dishRepository.searchPublished(likePattern, pageable);
-            var results = page.stream()
-                .map(d -> new SearchResult("DISH", d.getId(), d.getName(), d.getSummary(),
-                    d.getCategory(), "/recipes?dish=" + d.getSlug(), null, null, d.getSlug()))
-                .toList();
-            return new SearchPostResponse("DISH", request.query(), results,
+            return new SearchPostResponse("DISH", request.query(),
+                page.stream().map(SearchService::toResult).toList(),
                 page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
         }
 
         if (type == SearchType.NOTE) {
             var page = noteRepository.searchPublished(likePattern, pageable);
-            var results = page.stream()
-                .map(n -> {
-                    var excerpt = n.getMarkdownContent()
-                        .replaceAll("(?m)^#{1,6}\\s+|[#*_~`>\\[\\]()-]", "")
-                        .replaceAll("\\s+", " ").trim();
-                    if (excerpt.length() > 200) {
-                        excerpt = excerpt.substring(0, 200).trim() + "...";
-                    }
-                    if (excerpt.isBlank()) {
-                        excerpt = n.getFolder();
-                    }
-                    return new SearchResult("NOTE", n.getId(), n.getTitle(), excerpt,
-                        n.getFolder(), "/notes?note=" + n.getId(), null, null, null);
-                })
-                .toList();
-            return new SearchPostResponse("NOTE", request.query(), results,
+            return new SearchPostResponse("NOTE", request.query(),
+                page.stream().map(SearchService::toResult).toList(),
                 page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
         }
 
         return SearchPostResponse.empty(request.type().name(), request.query());
+    }
+
+    // NB-5：三类命中均由轻量投影行映射，不再为拼摘要/URL 捞整实体（正文列不出库）。
+
+    private static SearchResult toResult(PostRepository.PostSearchRow post) {
+        return new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
+            post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug());
+    }
+
+    private static SearchResult toResult(DishRepository.DishSearchRow dish) {
+        return new SearchResult("DISH", dish.getId(), dish.getName(), dish.getSummary(),
+            dish.getCategory(), "/recipes?dish=" + dish.getSlug(), null, null, dish.getSlug());
+    }
+
+    private static SearchResult toResult(NoteRepository.NoteSearchRow note) {
+        return new SearchResult("NOTE", note.getId(), note.getTitle(), noteExcerpt(note),
+            note.getFolder(), "/notes?note=" + note.getId(), null, null, null);
+    }
+
+    /** 笔记摘要：由投影截取的前 400 字符正文清洗生成（展示上限 200 字符，400 字符源足够）。 */
+    static String noteExcerpt(NoteRepository.NoteSearchRow note) {
+        var source = note.getExcerptSource() == null ? "" : note.getExcerptSource();
+        var excerpt = source
+            .replaceAll("(?m)^#{1,6}\\s+|[#*_~`>\\[\\]()-]", "")
+            .replaceAll("\\s+", " ").trim();
+        if (excerpt.length() > 200) {
+            excerpt = excerpt.substring(0, 200).trim() + "...";
+        }
+        if (excerpt.isBlank()) {
+            excerpt = note.getFolder();
+        }
+        return excerpt;
     }
 
     /**

@@ -160,6 +160,27 @@ class SearchServiceTest {
         assertThat(captured.getPageSize()).isEqualTo(5);
     }
 
+    // NB-5：笔记摘要由投影截断源（前 400 字符）生成
+
+    @Test
+    void noteExcerptCleansMarkdownAndFallsBackToFolder() {
+        assertThat(SearchService.noteExcerpt(noteRow("# 标题\n\n正文 **加粗** 内容", "前端")))
+            .isEqualTo("标题 正文 加粗 内容");
+        assertThat(SearchService.noteExcerpt(noteRow("###   \n> \n", "后端"))).isEqualTo("后端");
+        assertThat(SearchService.noteExcerpt(noteRow("x".repeat(400), "目录")))
+            .hasSize(203)
+            .endsWith("...");
+    }
+
+    private static NoteRepository.NoteSearchRow noteRow(String excerptSource, String folder) {
+        return new NoteRepository.NoteSearchRow() {
+            @Override public Long getId() { return 1L; }
+            @Override public String getTitle() { return "t"; }
+            @Override public String getFolder() { return folder; }
+            @Override public String getExcerptSource() { return excerptSource; }
+        };
+    }
+
     // P0-9：LIKE 通配符转义
 
     @Test

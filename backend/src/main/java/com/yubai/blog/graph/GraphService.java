@@ -12,9 +12,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.yubai.blog.config.CacheConfig;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
@@ -63,29 +65,36 @@ public class GraphService {
         this.dishRepository = dishRepository;
     }
 
+    /**
+     * P1-5：只读热点缓存（TTL 兜底 + admin 写操作 evict）；
+     * NB-5：全部改为轻量投影查询，构图不再加载文章/笔记正文列。
+     */
+    @Cacheable(CacheConfig.GRAPH)
     public GraphResponse buildGraph() {
         List<GraphNode> contentNodes = new ArrayList<>();
         Set<GraphEdge> edges = new LinkedHashSet<>();
         // normalised tag key -> display label, sorted so tag emission never depends on query order.
         Map<String, String> tagLabels = new TreeMap<>();
 
-        for (var post : postRepository.findAllPublishedWithTags()) {
+        var postTags = groupPairs(postRepository.findPublishedTagRows());
+        for (var post : postRepository.findPublishedGraphRows()) {
             if (post == null || post.getId() == null) {
                 continue;
             }
             String nodeId = "p-" + post.getId();
             contentNodes.add(new GraphNode(nodeId, post.getTitle(), TYPE_POST, "/articles/" + post.getSlug()));
-            linkTags(nodeId, post.getTags(), tagLabels, edges);
+            linkTags(nodeId, postTags.get(post.getId()), tagLabels, edges);
             linkTag(nodeId, post.getCategory(), tagLabels, edges);
         }
 
-        for (var note : noteRepository.findAllPublishedWithTags()) {
+        var noteTags = groupPairs(noteRepository.findPublishedTagRows());
+        for (var note : noteRepository.findPublishedGraphRows()) {
             if (note == null || note.getId() == null) {
                 continue;
             }
             String nodeId = "n-" + note.getId();
             contentNodes.add(new GraphNode(nodeId, note.getTitle(), TYPE_NOTE, "/notes?note=" + note.getId()));
-            linkTags(nodeId, note.getTags(), tagLabels, edges);
+            linkTags(nodeId, noteTags.get(note.getId()), tagLabels, edges);
             linkTag(nodeId, note.getFolder(), tagLabels, edges);
         }
 
@@ -107,6 +116,18 @@ public class GraphService {
         sortedEdges.sort(EDGE_ORDER);
 
         return new GraphResponse(List.copyOf(nodes), List.copyOf(sortedEdges));
+    }
+
+    /** NB-5：把 [id, tag] 行分组为 id -> tags（一次查询替代逐实体集合加载）。 */
+    private static Map<Long, List<String>> groupPairs(List<Object[]> rows) {
+        Map<Long, List<String>> grouped = new java.util.HashMap<>();
+        for (var row : rows) {
+            if (row == null || row.length < 2 || !(row[0] instanceof Long id) || !(row[1] instanceof String tag)) {
+                continue;
+            }
+            grouped.computeIfAbsent(id, key -> new ArrayList<>()).add(tag);
+        }
+        return grouped;
     }
 
     private void linkTags(String nodeId, List<String> tags, Map<String, String> tagLabels, Set<GraphEdge> edges) {

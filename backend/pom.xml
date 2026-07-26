@@ -63,6 +63,15 @@
             <artifactId>jsoup</artifactId>
             <version>1.18.3</version>
         </dependency>
+        <!-- P1-5：只读热点（图谱/站点地图/语录/曲目）进程内缓存，计划点名依赖 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

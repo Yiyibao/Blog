@@ -14,13 +14,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.yubai.blog.dish.DishEntity;
 import com.yubai.blog.dish.DishRepository;
-import com.yubai.blog.note.NoteEntity;
 import com.yubai.blog.note.NoteRepository;
-import com.yubai.blog.post.PostEntity;
 import com.yubai.blog.post.PostRepository;
 
+/** NB-5 之后图谱由轻量投影行 + 标签边行构建，测试数据以行形式 stub（不再构造整实体）。 */
 @ExtendWith(MockitoExtension.class)
 class GraphServiceTest {
 
@@ -36,38 +34,60 @@ class GraphServiceTest {
     @InjectMocks
     GraphService service;
 
-    private static PostEntity post(long id, String title, String slug, String category, List<String> tags) {
-        return new PostEntity() {
-            @Override public Long getId() { return id; }
-            @Override public String getTitle() { return title; }
-            @Override public String getSlug() { return slug; }
-            @Override public String getCategory() { return category; }
-            @Override public List<String> getTags() { return tags; }
+    private record P(long id, String title, String slug, String category, List<String> tags) {}
+    private record N(long id, String title, String folder, List<String> tags) {}
+    private record D(long id, String name, String slug, String category) {}
+
+    private static PostRepository.PostGraphRow row(P p) {
+        return new PostRepository.PostGraphRow() {
+            @Override public Long getId() { return p.id(); }
+            @Override public String getTitle() { return p.title(); }
+            @Override public String getSlug() { return p.slug(); }
+            @Override public String getCategory() { return p.category(); }
         };
     }
 
-    private static NoteEntity note(long id, String title, String folder, List<String> tags) {
-        return new NoteEntity() {
-            @Override public Long getId() { return id; }
-            @Override public String getTitle() { return title; }
-            @Override public String getFolder() { return folder; }
-            @Override public List<String> getTags() { return tags; }
+    private static NoteRepository.NoteGraphRow row(N n) {
+        return new NoteRepository.NoteGraphRow() {
+            @Override public Long getId() { return n.id(); }
+            @Override public String getTitle() { return n.title(); }
+            @Override public String getFolder() { return n.folder(); }
         };
     }
 
-    private static DishEntity dish(long id, String name, String slug, String category) {
-        return new DishEntity() {
-            @Override public Long getId() { return id; }
-            @Override public String getName() { return name; }
-            @Override public String getSlug() { return slug; }
-            @Override public String getCategory() { return category; }
+    private static DishRepository.DishGraphRow row(D d) {
+        return new DishRepository.DishGraphRow() {
+            @Override public Long getId() { return d.id(); }
+            @Override public String getName() { return d.name(); }
+            @Override public String getSlug() { return d.slug(); }
+            @Override public String getCategory() { return d.category(); }
         };
     }
 
-    private void stubAll(List<PostEntity> posts, List<NoteEntity> notes, List<DishEntity> dishes) {
-        when(postRepository.findAllPublishedWithTags()).thenReturn(posts);
-        when(noteRepository.findAllPublishedWithTags()).thenReturn(notes);
-        when(dishRepository.findAllPublishedForGraph()).thenReturn(dishes);
+    private static List<Object[]> postTagRows(List<P> posts) {
+        var rows = new ArrayList<Object[]>();
+        for (var p : posts) {
+            if (p.tags() == null) continue;
+            for (var tag : p.tags()) rows.add(new Object[]{p.id(), tag});
+        }
+        return rows;
+    }
+
+    private static List<Object[]> noteTagRows(List<N> notes) {
+        var rows = new ArrayList<Object[]>();
+        for (var n : notes) {
+            if (n.tags() == null) continue;
+            for (var tag : n.tags()) rows.add(new Object[]{n.id(), tag});
+        }
+        return rows;
+    }
+
+    private void stubAll(List<P> posts, List<N> notes, List<D> dishes) {
+        when(postRepository.findPublishedGraphRows()).thenAnswer(inv -> posts.stream().map(GraphServiceTest::row).toList());
+        when(postRepository.findPublishedTagRows()).thenAnswer(inv -> postTagRows(posts));
+        when(noteRepository.findPublishedGraphRows()).thenAnswer(inv -> notes.stream().map(GraphServiceTest::row).toList());
+        when(noteRepository.findPublishedTagRows()).thenAnswer(inv -> noteTagRows(notes));
+        when(dishRepository.findAllPublishedForGraph()).thenAnswer(inv -> dishes.stream().map(GraphServiceTest::row).toList());
     }
 
     private static GraphNode nodeById(GraphResponse response, String id) {
@@ -84,9 +104,9 @@ class GraphServiceTest {
     @Test
     void contentNodesKeepTheirRealUrls() {
         stubAll(
-            List.of(post(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计", "信息架构"))),
-            List.of(note(1L, "Canvas 性能优化", "前端", List.of("前端架构"))),
-            List.of(dish(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"))
+            List.of(new P(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计", "信息架构"))),
+            List.of(new N(1L, "Canvas 性能优化", "前端", List.of("前端架构"))),
+            List.of(new D(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"))
         );
 
         var result = service.buildGraph();
@@ -112,9 +132,9 @@ class GraphServiceTest {
     @Test
     void tagNodesHaveNullUrlBecausePublicCategoryPagesWereRemoved() {
         stubAll(
-            List.of(post(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计"))),
-            List.of(note(1L, "Canvas 性能优化", "前端", List.of("前端架构"))),
-            List.of(dish(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"))
+            List.of(new P(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计"))),
+            List.of(new N(1L, "Canvas 性能优化", "前端", List.of("前端架构"))),
+            List.of(new D(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"))
         );
 
         var result = service.buildGraph();
@@ -128,17 +148,17 @@ class GraphServiceTest {
     @Test
     void tagIdsAndOutputOrderAreStableWhenSourceOrderIsShuffled() {
         var posts = new ArrayList<>(List.of(
-            post(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计", "信息架构")),
-            post(2L, "类型驱动开发", "type-driven", "工程实践", List.of("信息架构", "TypeScript")),
-            post(3L, "缓存分层", "cache-layers", "工程实践", List.of("性能"))
+            new P(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计", "信息架构")),
+            new P(2L, "类型驱动开发", "type-driven", "工程实践", List.of("信息架构", "TypeScript")),
+            new P(3L, "缓存分层", "cache-layers", "工程实践", List.of("性能"))
         ));
         var notes = new ArrayList<>(List.of(
-            note(1L, "Canvas 性能优化", "前端", List.of("性能", "前端架构")),
-            note(2L, "JVM 内存模型", "后端", List.of("性能"))
+            new N(1L, "Canvas 性能优化", "前端", List.of("性能", "前端架构")),
+            new N(2L, "JVM 内存模型", "后端", List.of("性能"))
         ));
         var dishes = new ArrayList<>(List.of(
-            dish(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"),
-            dish(2L, "麻婆豆腐", "mapo-tofu", "川味")
+            new D(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"),
+            new D(2L, "麻婆豆腐", "mapo-tofu", "川味")
         ));
 
         stubAll(posts, notes, dishes);
@@ -164,15 +184,15 @@ class GraphServiceTest {
 
     @Test
     void blankAndNullRelationValuesAreIgnoredInsteadOfCreatingEmptyNodes() {
-        var posts = new ArrayList<PostEntity>();
-        posts.add(post(1L, "无分类文章", "no-category", null, java.util.Arrays.asList("  ", null, "有效标签")));
-        posts.add(post(2L, "空白分类", "blank-category", "   ", null));
+        var posts = new ArrayList<P>();
+        posts.add(new P(1L, "无分类文章", "no-category", null, java.util.Arrays.asList("  ", null, "有效标签")));
+        posts.add(new P(2L, "空白分类", "blank-category", "   ", null));
 
-        var notes = new ArrayList<NoteEntity>();
-        notes.add(note(1L, "无目录笔记", "", List.of("")));
+        var notes = new ArrayList<N>();
+        notes.add(new N(1L, "无目录笔记", "", List.of("")));
 
-        var dishes = new ArrayList<DishEntity>();
-        dishes.add(dish(1L, "无分类菜", "no-cat-dish", null));
+        var dishes = new ArrayList<D>();
+        dishes.add(new D(1L, "无分类菜", "no-cat-dish", null));
 
         stubAll(posts, notes, dishes);
 
@@ -191,7 +211,7 @@ class GraphServiceTest {
     @Test
     void duplicateRelationValuesProduceASingleEdgeAndASingleTagNode() {
         stubAll(
-            List.of(post(1L, "重复标签", "dupes", "前端", List.of("前端", " 前端 ", "前端架构", "前端架构"))),
+            List.of(new P(1L, "重复标签", "dupes", "前端", List.of("前端", " 前端 ", "前端架构", "前端架构"))),
             List.of(),
             List.of()
         );
@@ -209,8 +229,8 @@ class GraphServiceTest {
     void caseVariantsOfTheSameTagCollapseIntoOneHub() {
         stubAll(
             List.of(
-                post(1L, "A", "a", "Engineering", List.of("TypeScript")),
-                post(2L, "B", "b", "engineering", List.of("typescript"))
+                new P(1L, "A", "a", "Engineering", List.of("TypeScript")),
+                new P(2L, "B", "b", "engineering", List.of("typescript"))
             ),
             List.of(),
             List.of()

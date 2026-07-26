@@ -28,8 +28,26 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
 
     @Query("SELECT d.slug as slug, d.updatedAt as updatedAt FROM DishEntity d WHERE d.published = true")
     List<DishSitemapProjection> findPublishedSitemap();
-    @Query("SELECT d FROM DishEntity d WHERE d.published = true ORDER BY d.featured DESC, d.displayOrder ASC")
-    List<DishEntity> findAllPublishedForGraph();
+
+    /** NB-5：图谱只需 id/名称/slug/分类。 */
+    interface DishGraphRow {
+        Long getId();
+        String getName();
+        String getSlug();
+        String getCategory();
+    }
+
+    /** NB-5：搜索命中投影。 */
+    interface DishSearchRow {
+        Long getId();
+        String getName();
+        String getSummary();
+        String getCategory();
+        String getSlug();
+    }
+
+    @Query("SELECT d.id as id, d.name as name, d.slug as slug, d.category as category FROM DishEntity d WHERE d.published = true ORDER BY d.featured DESC, d.displayOrder ASC")
+    List<DishGraphRow> findAllPublishedForGraph();
 
     Page<DishEntity> findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(Pageable pageable);
     Page<DishEntity> findAllByOrderByDisplayOrderAsc(Pageable pageable);
@@ -47,7 +65,9 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
     int incrementFavoriteCount(@Param("slug") String slug);
 
     @Query(value = """
-        SELECT DISTINCT d FROM DishEntity d
+        SELECT DISTINCT d.id as id, d.name as name, d.summary as summary, d.category as category,
+               d.slug as slug, d.featured as featured, d.displayOrder as displayOrder
+        FROM DishEntity d
         LEFT JOIN d.ingredients ingredient
         LEFT JOIN d.steps step
         WHERE d.published = true
@@ -68,5 +88,5 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
             OR LOWER(ingredient) LIKE LOWER(:query)
             OR LOWER(step) LIKE LOWER(:query))
         """)
-    Page<DishEntity> searchPublished(@Param("query") String query, Pageable pageable);
+    Page<DishSearchRow> searchPublished(@Param("query") String query, Pageable pageable);
 }

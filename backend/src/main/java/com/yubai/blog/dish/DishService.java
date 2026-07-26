@@ -1,5 +1,7 @@
 package com.yubai.blog.dish;
 
+import org.springframework.cache.annotation.CacheEvict;
+import com.yubai.blog.config.CacheConfig;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +60,7 @@ public class DishService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public DishResponse create(DishRequest request) {
         if (repository.existsBySlug(request.slug())) {
             throw new DataIntegrityViolationException("菜品 Slug 已存在");
@@ -66,6 +69,7 @@ public class DishService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public DishResponse update(long id, DishRequest request) {
         var dish = entity(id);
         if (repository.existsBySlugAndIdNot(request.slug(), id)) {
@@ -76,6 +80,7 @@ public class DishService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public void delete(long id) {
         if (!repository.existsById(id)) {
             throw new NotFoundException("菜品不存在：" + id);
