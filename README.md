@@ -82,14 +82,30 @@ mvn spring-boot:run
 - `GET|POST /api/v1/admin/notes/{id}/attachments`：列出或上传笔记图片
 - `DELETE /api/v1/admin/notes/{id}/attachments/{attachmentId}`：删除笔记图片
 
-- `POST /api/v1/admin/ai/chat`：向 DeepSeek 发送对话，需配置下方 AI 环境变量
+- `POST /api/v1/admin/ai/chat`：AI 对话（请求体可选 `providerId`/`model` 指定供应商与模型，缺省用默认供应商）
+- `GET /api/v1/admin/ai/providers`：AI 供应商列表（密钥永不回显，仅 `hasKey` 与 `keyTail` 尾 4 位）
+- `POST /api/v1/admin/ai/providers`：新增供应商 `{name, baseUrl, apiKey?, models?, defaultModel, enabled?}`；`baseUrl` 经 SSRF 校验（仅 https，禁内网/环回，本地端点需 `APP_AI_ALLOW_LOCAL_ENDPOINTS=true`）
+- `PUT /api/v1/admin/ai/providers/{id}`：更新供应商；`apiKey` 留空表示保留原密钥
+- `DELETE /api/v1/admin/ai/providers/{id}`：删除供应商（默认供应商被删后自动顺延）
+- `PUT /api/v1/admin/ai/providers/{id}/default`：设为默认供应商
+- `POST /api/v1/admin/ai/providers/{id}/test`：连通性测试（后端代发 `GET /models`，返回 `{ok, message, models}`）
 
 除登录外，所有管理接口都必须携带有效的管理员 Bearer Token。
 所有内容列表统一返回 `items/page/size/totalElements/totalPages`，页码从 `0` 开始，单页最大 `50` 条。
 
-## AI 对话（可选）
+## AI 对话（可选，多供应商）
 
-管理员可以在 `.env.properties` 中启用 AI 对话：
+AI 助手支持多供应商注册表：DeepSeek、OpenAI、通义、智谱、Kimi、本地 Ollama 等一切 OpenAI 兼容端点都可在管理界面注册与切换，API 密钥以 AES-256-GCM 加密存入数据库。启用注册表需在 `.env.properties` 配置加密主密钥：
+
+```properties
+APP_AI_MASTER_KEY=至少32位随机字符串（openssl rand -base64 48）
+# 如需本地模型服务（如 Ollama），显式放开内网端点（改动需重启）：
+APP_AI_ALLOW_LOCAL_ENDPOINTS=false
+```
+
+未配置主密钥时注册表不可用，仅剩下方环境变量单供应商回退。首次启动时若注册表为空且 env 配置已启用，会自动把 env 配置迁移为第一个供应商（名为 `deepseek`）。
+
+兼容回退（单供应商 env 配置）：
 
 ```properties
 AI_ENABLED=true

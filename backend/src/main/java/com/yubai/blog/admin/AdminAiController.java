@@ -2,9 +2,9 @@ package com.yubai.blog.admin;
 
 import com.yubai.blog.admin.ai.AiServiceException;
 import com.yubai.blog.config.AiProperties;
+import com.yubai.blog.admin.ai.AiChatService;
 import com.yubai.blog.admin.ai.ChatRequest;
 import com.yubai.blog.admin.ai.ChatResponse;
-import com.yubai.blog.admin.ai.DeepSeekChatService;
 import com.yubai.blog.common.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -16,10 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/admin/ai")
 public class AdminAiController {
-    private final DeepSeekChatService chatService;
+    private final AiChatService chatService;
     private final AiProperties properties;
 
-    public AdminAiController(DeepSeekChatService chatService, AiProperties properties) {
+    public AdminAiController(AiChatService chatService, AiProperties properties) {
         this.chatService = chatService;
         this.properties = properties;
     }

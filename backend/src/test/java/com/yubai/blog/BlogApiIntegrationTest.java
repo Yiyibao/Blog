@@ -88,6 +88,9 @@ class BlogApiIntegrationTest {
         registry.add("app.admin.password", () -> "admin-pass-12345");
         registry.add("app.cors.allowed-origins", () -> "http://localhost:5173");
         registry.add("app.site-url", () -> "http://localhost:5173");
+        // 4A-1：供应商注册表测试需要主密钥；allow-local 放开环回地址以便用字面量 IP 免 DNS 测试
+        registry.add("app.ai.master-key", () -> "integration-test-master-key-32chars!");
+        registry.add("app.ai.allow-local-endpoints", () -> "true");
     }
 
     @Autowired
@@ -1005,6 +1008,77 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/search").param("q", "_____"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.total").value(0));
+    }
+
+    @Test
+    @Order(25)
+    void aiProviderCrudMasksSecretsEverywhere() throws Exception {
+        // 4A-1：密钥只写不回显——创建/列表/更新的任何响应都不得出现明文密钥
+        String token = login();
+        var secret = "sk-it-secret-key-9876";
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/ai/providers")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"it-provider\",\"baseUrl\":\"https://127.0.0.1:9443/v1\",\"apiKey\":\"" + secret
+                    + "\",\"models\":[\"model-a\",\"model-b\"],\"defaultModel\":\"model-a\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.name").value("it-provider"))
+            .andExpect(jsonPath("$.data.hasKey").value(true))
+            .andExpect(jsonPath("$.data.keyTail").value("9876"))
+            .andExpect(jsonPath("$.data.isDefault").value(true))
+            .andReturn();
+        assertFalse(created.getResponse().getContentAsString().contains(secret));
+        long providerId = objectMapper.readTree(created.getResponse().getContentAsString())
+            .path("data").path("id").asLong();
+
+        MvcResult listed = mockMvc.perform(get("/api/v1/admin/ai/providers")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].hasKey").value(true))
+            .andReturn();
+        assertFalse(listed.getResponse().getContentAsString().contains(secret));
+
+        // 更新时密钥留空表示保留原值
+        MvcResult updated = mockMvc.perform(put("/api/v1/admin/ai/providers/" + providerId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"it-provider\",\"baseUrl\":\"https://127.0.0.1:9443/v1\",\"apiKey\":\"\","
+                    + "\"models\":[\"model-a\"],\"defaultModel\":\"model-a\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.hasKey").value(true))
+            .andExpect(jsonPath("$.data.keyTail").value("9876"))
+            .andReturn();
+        assertFalse(updated.getResponse().getContentAsString().contains(secret));
+
+        mockMvc.perform(delete("/api/v1/admin/ai/providers/" + providerId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(26)
+    void aiProviderBaseUrlSsrfRejected() throws Exception {
+        // 4A-1 SSRF：公网 http 与链路本地（云元数据 169.254.*）一律 400；字面量 IP 免 DNS
+        String token = login();
+        for (var badUrl : new String[]{"http://93.184.216.34", "https://169.254.169.254", "ftp://example.com"}) {
+            mockMvc.perform(post("/api/v1/admin/ai/providers")
+                    .header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"name\":\"bad-provider\",\"baseUrl\":\"" + badUrl
+                        + "\",\"defaultModel\":\"m\"}"))
+                .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    @Order(27)
+    void aiProviderEndpointsRequireAdminToken() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/ai/providers"))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/admin/ai/providers")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"x\",\"baseUrl\":\"https://127.0.0.1:9443\",\"defaultModel\":\"m\"}"))
+            .andExpect(status().isUnauthorized());
     }
 
     private String login() throws Exception {

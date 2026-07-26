@@ -50,6 +50,8 @@ app:
     enabled: ${AI_ENABLED:false}
     base-url: ${AI_BASE_URL:https://api.deepseek.com}
     api-key: ${AI_API_KEY:}
+    master-key: ${APP_AI_MASTER_KEY:}
+    allow-local-endpoints: ${APP_AI_ALLOW_LOCAL_ENDPOINTS:false}
     model: ${AI_MODEL:deepseek-v4-flash}
     request-timeout: ${AI_REQUEST_TIMEOUT:60}
     max-input-chars: ${AI_MAX_INPUT_CHARS:8000}

@@ -6,8 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.yubai.blog.admin.ai.AiChatService;
 import com.yubai.blog.admin.ai.ChatResponse;
-import com.yubai.blog.admin.ai.DeepSeekChatService;
 import com.yubai.blog.config.AiProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +26,7 @@ class AdminAiControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    DeepSeekChatService chatService;
+    AiChatService chatService;
 
     @MockitoBean
     AiProperties aiProperties;

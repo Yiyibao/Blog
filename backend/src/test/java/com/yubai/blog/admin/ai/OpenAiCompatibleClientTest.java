@@ -1,12 +1,12 @@
 package com.yubai.blog.admin.ai;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
-import com.yubai.blog.config.AiProperties;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.util.List;
@@ -18,33 +18,33 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
-class DeepSeekChatServiceTest {
+/**
+ * 原 DeepSeekChatServiceTest 的 HTTP 层用例整体迁移至此（4A-1 供应商抽象重构），
+ * 断言逐条保留；服务层用例（禁用/缺密钥/总长）见 AiChatServiceTest。
+ */
+class OpenAiCompatibleClientTest {
 
-    private AiProperties properties;
     private MockRestServiceServer server;
-    private DeepSeekChatService service;
+    private OpenAiCompatibleClient client;
+    private AiEndpoint endpoint;
 
     private static final String BASE_URL = "https://api.deepseek.com";
     private static final String COMPLETIONS_URL = BASE_URL + "/chat/completions";
+    private static final String MODELS_URL = BASE_URL + "/models";
     private static final String SUCCESS_JSON = """
         {"id":"x","object":"chat.completion","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"Hello! How can I help you?"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
         """;
 
     @BeforeEach
     void setUp() {
-        properties = new AiProperties();
-        properties.setEnabled(true);
-        properties.setApiKey("test-key");
-        properties.setBaseUrl(BASE_URL);
-        properties.setMaxTotalChars(40000);
-        properties.setMaxOutputTokens(2048);
-
+        endpoint = new AiEndpoint(BASE_URL, "test-key", "deepseek-v4-flash", 60, 2048);
         var builder = RestClient.builder()
-            .baseUrl(COMPLETIONS_URL)
+            .baseUrl(BASE_URL)
             .defaultHeader(org.springframework.http.HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .defaultHeader(org.springframework.http.HttpHeaders.AUTHORIZATION, "Bearer test-key");
         server = MockRestServiceServer.bindTo(builder).build();
-        service = new DeepSeekChatService(properties, builder.build());
+        var restClient = builder.build();
+        client = new OpenAiCompatibleClient(ignored -> restClient);
     }
 
     @Test
@@ -53,7 +53,7 @@ class DeepSeekChatServiceTest {
             .andExpect(method(POST))
             .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
 
-        var response = service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello"))));
+        var response = client.chat(endpoint, List.of(new ChatMessage("user", "hello")));
 
         assertEquals("Hello! How can I help you?", response.content());
         assertEquals("deepseek-v4-flash", response.model());
@@ -73,7 +73,7 @@ class DeepSeekChatServiceTest {
             .andExpect(method(POST))
             .andRespond(withSuccess(json, APPLICATION_JSON));
 
-        var response = service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello"))));
+        var response = client.chat(endpoint, List.of(new ChatMessage("user", "hello")));
 
         assertEquals("Hello! How can I help you?", response.content());
         assertNull(response.usage());
@@ -87,7 +87,7 @@ class DeepSeekChatServiceTest {
             .andExpect(header("Authorization", "Bearer test-key"))
             .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
 
-        service.chat(new ChatRequest(List.of(new ChatMessage("user", "hi"))));
+        client.chat(endpoint, List.of(new ChatMessage("user", "hi")));
         server.verify();
     }
 
@@ -100,47 +100,27 @@ class DeepSeekChatServiceTest {
                 """, false))
             .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
 
-        service.chat(new ChatRequest(List.of(new ChatMessage("user", "hi"))));
+        client.chat(endpoint, List.of(new ChatMessage("user", "hi")));
         server.verify();
     }
 
     @Test
-    void disabledServiceThrows503() {
-        properties.setEnabled(false);
-        var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
-        assertEquals(503, e.getStatus().value());
-    }
+    void usesEndpointModelInRequestBody() {
+        var customEndpoint = new AiEndpoint(BASE_URL, "test-key", "glm-4-flash", 60, 1024);
+        server.expect(requestTo(COMPLETIONS_URL))
+            .andExpect(method(POST))
+            .andExpect(content().json("{\"model\":\"glm-4-flash\",\"max_tokens\":1024}", false))
+            .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
 
-    @Test
-    void nullApiKeyThrows503() {
-        properties.setApiKey(null);
-        var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
-        assertEquals(503, e.getStatus().value());
-    }
-
-    @Test
-    void blankApiKeyThrows503() {
-        properties.setApiKey("  ");
-        var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
-        assertEquals(503, e.getStatus().value());
-    }
-
-    @Test
-    void aggregateContentExceedsMaxThrows400() {
-        var content = "x".repeat(20001);
-        var request = new ChatRequest(List.of(new ChatMessage("user", content), new ChatMessage("assistant", content)));
-        var e = assertThrows(AiServiceException.class, () -> service.chat(request));
-        assertEquals(400, e.getStatus().value());
+        client.chat(customEndpoint, List.of(new ChatMessage("user", "hi")));
+        server.verify();
     }
 
     @Test
     void provider429MapsTo429() {
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(429, e.getStatus().value());
     }
 
@@ -148,7 +128,7 @@ class DeepSeekChatServiceTest {
     void provider5xxMapsTo502() {
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withServerError());
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(502, e.getStatus().value());
     }
 
@@ -156,7 +136,7 @@ class DeepSeekChatServiceTest {
     void provider4xxMapsTo502() {
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST));
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(502, e.getStatus().value());
     }
 
@@ -166,7 +146,7 @@ class DeepSeekChatServiceTest {
             throw new ResourceAccessException("timeout", new SocketTimeoutException("Read timed out"));
         });
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(504, e.getStatus().value());
     }
 
@@ -176,7 +156,7 @@ class DeepSeekChatServiceTest {
             throw new ResourceAccessException("refused", new ConnectException("Connection refused"));
         });
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(502, e.getStatus().value());
     }
 
@@ -187,7 +167,7 @@ class DeepSeekChatServiceTest {
             "\"choices\":[]");
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess(json, APPLICATION_JSON));
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(502, e.getStatus().value());
     }
 
@@ -196,7 +176,7 @@ class DeepSeekChatServiceTest {
         var json = SUCCESS_JSON.replace("\"content\":\"Hello! How can I help you?\"", "\"content\":null");
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess(json, APPLICATION_JSON));
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(502, e.getStatus().value());
     }
 
@@ -205,7 +185,7 @@ class DeepSeekChatServiceTest {
         var json = SUCCESS_JSON.replace("\"content\":\"Hello! How can I help you?\"", "\"content\":\"  \"");
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess(json, APPLICATION_JSON));
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
         assertEquals(502, e.getStatus().value());
     }
 
@@ -213,7 +193,27 @@ class DeepSeekChatServiceTest {
     void malformedJsonMapsTo502() {
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withSuccess("not-json", APPLICATION_JSON));
         var e = assertThrows(AiServiceException.class,
-            () -> service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")))));
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "hello"))));
+        assertEquals(502, e.getStatus().value());
+    }
+
+    @Test
+    void listModelsParsesIds() {
+        server.expect(requestTo(MODELS_URL))
+            .andExpect(method(GET))
+            .andRespond(withSuccess(
+                "{\"object\":\"list\",\"data\":[{\"id\":\"deepseek-v4-flash\"},{\"id\":\"deepseek-reasoner\"}]}",
+                APPLICATION_JSON));
+
+        var models = client.listModels(endpoint);
+        assertEquals(List.of("deepseek-v4-flash", "deepseek-reasoner"), models);
+        server.verify();
+    }
+
+    @Test
+    void listModelsUpstreamErrorMapsTo502() {
+        server.expect(requestTo(MODELS_URL)).andRespond(withServerError());
+        var e = assertThrows(AiServiceException.class, () -> client.listModels(endpoint));
         assertEquals(502, e.getStatus().value());
     }
 }

@@ -13,6 +13,10 @@ public class AiProperties {
     private int maxHistoryMessages = 20;
     private int maxTotalChars = 40000;
     private int maxOutputTokens = 2048;
+    /** 4A-1：供应商注册表密钥加密主密钥（APP_AI_MASTER_KEY）；为空时注册表密钥存取不可用。 */
+    private String masterKey;
+    /** 4A-1：是否允许 base_url 指向本地/私网端点（如 Ollama）；只能改 env 重启生效。 */
+    private boolean allowLocalEndpoints;
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -32,4 +36,8 @@ public class AiProperties {
     public void setMaxTotalChars(int maxTotalChars) { this.maxTotalChars = maxTotalChars; }
     public int getMaxOutputTokens() { return maxOutputTokens; }
     public void setMaxOutputTokens(int maxOutputTokens) { this.maxOutputTokens = maxOutputTokens; }
+    public String getMasterKey() { return masterKey; }
+    public void setMasterKey(String masterKey) { this.masterKey = masterKey; }
+    public boolean isAllowLocalEndpoints() { return allowLocalEndpoints; }
+    public void setAllowLocalEndpoints(boolean allowLocalEndpoints) { this.allowLocalEndpoints = allowLocalEndpoints; }
 }
