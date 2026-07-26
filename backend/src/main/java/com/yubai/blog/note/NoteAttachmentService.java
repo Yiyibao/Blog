@@ -64,12 +64,40 @@ public class NoteAttachmentService {
         if (!SAFE_IMAGE_TYPES.contains(type)) throw new InvalidNoteFileException("只支持 PNG、JPEG、WebP 或 GIF 图片");
         var original = file.getOriginalFilename() == null ? "image" : file.getOriginalFilename();
         var safeName = NoteService.safeFilename(original);
+        byte[] data;
         try {
-            return NoteAttachmentResponse.from(attachments.saveAndFlush(
-                NoteAttachmentEntity.create(noteId, safeName.isBlank() ? "image" : safeName, type, optimizeImage(file.getBytes(), type))));
+            data = file.getBytes();
         } catch (IOException exception) {
             throw new InvalidNoteFileException("无法读取图片文件");
         }
+        // P0-6：不信任客户端 Content-Type，按文件头 magic bytes 校验实际格式
+        if (!matchesMagicBytes(data, type)) {
+            throw new InvalidNoteFileException("图片内容与声明的类型不符");
+        }
+        return NoteAttachmentResponse.from(attachments.saveAndFlush(
+            NoteAttachmentEntity.create(noteId, safeName.isBlank() ? "image" : safeName, type, optimizeImage(data, type))));
+    }
+
+    /** P0-6：PNG/JPEG/WebP/GIF 文件头嗅探。 */
+    static boolean matchesMagicBytes(byte[] data, String mimeType) {
+        return switch (mimeType) {
+            case "image/png" -> startsWith(data, new int[]{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
+            case "image/jpeg" -> startsWith(data, new int[]{0xFF, 0xD8, 0xFF});
+            case "image/gif" -> startsWith(data, new int[]{'G', 'I', 'F', '8', '7', 'a'})
+                || startsWith(data, new int[]{'G', 'I', 'F', '8', '9', 'a'});
+            case "image/webp" -> data.length >= 12
+                && startsWith(data, new int[]{'R', 'I', 'F', 'F'})
+                && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P';
+            default -> false;
+        };
+    }
+
+    private static boolean startsWith(byte[] data, int[] prefix) {
+        if (data.length < prefix.length) return false;
+        for (int i = 0; i < prefix.length; i++) {
+            if ((data[i] & 0xFF) != prefix[i]) return false;
+        }
+        return true;
     }
 
     static byte[] optimizeImage(byte[] data, String mimeType) {
