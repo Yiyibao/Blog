@@ -54,6 +54,15 @@ class ListQueryBatchingTest {
     DishRepository dishRepository;
 
     @Autowired
+    com.yubai.blog.kitchen.MealLogRepository mealLogRepository;
+
+    @Autowired
+    com.yubai.blog.kitchen.DailyMenuRepository dailyMenuRepository;
+
+    @Autowired
+    com.yubai.blog.kitchen.DailyMenuItemRepository dailyMenuItemRepository;
+
+    @Autowired
     EntityManager entityManager;
 
     @DynamicPropertySource
@@ -117,6 +126,37 @@ class ListQueryBatchingTest {
         assertThat(prepares)
             .as("菜谱列表页 JDBC prepare 次数（主查询 + ingredients/steps 各一条批量查询）")
             .isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void mealLogTimelineDoesNotFetchDishCollections() {
+        // FD-16：打卡时间线 = 实体页查询 + 一次 slug 标量批查询，绝不触发 DishEntity 的
+        // EAGER @ElementCollection（那会按菜品数放大 prepare）。上限 ≤2：主查询 + slug IN 批查询。
+        var dish = dishRepository.save(DishEntity.create(new DishRequest(
+            "qc-meallog-dish", "打卡防线菜", "简介", "批量测试",
+            "/images/dishes/qc-ml.webp", "图", "测试", "https://example.com/qc",
+            15, "简单", new BigDecimal("4.5"), false, true, 200,
+            List.of("食材A", "食材B"), List.of("步骤一", "步骤二")
+        )));
+        for (int i = 1; i <= SEED; i++) {
+            mealLogRepository.save(com.yubai.blog.kitchen.MealLogEntity.create(
+                LocalDate.of(2026, 2, i), dish.getId(), "打卡防线菜",
+                com.yubai.blog.kitchen.MealSlot.DINNER, null, "", 1L, "站长"));
+        }
+        var service = new com.yubai.blog.kitchen.MealLogService(
+            mealLogRepository, dailyMenuRepository, dailyMenuItemRepository, dishRepository);
+        // 同一 IT 库会残留集成测试提交的打卡行（@DataJpaTest 只回滚自己的写入），
+        // 断言只校验本测试种下的行；prepare 计数对整页成立
+        long prepares = measure(() ->
+            service.timeline(0, 50, null, null, null).items().stream()
+                .filter(log -> dish.getId().equals(log.dishId()))
+                .forEach(log -> assertThat(log.dishSlug()).isEqualTo("qc-meallog-dish")));
+        assertThat(service.timeline(0, 50, null, null, null).items())
+            .as("本测试种下的打卡应出现在时间线里")
+            .anyMatch(log -> "qc-meallog-dish".equals(log.dishSlug()));
+        assertThat(prepares)
+            .as("FD-16 打卡时间线 JDBC prepare 次数（实体页查询 + slug 标量批查询）")
+            .isLessThanOrEqualTo(2);
     }
 
     /** 落库并清空一级缓存后执行查询，返回期间的 JDBC prepare 计数。 */
