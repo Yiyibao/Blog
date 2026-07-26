@@ -19,6 +19,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.BatchSize;
+
 @Entity
 @Table(name = "dishes")
 public class DishEntity {
@@ -71,12 +73,16 @@ public class DishEntity {
     @Column(name = "favorite_count", nullable = false)
     private int favoriteCount;
 
+    // P1-1：列表页批量抓取食材，消除 1+2N 查询
+    @BatchSize(size = 50)
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "dish_ingredients", joinColumns = @JoinColumn(name = "dish_id"))
     @OrderColumn(name = "sort_order")
     @Column(name = "ingredient", nullable = false, length = 240)
     private List<String> ingredients = new ArrayList<>();
 
+    // P1-1：列表页批量抓取步骤，消除 1+2N 查询
+    @BatchSize(size = 50)
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "dish_steps", joinColumns = @JoinColumn(name = "dish_id"))
     @OrderColumn(name = "sort_order")

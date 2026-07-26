@@ -18,6 +18,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.BatchSize;
+
 @Entity
 @Table(name = "posts")
 public class PostEntity {
@@ -46,6 +48,8 @@ public class PostEntity {
     @Column(name = "category_slug", nullable = false, length = 255)
     private String categorySlug;
 
+    // P1-1：列表页一次加载多篇文章时按 IN 批量抓取 tags，消除 1+N 查询
+    @BatchSize(size = 50)
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "post_tags", joinColumns = @JoinColumn(name = "post_id"))
     @OrderColumn(name = "sort_order")

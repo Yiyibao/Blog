@@ -21,6 +21,8 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import org.hibernate.annotations.BatchSize;
+
 @Entity
 @Table(name = "learning_notes")
 public class NoteEntity {
@@ -40,6 +42,8 @@ public class NoteEntity {
     @Column(nullable = false, length = 20)
     private NoteStatus status;
 
+    // P1-1：列表页一次加载多条笔记时按 IN 批量抓取 tags，消除 1+N 查询
+    @BatchSize(size = 50)
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "learning_note_tags", joinColumns = @JoinColumn(name = "note_id"))
     @OrderColumn(name = "sort_order")
