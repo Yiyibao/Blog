@@ -42,7 +42,7 @@ class PostServiceTest {
         // Use reflection-free approach: PostEntity fields are private with package-level constructor
         // We rely on the repository mock returning entities created via the full constructor path
         return PostEntity.create(new PostRequest("test-slug", "Test Title", "Excerpt", LocalDate.of(2026, 1, 1),
-            5, "工程实践", List.of("tag1"), "#000000", "01", false, PostStatus.PUBLISHED, "<p>content</p>"), sanitizer);
+            5, "工程实践", List.of("tag1"), "#000000", "01", false, PostStatus.PUBLISHED, "<p>content</p>", null, null), sanitizer);
     }
 
     /** L-12：列表路径 stub 轻量投影行（标签由 findTagRows 批量补取，未 stub 时 Mockito 返回空列表即空标签）。 */
@@ -197,7 +197,7 @@ class PostServiceTest {
     void createSavesPostWithUniqueSlug() {
         var post = samplePost();
         var request = new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
-            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>");
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
         when(repository.existsBySlug("new-slug")).thenReturn(false);
         when(repository.save(any())).thenReturn(post);
         when(sanitizer.sanitize(any())).thenReturn("<p>new</p>");
@@ -209,7 +209,7 @@ class PostServiceTest {
     @Test
     void createThrowsOnDuplicateSlug() {
         var request = new PostRequest("dup-slug", "Dup", "Excerpt", LocalDate.of(2026, 1, 1),
-            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>dup</p>");
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>dup</p>", null, null);
         when(repository.existsBySlug("dup-slug")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(request)).isInstanceOf(DataIntegrityViolationException.class);
@@ -219,7 +219,7 @@ class PostServiceTest {
     void updateSavesPostWithUniqueSlug() {
         var post = samplePost();
         var request = new PostRequest("test-slug", "Updated", "Excerpt", LocalDate.of(2026, 1, 1),
-            5, "工程实践", List.of(), "#000", "01", false, PostStatus.PUBLISHED, "<p>updated</p>");
+            5, "工程实践", List.of(), "#000", "01", false, PostStatus.PUBLISHED, "<p>updated</p>", null, null);
         when(repository.findById(1L)).thenReturn(Optional.of(post));
         when(repository.existsBySlugAndIdNot("test-slug", 1L)).thenReturn(false);
         when(sanitizer.sanitize(any())).thenReturn("<p>updated</p>");

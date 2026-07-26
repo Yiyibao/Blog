@@ -1019,6 +1019,65 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(44)
+    void markdownPostsPersistFormatAndConversionBackfillsLegacy() throws Exception {
+        // 3A-1：MARKDOWN 新篇双字段落库；3A-2：存量转换端点回填 markdown 并产出校对清单
+        String token = login();
+        String mdBody = """
+            {"slug":"md-pipeline-post","title":"Markdown 管线","excerpt":"3A-1 验证",
+             "date":"2026-07-27","readTime":3,"category":"工程实践","tags":["markdown"],
+             "color":"#112233","number":"MD1","featured":false,"status":"DRAFT",
+             "contentFormat":"MARKDOWN","markdownContent":"# 标题\\n\\n**加粗** 正文"}
+            """;
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(mdBody))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.contentFormat").value("MARKDOWN"))
+            .andExpect(jsonPath("$.data.markdownContent").value(org.hamcrest.Matchers.containsString("**加粗**")))
+            .andReturn();
+        long mdId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // 契约校验：MARKDOWN 缺 markdownContent 如实 400
+        mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mdBody.replace("md-pipeline-post", "md-invalid-post")
+                    .replace("\"markdownContent\":\"# 标题\\n\\n**加粗** 正文\"", "\"markdownContent\":\"  \"")))
+            .andExpect(status().isBadRequest());
+
+        // 3A-2：转换端点——存量 HTML 篇回填 markdown（格式不变仍 HTML），响应即校对清单；重跑幂等跳过
+        MvcResult conv = mockMvc.perform(post("/api/v1/admin/posts/convert-markdown")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray())
+            .andReturn();
+        JsonNode reports = objectMapper.readTree(conv.getResponse().getContentAsString()).path("data");
+        assertTrue(reports.size() > 0, "conversion report should cover seed posts");
+        var sawConverted = false;
+        for (var report : reports) {
+            if (report.path("converted").asBoolean()) sawConverted = true;
+        }
+        assertTrue(sawConverted, "at least one legacy HTML post should be converted");
+
+        mockMvc.perform(get("/api/v1/admin/posts/" + mdId).header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.contentFormat").value("MARKDOWN"));
+
+        MvcResult convAgain = mockMvc.perform(post("/api/v1/admin/posts/convert-markdown")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn();
+        for (var report : objectMapper.readTree(convAgain.getResponse().getContentAsString()).path("data")) {
+            assertFalse(report.path("converted").asBoolean(), "second run must be idempotent (all skipped)");
+        }
+
+        mockMvc.perform(delete("/api/v1/admin/posts/" + mdId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(43)
     void guestVisibilityLockdownHidesNotesEverywhere() throws Exception {
         // L-16/D-17：游客收权四联断言——公开笔记端点 401、图谱剔除、搜索剔除（登录即恢复）

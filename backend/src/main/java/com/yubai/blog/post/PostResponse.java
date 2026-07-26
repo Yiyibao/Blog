@@ -18,6 +18,8 @@ public record PostResponse(
     boolean featured,
     PostStatus status,
     String content,
+    String markdownContent,
+    ContentFormat contentFormat,
     int likeCount,
     int viewsCount
 ) {
@@ -26,7 +28,8 @@ public record PostResponse(
         return new PostResponse(
             post.getId(), post.getSlug(), post.getTitle(), post.getExcerpt(), post.getDate(), post.getReadTime(),
             post.getCategory(), post.getCategorySlug(), post.getTags(), post.getColor(), post.getNumber(), post.isFeatured(),
-            post.getStatus(), post.getContent(), post.getLikeCount(), post.getViewsCount()
+            post.getStatus(), post.getContent(), post.getMarkdownContent(), post.getContentFormat(),
+            post.getLikeCount(), post.getViewsCount()
         );
     }
 }

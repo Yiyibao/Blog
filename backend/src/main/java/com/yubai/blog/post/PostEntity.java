@@ -72,6 +72,14 @@ public class PostEntity {
     @Column(nullable = false, columnDefinition = "text")
     private String content;
 
+    // 3A-1：Markdown 化双字段——markdown 正文可空，格式按篇标记
+    @Column(name = "markdown_content", columnDefinition = "text")
+    private String markdownContent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "content_format", nullable = false, length = 16)
+    private ContentFormat contentFormat = ContentFormat.HTML;
+
     @Column(name = "like_count", nullable = false)
     private int likeCount;
 
@@ -101,7 +109,11 @@ public class PostEntity {
         this.number = request.number();
         this.featured = request.featured();
         this.status = request.status();
-        this.content = sanitizer.sanitize(request.content());
+        // 3A-1：MARKDOWN 篇存原文（渲染在前端受控管线），content 列保留消毒后的 HTML 快照（可为空串）；
+        // HTML 篇维持既有写入路径，markdown 列顺带保存（转换工具回填时用）
+        this.contentFormat = request.contentFormatOrDefault();
+        this.markdownContent = request.markdownContent();
+        this.content = sanitizer.sanitize(request.content() == null ? "" : request.content());
     }
 
     public Long getId() { return id; }
@@ -118,6 +130,13 @@ public class PostEntity {
     public boolean isFeatured() { return featured; }
     public PostStatus getStatus() { return status; }
     public String getContent() { return content; }
+    public String getMarkdownContent() { return markdownContent; }
+    public ContentFormat getContentFormat() { return contentFormat; }
+    /** 3A-2：转换工具回填存量——只补 markdown 列与格式标记，不动既有 HTML。 */
+    public void applyMarkdownConversion(String markdown, ContentFormat format) {
+        this.markdownContent = markdown;
+        this.contentFormat = format;
+    }
     public int getLikeCount() { return likeCount; }
     public void setLikeCount(int likeCount) { this.likeCount = likeCount; }
     public int getViewsCount() { return viewsCount; }

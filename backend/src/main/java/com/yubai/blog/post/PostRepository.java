@@ -141,6 +141,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
             OR LOWER(p.excerpt) LIKE LOWER(:query)
             OR LOWER(p.category) LIKE LOWER(:query)
             OR LOWER(p.content) LIKE LOWER(:query)
+            OR LOWER(p.markdownContent) LIKE LOWER(:query)
             OR LOWER(tag) LIKE LOWER(:query))
         """, countQuery = """
         SELECT COUNT(DISTINCT p) FROM PostEntity p
@@ -151,6 +152,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
             OR LOWER(p.excerpt) LIKE LOWER(:query)
             OR LOWER(p.category) LIKE LOWER(:query)
             OR LOWER(p.content) LIKE LOWER(:query)
+            OR LOWER(p.markdownContent) LIKE LOWER(:query)
             OR LOWER(tag) LIKE LOWER(:query))
         """)
     Page<PostSearchRow> searchPublished(@Param("query") String query,

@@ -78,7 +78,7 @@ class ListQueryBatchingTest {
             postRepository.save(PostEntity.create(new PostRequest(
                 "qc-batch-post-" + i, "批量测试文章 " + i, "摘要 " + i, LocalDate.of(2026, 1, i),
                 5, "批量测试", List.of("标签A", "标签B", "标签C"), "#112233", "QC-" + i,
-                false, PostStatus.PUBLISHED, "<p>正文 " + i + "</p>"
+                false, PostStatus.PUBLISHED, "<p>正文 " + i + "</p>", null, null
             ), sanitizer));
         }
         var service = new com.yubai.blog.post.PostService(postRepository, sanitizer);

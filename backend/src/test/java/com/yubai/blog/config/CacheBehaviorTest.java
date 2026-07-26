@@ -85,7 +85,7 @@ class CacheBehaviorTest {
         when(sanitizer.sanitize(any())).thenReturn("<p>x</p>");
         when(postRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         postService.create(new PostRequest("evict-check", "标题", "摘要", LocalDate.of(2026, 1, 1),
-            5, "工程实践", List.of(), "#000000", "01", false, PostStatus.DRAFT, "<p>x</p>"));
+            5, "工程实践", List.of(), "#000000", "01", false, PostStatus.DRAFT, "<p>x</p>", null, null));
 
         graphService.buildGraph(true);
         verify(postRepository, times(2)).findPublishedGraphRows();

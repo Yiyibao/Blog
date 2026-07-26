@@ -18,6 +18,7 @@ import com.yubai.blog.common.ApiResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
+import com.yubai.blog.post.PostMarkdownConversionService;
 import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostResponse;
 import com.yubai.blog.post.PostService;
@@ -31,9 +32,22 @@ import jakarta.validation.Valid;
 @Validated
 public class AdminPostController {
     private final PostService service;
+    private final PostMarkdownConversionService conversionService;
 
-    public AdminPostController(PostService service) {
+    public AdminPostController(PostService service, PostMarkdownConversionService conversionService) {
         this.service = service;
+        this.conversionService = conversionService;
+    }
+
+    /**
+     * 3A-2：存量 HTML→Markdown 一次性转换——只回填 markdown_content（读路径不变），
+     * 响应即人工校对清单（含表格/嵌套列表/公式类等高风险标记）。幂等，force=true 覆盖重转。
+     */
+    @PostMapping("/convert-markdown")
+    public ApiResponse<java.util.List<PostMarkdownConversionService.ConversionReport>> convertMarkdown(
+        @RequestParam(defaultValue = "false") boolean force
+    ) {
+        return ApiResponse.ok(conversionService.convertAll(force));
     }
 
     /** P1-2：列表只出摘要，编辑时前端经 findOne 拉全文。 */
