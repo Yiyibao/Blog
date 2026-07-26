@@ -15,10 +15,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.yubai.blog.common.ApiResponse;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.note.NoteRequest;
 import com.yubai.blog.note.NoteResponse;
@@ -31,6 +35,7 @@ import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/admin/notes")
+@Validated
 public class AdminNoteController {
     private final NoteService service;
     public AdminNoteController(NoteService service) { this.service = service; }
@@ -38,13 +43,13 @@ public class AdminNoteController {
     /** P1-2：列表只出摘要，编辑时前端经 findOne 拉全文。 */
     @GetMapping public ApiResponse<PageResponse<NoteSummary>> findAll(
         @RequestParam(required = false) NoteStatus status,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) { return ApiResponse.ok(service.findAll(status, page, size)); }
     @GetMapping("/{id}") public ApiResponse<NoteResponse> findOne(@PathVariable long id) { return ApiResponse.ok(service.findOne(id)); }
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<NoteResponse> create(@Valid @RequestBody NoteRequest request) { return ApiResponse.ok(service.create(request)); }
+    public ApiResponse<NoteResponse> create(@Valid @RequestBody NoteRequest request) { return ApiResponse.created(service.create(request)); }
 
     @PutMapping("/{id}")
     public ApiResponse<NoteResponse> update(@PathVariable long id, @Valid @RequestBody NoteRequest request) { return ApiResponse.ok(service.update(id, request)); }
@@ -66,7 +71,7 @@ public class AdminNoteController {
 
     @PostMapping(path = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<NoteResponse> importMarkdown(@RequestParam("file") MultipartFile file) { return ApiResponse.ok(service.importMarkdown(file)); }
+    public ApiResponse<NoteResponse> importMarkdown(@RequestParam("file") MultipartFile file) { return ApiResponse.created(service.importMarkdown(file)); }
 
     @GetMapping(value = "/{id}/export", produces = "text/markdown;charset=UTF-8")
     public ResponseEntity<byte[]> export(@PathVariable long id) {

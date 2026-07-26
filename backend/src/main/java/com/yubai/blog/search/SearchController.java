@@ -5,14 +5,19 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/search")
+@Validated
 public class SearchController {
 
     private final SearchService searchService;
@@ -24,7 +29,7 @@ public class SearchController {
     @GetMapping
     public ApiResponse<SearchResponse> search(
         @RequestParam(defaultValue = "") String q,
-        @RequestParam(defaultValue = "5") int limit
+        @RequestParam(defaultValue = "5") @Min(1) @Max(10) int limit
     ) {
         return ApiResponse.ok(searchService.search(q, limit));
     }

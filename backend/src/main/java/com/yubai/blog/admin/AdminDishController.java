@@ -10,9 +10,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.dish.DishRequest;
 import com.yubai.blog.dish.DishResponse;
@@ -22,6 +26,7 @@ import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/admin/dishes")
+@Validated
 public class AdminDishController {
     private final DishService service;
 
@@ -31,8 +36,8 @@ public class AdminDishController {
 
     @GetMapping
     public ApiResponse<PageResponse<DishResponse>> findAll(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         return ApiResponse.ok(service.findAll(page, size));
     }
@@ -45,7 +50,7 @@ public class AdminDishController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<DishResponse> create(@Valid @RequestBody DishRequest request) {
-        return ApiResponse.ok(service.create(request));
+        return ApiResponse.created(service.create(request));
     }
 
     @PutMapping("/{id}")

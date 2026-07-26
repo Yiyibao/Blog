@@ -4,16 +4,23 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import jakarta.validation.ConstraintViolationException;
 
 import com.yubai.blog.admin.ai.AiServiceException;
 import com.yubai.blog.auth.ChallengeVerificationException;
@@ -23,6 +30,41 @@ import com.yubai.blog.note.NoteVersionConflictException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    // P2-1：三类此前漏网的兜底，保证任何错误都以统一 {status,message,timestamp} 包络返回
+
+    /** 路径/查询参数类型不匹配（如 page=abc）统一 400。 */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
+        return error(HttpStatus.BAD_REQUEST, "参数 " + exception.getName() + " 类型不合法");
+    }
+
+    /** P2-2：@Validated 方法参数校验失败（@Min/@Max 等）统一 400。 */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException exception) {
+        return error(HttpStatus.BAD_REQUEST, "请求参数不合法");
+    }
+
+    /** 请求体不可解析（畸形 JSON / 空 body）统一 400。 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleUnreadableBody(HttpMessageNotReadableException exception) {
+        return error(HttpStatus.BAD_REQUEST, "请求体不可解析");
+    }
+
+    /** 未匹配静态资源保持 404 语义（避免落入 500 兜底）。 */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResource(NoResourceFoundException exception) {
+        return error(HttpStatus.NOT_FOUND, "资源不存在");
+    }
+
+    /** 最终兜底：未知异常统一 500，仅记日志不外泄内部细节。 */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception exception) {
+        log.error("Unhandled exception", exception);
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误，请稍后再试");
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(NotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(

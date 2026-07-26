@@ -7,9 +7,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.ClientIps;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.RateLimiter;
@@ -19,6 +23,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/v1/dishes")
+@Validated
 public class DishController {
     /** P0-2：公开写接口按 IP+slug 限流，防脚本无限刷计数。 */
     static final int FAVORITE_LIMIT = 10;
@@ -34,8 +39,8 @@ public class DishController {
 
     @GetMapping
     public ApiResponse<PageResponse<DishResponse>> findAll(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         return ApiResponse.ok(service.findPublished(page, size));
     }
@@ -57,8 +62,8 @@ public class DishController {
 
     @GetMapping("/favorites")
     public ApiResponse<PageResponse<DishFavoriteItem>> findFavorites(
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         return ApiResponse.ok(service.findFavorites(page, size));
     }

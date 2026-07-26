@@ -10,9 +10,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostResponse;
@@ -24,6 +28,7 @@ import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/admin/posts")
+@Validated
 public class AdminPostController {
     private final PostService service;
 
@@ -35,8 +40,8 @@ public class AdminPostController {
     @GetMapping
     public ApiResponse<PageResponse<PostSummary>> findAll(
         @RequestParam(required = false) PostStatus status,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = "0") @Min(0) int page,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
     ) {
         return ApiResponse.ok(service.findAdmin(status, page, size));
     }
@@ -49,7 +54,7 @@ public class AdminPostController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PostResponse> create(@Valid @RequestBody PostRequest request) {
-        return ApiResponse.ok(service.create(request));
+        return ApiResponse.created(service.create(request));
     }
 
     @PutMapping("/{id}")

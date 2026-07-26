@@ -34,7 +34,7 @@ public class AdminNoteAttachmentController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<NoteAttachmentResponse> upload(@PathVariable long noteId, @RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(service.upload(noteId, file));
+        return ApiResponse.created(service.upload(noteId, file));
     }
 
     @GetMapping("/{attachmentId}/content")

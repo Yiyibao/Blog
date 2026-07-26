@@ -385,20 +385,16 @@ class BlogApiIntegrationTest {
         String publishedBody = """
             {"title":"Public note","markdownContent":"# Public\\n\\nVisible content","folder":"Tests","status":"PUBLISHED","tags":["api"],"version":0}
             """;
+        // NB-11：create 尊重请求 status（不再被静默改成 DRAFT），且 201 响应包络 code 同为 201
         MvcResult publishedCreated = mockMvc.perform(post("/api/v1/admin/notes")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON).content(publishedBody))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andExpect(jsonPath("$.code").value(201))
+            .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
             .andReturn();
         JsonNode publicDraft = objectMapper.readTree(publishedCreated.getResponse().getContentAsString()).path("data");
         long publishedId = publicDraft.path("id").asLong();
-        mockMvc.perform(put("/api/v1/admin/notes/" + publishedId + "/publish")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"version\":" + publicDraft.path("version").asLong() + "}"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
 
         mockMvc.perform(get("/api/v1/admin/notes").param("page", "0").param("size", "1")
                 .header("Authorization", "Bearer " + token))
@@ -504,11 +500,10 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/categories/nonexistent-slug"))
             .andExpect(status().isNotFound());
 
+        // P2-2：分页参数越界不再静默夹取，如实 400（详见 @Order(41) 契约用例）
         mockMvc.perform(get("/api/v1/posts").param("page", "-9").param("size", "999"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.page").value(0))
-            .andExpect(jsonPath("$.data.size").value(50))
-            .andExpect(jsonPath("$.data.items.length()").value(5));
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value(400));
 
         mockMvc.perform(get("/api/v1/admin/dishes"))
             .andExpect(status().isUnauthorized());
@@ -859,6 +854,33 @@ class BlogApiIntegrationTest {
 
         // 不存在的 slug：不计数、正常 404，不影响详情读取流程
         mockMvc.perform(get("/api/v1/posts/view-count-no-such-post")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @Order(41)
+    void invalidPaginationAndTypeParamsReturn400WithUnifiedEnvelope() throws Exception {
+        // P2-2：声明式校验——越界/负值/类型错误统一 400，包络含 status/message/timestamp
+        mockMvc.perform(get("/api/v1/posts").param("size", "999"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.message").isString())
+            .andExpect(jsonPath("$.timestamp").exists());
+        mockMvc.perform(get("/api/v1/posts").param("page", "-1"))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/posts").param("page", "abc"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value(400));
+        // P2-2/NB-11：POST /search 移除静默修正——缺 type 如实 400
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"x\",\"page\":0,\"size\":5}"))
+            .andExpect(status().isBadRequest());
+        // P2-1：畸形 JSON 统一 400 包络
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{not-json"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test

@@ -67,9 +67,10 @@ public class NoteEntity {
 
     protected NoteEntity() {}
 
+    /** NB-11：尊重请求里的 status（契约字段不再被静默忽略）；update 不改状态，状态流转仍走 changeStatus。 */
     public static NoteEntity create(NoteRequest request) {
         var note = new NoteEntity();
-        note.status = NoteStatus.DRAFT;
+        note.status = request.status() == null ? NoteStatus.DRAFT : request.status();
         note.update(request);
         return note;
     }
