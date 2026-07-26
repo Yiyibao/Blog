@@ -973,6 +973,8 @@ class BlogApiIntegrationTest {
         // P0-1：兜底 denyAll——未显式白名单的路径未登录 401，已登录也 403
         mockMvc.perform(get("/internal-debug")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v2/anything")).andExpect(status().isUnauthorized());
+        // FD-7：kitchen 前缀的近似路径不得沾光，仍走兜底
+        mockMvc.perform(get("/api/v1/kitchenette")).andExpect(status().isUnauthorized());
 
         String token = login();
         mockMvc.perform(get("/internal-debug").header("Authorization", "Bearer " + token))
@@ -1093,6 +1095,100 @@ class BlogApiIntegrationTest {
             .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/auth/challenge"))
             .andExpect(status().isOk());
+        attemptTracker.reset();
+    }
+
+    @Test
+    @Order(35)
+    void partnerLoginIssuesPartnerScopedToken() throws Exception {
+        // FD-6/FD-7：伴侣账号登录 → 响应带 PARTNER 角色与展示名；解 JWT 断言精确 roles，
+        // 防"谁登录都是 ADMIN"的回归
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("partner", "partner-pass-12345")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.role").value("PARTNER"))
+            .andExpect(jsonPath("$.data.displayName").value("测试伴侣"))
+            .andReturn();
+        String token = objectMapper.readTree(result.getResponse().getContentAsString())
+            .path("data").path("token").asText();
+        JsonNode payload = objectMapper.readTree(new String(
+            java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8));
+        assertEquals(1, payload.path("roles").size(), "roles 必须只有一个值");
+        assertEquals("PARTNER", payload.path("roles").get(0).asText());
+        assertTrue(payload.path("uid").isIntegralNumber(), "uid 供 kitchen 署名/限流");
+        assertEquals("测试伴侣", payload.path("name").asText());
+    }
+
+    @Test
+    @Order(36)
+    void partnerIsForbiddenFromEveryAdminEndpoint() throws Exception {
+        // FD-7：PARTNER 打全部管理端点逐条 403（身份已认出、权限不足；401 意味着规则配置错误）
+        String token = loginAs("partner", "partner-pass-12345");
+        var probes = java.util.List.of(
+            get("/api/v1/admin/stats"),
+            get("/api/v1/admin/posts"),
+            post("/api/v1/admin/posts"),
+            get("/api/v1/admin/notes"),
+            post("/api/v1/admin/notes"),
+            get("/api/v1/admin/dishes"),
+            post("/api/v1/admin/dishes"),
+            put("/api/v1/admin/dishes/1"),
+            delete("/api/v1/admin/dishes/1"),
+            get("/api/v1/admin/ai/providers"),
+            post("/api/v1/admin/ai/providers"),
+            post("/api/v1/admin/notes/1/attachments"));
+        for (var probe : probes) {
+            mockMvc.perform(probe.header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    @Order(37)
+    void adminLoginKeepsAdminRoleAndAccess() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.role").value("ADMIN"))
+            .andReturn();
+        String token = objectMapper.readTree(result.getResponse().getContentAsString())
+            .path("data").path("token").asText();
+        mockMvc.perform(get("/api/v1/admin/stats").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    @Order(38)
+    void kitchenPrefixRequiresLoginForBothRoles() throws Exception {
+        // FD-7：/api/v1/kitchen/** 必须登录（两人私有空间，无免鉴权读路径）；
+        // 控制器 FD-10 才落地，规则放行后无处理器 → 404，足以证明授权层语义正确
+        mockMvc.perform(get("/api/v1/kitchen/menus")).andExpect(status().isUnauthorized());
+        String partnerToken = loginAs("partner", "partner-pass-12345");
+        mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isNotFound());
+        String adminToken = login();
+        mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @Order(39)
+    void loginRejectionDoesNotRevealWhetherUsernameExists() throws Exception {
+        // FD-7：真实用户名+错口令 与 不存在用户名 的错误响应必须完全一致（防枚举）
+        var wrongPassword = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "wrong-password-xyz")))
+            .andExpect(status().isUnauthorized())
+            .andReturn().getResponse().getContentAsString();
+        var ghostUser = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("ghost-nobody", "wrong-password-xyz")))
+            .andExpect(status().isUnauthorized())
+            .andReturn().getResponse().getContentAsString();
+        assertEquals(objectMapper.readTree(wrongPassword).path("message").asText(),
+            objectMapper.readTree(ghostUser).path("message").asText());
         attemptTracker.reset();
     }
 
@@ -1252,9 +1348,13 @@ class BlogApiIntegrationTest {
     }
 
     private String login() throws Exception {
+        return loginAs("admin", "admin-pass-12345");
+    }
+
+    private String loginAs(String username, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(loginBody("admin", "admin-pass-12345")))
+                .content(loginBody(username, password)))
             .andExpect(status().isOk())
             .andReturn();
         JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());

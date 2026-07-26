@@ -42,6 +42,9 @@ public class SecurityConfiguration {
                 .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/api/v1/auth/challenge", "/sitemap.xml", "/robots.txt", "/error").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/note-assets/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/dishes/*/favorite", "/api/v1/posts/*/like", "/api/v1/search").permitAll()
+                // FD-7：kitchen（今日菜单/打卡）为两人私有空间——必须登录，ADMIN 与 PARTNER 皆可；
+                // 规则须在 /api/** 通配之前，顺序敏感
+                .requestMatchers("/api/v1/kitchen/**").hasAnyRole("ADMIN", "PARTNER")
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()
                 // P0-1：兜底 denyAll——新增路由必须显式加入白名单，避免默认公开
