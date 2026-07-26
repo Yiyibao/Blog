@@ -14,6 +14,7 @@ const RecipesPage = defineAsyncComponent(() => import('../pages/RecipesPage.vue'
 const AdminDashboardPage = defineAsyncComponent(() => import('../pages/AdminDashboardPage.vue'))
 const AdminNotesPage = defineAsyncComponent(() => import('../pages/AdminNotesPage.vue'))
 const AdminAiPage = defineAsyncComponent(() => import('../pages/AdminAiPage.vue'))
+const AdminAiProvidersPage = defineAsyncComponent(() => import('../pages/AdminAiProvidersPage.vue'))
 
 const router = createRouter({
   history: createWebHistory(),
@@ -27,6 +28,7 @@ const router = createRouter({
     { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAdmin: true } },
     { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAdmin: true } },
     { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAdmin: true } },
+    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAdmin: true } },
     { path: '/archive', name: 'archive', component: ArchivePage },
     { path: '/recipes', name: 'recipes', component: RecipesPage },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },

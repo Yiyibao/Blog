@@ -1,0 +1,497 @@
+<script setup lang="ts">
+import axios from 'axios'
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  clearAdminSession, createAiProvider, deleteAiProvider, fetchAiProviders,
+  hasValidAdminSession, setDefaultAiProvider, testAiProvider, updateAiProvider,
+  type AiProvider, type AiProviderPayload, type AiProviderTestResult,
+} from '../api/admin'
+import AdminSidebar from './AdminSidebar.vue'
+
+const router = useRouter()
+
+const providers = ref<AiProvider[]>([])
+const loading = ref(true)
+const saving = ref(false)
+const error = ref('')
+const editorOpen = ref(false)
+const editingId = ref<number | null>(null)
+const editingKeyTail = ref<string | null>(null)
+/** 正在执行行内动作（测试/启停/设默认/删除）的供应商 id，防止重复点击 */
+const busyId = ref<number | null>(null)
+const testingId = ref<number | null>(null)
+const testResults = reactive<Record<number, AiProviderTestResult>>({})
+
+// 密钥只写不回显：表单中的 apiKey 永远从空串开始，保存或关闭后立即清空。
+const form = reactive({
+  name: '',
+  baseUrl: '',
+  apiKey: '',
+  models: '',
+  defaultModel: '',
+  enabled: true,
+  dailyRequestLimit: 200,
+  dailyTokenLimit: 200000,
+})
+
+function handleAuthError(cause: unknown) {
+  if (axios.isAxiosError(cause) && cause.response?.status === 401) {
+    logout()
+    return true
+  }
+  return false
+}
+
+function apiErrorMessage(cause: unknown, fallback: string) {
+  if (axios.isAxiosError(cause)) {
+    const message = (cause.response?.data as { message?: unknown } | undefined)?.message
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return fallback
+}
+
+function logout() {
+  clearAdminSession()
+  void router.replace('/admin/login')
+}
+
+async function load() {
+  if (!hasValidAdminSession()) return logout()
+  loading.value = true
+  error.value = ''
+  try {
+    providers.value = await fetchAiProviders()
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = '暂时无法读取供应商列表，请确认后端服务正在运行。'
+  } finally {
+    loading.value = false
+  }
+}
+
+function keyDisplay(provider: AiProvider) {
+  if (!provider.hasKey) return '未设置密钥'
+  return provider.keyTail ? `密钥 ····${provider.keyTail}` : '密钥已设置'
+}
+
+function newProvider() {
+  editingId.value = null
+  editingKeyTail.value = null
+  error.value = ''
+  Object.assign(form, {
+    name: '', baseUrl: '', apiKey: '', models: '', defaultModel: '',
+    enabled: true, dailyRequestLimit: 200, dailyTokenLimit: 200000,
+  })
+  editorOpen.value = true
+}
+
+function editProvider(provider: AiProvider) {
+  editingId.value = provider.id
+  editingKeyTail.value = provider.hasKey ? provider.keyTail : null
+  error.value = ''
+  Object.assign(form, {
+    name: provider.name,
+    baseUrl: provider.baseUrl,
+    apiKey: '',
+    models: provider.models.join('\n'),
+    defaultModel: provider.defaultModel,
+    enabled: provider.enabled,
+    dailyRequestLimit: provider.dailyRequestLimit,
+    dailyTokenLimit: provider.dailyTokenLimit,
+  })
+  editorOpen.value = true
+}
+
+// 保存在途时禁止关闭：否则迟到的响应会关闭（或把错误显示到）用户随后新开的抽屉
+function closeEditor() {
+  if (saving.value) return
+  editorOpen.value = false
+  form.apiKey = ''
+  error.value = ''
+}
+
+function parsedModels() {
+  return form.models.split(/[\n,]/).map((item) => item.trim()).filter(Boolean)
+}
+
+function providerPayload(): AiProviderPayload {
+  const apiKey = form.apiKey.trim()
+  return {
+    name: form.name.trim(),
+    baseUrl: form.baseUrl.trim(),
+    // 留空不携带字段：新建即无密钥端点，编辑即保留原密钥
+    ...(apiKey ? { apiKey } : {}),
+    models: parsedModels(),
+    defaultModel: form.defaultModel.trim(),
+    enabled: form.enabled,
+    dailyRequestLimit: form.dailyRequestLimit,
+    dailyTokenLimit: form.dailyTokenLimit,
+  }
+}
+
+async function save() {
+  saving.value = true
+  error.value = ''
+  try {
+    const id = editingId.value
+    if (id) {
+      await updateAiProvider(id, providerPayload())
+      // 配置已变，旧的连通测试结论对新配置不再成立
+      delete testResults[id]
+    } else {
+      await createAiProvider(providerPayload())
+    }
+    saving.value = false
+    closeEditor()
+    await load()
+  } catch (cause) {
+    if (!handleAuthError(cause)) {
+      error.value = apiErrorMessage(cause, '保存失败，请检查必填项和字段格式（base_url 需为 https 且非内网地址）。')
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+async function toggleEnabled(provider: AiProvider) {
+  if (busyId.value !== null) return
+  busyId.value = provider.id
+  error.value = ''
+  try {
+    // 不携带 apiKey → 后端保留原密钥；仅翻转启用状态
+    await updateAiProvider(provider.id, {
+      name: provider.name,
+      baseUrl: provider.baseUrl,
+      models: provider.models,
+      defaultModel: provider.defaultModel,
+      enabled: !provider.enabled,
+      dailyRequestLimit: provider.dailyRequestLimit,
+      dailyTokenLimit: provider.dailyTokenLimit,
+    })
+    await load()
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '切换启用状态失败，请稍后重试。')
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function makeDefault(provider: AiProvider) {
+  if (busyId.value !== null) return
+  busyId.value = provider.id
+  error.value = ''
+  try {
+    await setDefaultAiProvider(provider.id)
+    await load()
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '设为默认失败，请稍后重试。')
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function runTest(provider: AiProvider) {
+  if (testingId.value !== null) return
+  testingId.value = provider.id
+  delete testResults[provider.id]
+  try {
+    testResults[provider.id] = await testAiProvider(provider.id)
+  } catch (cause) {
+    if (handleAuthError(cause)) return
+    const status = axios.isAxiosError(cause) ? cause.response?.status : undefined
+    testResults[provider.id] = {
+      ok: false,
+      message: status === 429
+        ? '测试过于频繁，请稍后再试（每分钟最多 6 次）。'
+        : apiErrorMessage(cause, '测试请求失败，请稍后重试。'),
+      models: [],
+    }
+  } finally {
+    testingId.value = null
+  }
+}
+
+async function remove(provider: AiProvider) {
+  if (!window.confirm(`确认删除供应商“${provider.name}”？此操作无法撤销。`)) return
+  if (busyId.value !== null) return
+  busyId.value = provider.id
+  error.value = ''
+  try {
+    await deleteAiProvider(provider.id)
+    delete testResults[provider.id]
+    await load()
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '删除失败，请稍后再试。')
+  } finally {
+    busyId.value = null
+  }
+}
+
+onMounted(load)
+</script>
+
+<template>
+  <section class="admin-console">
+    <AdminSidebar />
+
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div>
+          <span class="admin-breadcrumb">后台管理 / AI 供应商</span>
+          <h1>AI 供应商管理</h1>
+        </div>
+        <div>
+          <RouterLink to="/admin/ai">打开 AI 助手 ↗</RouterLink>
+          <button @click="logout">退出登录</button>
+        </div>
+      </header>
+
+      <section class="admin-content-section provider-section">
+        <header>
+          <div>
+            <span>AI PLATFORM · PROVIDERS</span>
+            <h2>供应商注册表</h2>
+          </div>
+          <p class="provider-hint">密钥加密入库、永不回显；默认供应商用于未显式指定时的对话请求。</p>
+          <button class="button primary" type="button" @click="newProvider">＋ 新建供应商</button>
+        </header>
+
+        <p v-if="error" class="admin-error admin-page-error" role="alert">{{ error }}</p>
+
+        <div v-if="loading" class="admin-empty">正在读取供应商列表…</div>
+        <div v-else-if="!providers.length" class="admin-empty">
+          还没有配置任何 AI 供应商。点击「新建供应商」注册第一个 OpenAI 兼容端点。
+        </div>
+        <div v-else class="admin-table provider-table">
+          <div class="admin-table-head"><span>供应商</span><span>模型</span><span>状态</span><span>操作</span></div>
+          <template v-for="provider in providers" :key="provider.id">
+            <article>
+              <div class="provider-cell">
+                <small>
+                  {{ provider.baseUrl }}
+                  <span class="provider-key">{{ keyDisplay(provider) }}</span>
+                </small>
+                <strong>
+                  {{ provider.name }}
+                  <em v-if="provider.isDefault" class="provider-default-chip">默认</em>
+                </strong>
+                <p>日限额 {{ provider.dailyRequestLimit.toLocaleString() }} 次 / {{ provider.dailyTokenLimit.toLocaleString() }} tokens</p>
+              </div>
+              <div class="provider-cell">
+                <small>默认模型</small>
+                <strong class="provider-model">{{ provider.defaultModel }}</strong>
+                <p>{{ provider.models.length ? `${provider.models.length} 个可用模型` : '未限制模型列表' }}</p>
+              </div>
+              <button
+                type="button"
+                class="admin-status provider-toggle"
+                :class="{ featured: provider.enabled }"
+                :disabled="busyId !== null"
+                :title="provider.enabled ? '点击停用' : '点击启用'"
+                @click="toggleEnabled(provider)"
+              >
+                {{ provider.enabled ? '已启用' : '已停用' }}
+              </button>
+              <div class="admin-row-actions provider-actions">
+                <button type="button" :disabled="testingId !== null" @click="runTest(provider)">
+                  {{ testingId === provider.id ? '测试中…' : '测试连通' }}
+                </button>
+                <button type="button" :disabled="busyId !== null" @click="editProvider(provider)">编辑</button>
+                <button
+                  v-if="!provider.isDefault"
+                  type="button"
+                  :disabled="busyId !== null || !provider.enabled"
+                  :title="provider.enabled ? '设为默认供应商' : '已停用的供应商不能设为默认'"
+                  @click="makeDefault(provider)"
+                >
+                  设为默认
+                </button>
+                <button type="button" class="danger" :disabled="busyId !== null" @click="remove(provider)">删除</button>
+              </div>
+            </article>
+            <div
+              v-if="testResults[provider.id]"
+              class="provider-test"
+              :class="testResults[provider.id]!.ok ? 'ok' : 'fail'"
+              role="status"
+            >
+              <b>{{ testResults[provider.id]!.ok ? '✓' : '✕' }}</b>
+              <span>{{ testResults[provider.id]!.message }}</span>
+              <ul v-if="testResults[provider.id]!.models.length" class="provider-model-list">
+                <li v-for="model in testResults[provider.id]!.models" :key="model">{{ model }}</li>
+              </ul>
+            </div>
+          </template>
+        </div>
+      </section>
+    </main>
+
+    <div v-if="editorOpen" class="admin-editor-backdrop" @click.self="closeEditor">
+      <form class="admin-editor" @submit.prevent="save">
+        <header>
+          <div>
+            <small>{{ editingId ? 'EDIT PROVIDER' : 'NEW PROVIDER' }}</small>
+            <h2>{{ editingId ? '编辑' : '新建' }}供应商</h2>
+          </div>
+          <button type="button" aria-label="关闭编辑器" :disabled="saving" @click="closeEditor">×</button>
+        </header>
+
+        <div class="admin-form-grid">
+          <label>名称<input v-model="form.name" required maxlength="60" placeholder="deepseek"></label>
+          <label>Base URL<input v-model="form.baseUrl" type="url" required maxlength="500" placeholder="https://api.deepseek.com"></label>
+        </div>
+        <label>
+          API 密钥{{ editingId ? '（只写不回显）' : '' }}
+          <input
+            v-model="form.apiKey"
+            type="password"
+            maxlength="500"
+            autocomplete="new-password"
+            :placeholder="editingId
+              ? (editingKeyTail ? `留空保留现有密钥（····${editingKeyTail}）` : '留空保留现有配置')
+              : '本地无鉴权端点可留空'"
+          >
+        </label>
+        <label>
+          模型列表（每行一个，留空则不限制）
+          <textarea v-model="form.models" rows="4" placeholder="deepseek-chat&#10;deepseek-reasoner" />
+        </label>
+        <div class="admin-form-grid">
+          <label>
+            默认模型
+            <input v-model="form.defaultModel" required maxlength="120" list="provider-model-options" placeholder="deepseek-chat">
+            <datalist id="provider-model-options">
+              <option v-for="model in parsedModels()" :key="model" :value="model" />
+            </datalist>
+          </label>
+          <label class="admin-check"><input v-model="form.enabled" type="checkbox">启用该供应商</label>
+          <label>日请求上限<input v-model.number="form.dailyRequestLimit" type="number" min="1" max="100000" required></label>
+          <label>日 token 上限<input v-model.number="form.dailyTokenLimit" type="number" min="1000" max="100000000" required></label>
+        </div>
+
+        <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
+        <footer>
+          <button class="button secondary" type="button" :disabled="saving" @click="closeEditor">取消</button>
+          <button class="button primary" type="submit" :disabled="saving">{{ saving ? '正在保存…' : '保存供应商 ↗' }}</button>
+        </footer>
+      </form>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.provider-section > header {
+  grid-template-columns: 1fr minmax(0, 1.2fr) auto;
+}
+.provider-hint {
+  margin: 0;
+  color: var(--console-muted, #7f7e77);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.provider-table .admin-table-head,
+.provider-table article {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 92px 250px;
+}
+.provider-cell {
+  min-width: 0;
+}
+.provider-cell small {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.provider-key {
+  flex-shrink: 0;
+  color: var(--console-muted, #7f7e77);
+  font-family: ui-monospace, Consolas, monospace;
+  letter-spacing: .06em;
+}
+.provider-default-chip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border: 1px solid #a9825f;
+  border-radius: 999px;
+  color: #9e7553;
+  font: 500 10px/1.6 inherit;
+  letter-spacing: .08em;
+  vertical-align: 3px;
+}
+.provider-model {
+  font-size: 16px !important;
+  font-family: ui-monospace, Consolas, monospace !important;
+}
+.provider-toggle {
+  cursor: pointer;
+  background: transparent;
+  transition: border-color .2s ease, color .2s ease;
+}
+.provider-toggle:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.provider-actions {
+  flex-wrap: wrap;
+}
+
+.provider-test {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line, #d9d6cf);
+  font-size: 13px;
+}
+.provider-test.ok {
+  background: color-mix(in srgb, #5c7c52 7%, transparent);
+  color: #4c6b44;
+}
+.provider-test.fail {
+  background: color-mix(in srgb, #b84f48 7%, transparent);
+  color: #b84f48;
+}
+.provider-test b {
+  font-weight: 600;
+}
+.provider-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.provider-model-list li {
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
+  border-radius: 999px;
+  font: 11px/1.6 ui-monospace, Consolas, monospace;
+}
+
+@media (max-width: 1080px) {
+  .provider-table .admin-table-head {
+    display: none;
+  }
+  .provider-table article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .provider-toggle {
+    justify-self: start;
+  }
+  .provider-section > header {
+    grid-template-columns: 1fr auto;
+  }
+  .provider-hint {
+    display: none;
+  }
+}
+</style>

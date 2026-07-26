@@ -438,3 +438,65 @@ export async function streamAiChat(
     reader.cancel().catch(() => {})
   }
 }
+
+// 4A-3：AI 供应商管理。密钥只写不回显——响应仅含 hasKey 与 keyTail（尾 4 位）。
+export interface AiProvider {
+  id: number
+  name: string
+  baseUrl: string
+  models: string[]
+  defaultModel: string
+  enabled: boolean
+  isDefault: boolean
+  hasKey: boolean
+  keyTail: string | null
+  dailyRequestLimit: number
+  dailyTokenLimit: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AiProviderPayload {
+  name: string
+  baseUrl: string
+  /** 新建可留空（无鉴权端点）；编辑时省略或留空表示保留原密钥。 */
+  apiKey?: string
+  models: string[]
+  defaultModel: string
+  enabled: boolean
+  dailyRequestLimit: number
+  dailyTokenLimit: number
+}
+
+export interface AiProviderTestResult {
+  ok: boolean
+  message: string
+  models: string[]
+}
+
+export function fetchAiProviders() {
+  return unwrap<AiProvider[]>(api.get('/admin/ai/providers', { headers: tokenHeader() }))
+}
+
+export function createAiProvider(payload: AiProviderPayload) {
+  return unwrap<AiProvider>(api.post('/admin/ai/providers', payload, { headers: tokenHeader() }))
+}
+
+export function updateAiProvider(id: number, payload: AiProviderPayload) {
+  return unwrap<AiProvider>(api.put(`/admin/ai/providers/${id}`, payload, { headers: tokenHeader() }))
+}
+
+export function deleteAiProvider(id: number) {
+  return api.delete(`/admin/ai/providers/${id}`, { headers: tokenHeader() })
+}
+
+export function setDefaultAiProvider(id: number) {
+  return unwrap<AiProvider>(api.put(`/admin/ai/providers/${id}/default`, null, { headers: tokenHeader() }))
+}
+
+// 连通测试由后端代发一次最小上游请求，可能较慢，放宽超时。
+export function testAiProvider(id: number) {
+  return unwrap<AiProviderTestResult>(
+    api.post(`/admin/ai/providers/${id}/test`, null, { timeout: 30000, headers: tokenHeader() }),
+  )
+}

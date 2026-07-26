@@ -22,6 +22,7 @@ const activeItem = computed(() => {
     return 'overview'
   }
   if (path.startsWith('/admin/notes')) return 'notes'
+  if (path.startsWith('/admin/ai/providers')) return 'ai-providers'
   if (path.startsWith('/admin/ai')) return 'ai'
   return ''
 })
@@ -56,6 +57,9 @@ function logout() {
       </RouterLink>
       <RouterLink class="ai-nav" :class="{ active: activeItem === 'ai' }" to="/admin/ai">
         <i>🤖</i><span>AI 助手</span>
+      </RouterLink>
+      <RouterLink :class="{ active: activeItem === 'ai-providers' }" to="/admin/ai/providers">
+        <i>⚙</i><span>AI 供应商</span>
       </RouterLink>
     </nav>
     <footer>
