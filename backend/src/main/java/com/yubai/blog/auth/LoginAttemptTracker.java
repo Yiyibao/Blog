@@ -13,7 +13,9 @@ import com.yubai.blog.config.AuthChallengeProperties;
 
 /**
  * L-7：登录失败计数器，IP 与用户名双维度（固定窗口，进程内）。
- * 失败达到 captchaThreshold 触发图形验证码，达到 cooldownThreshold 触发 IP 冷却；登录成功清零。
+ * 失败达到 captchaThreshold 触发图形验证码（IP 或用户名任一维度）。
+ * FD-0：冷却按 (IP, 用户名) 配对计数与生效——两人共用家庭 Wi-Fi 时一方连错不锁另一方；
+ * 轮换用户名的攻击者由验证码层（IP 维度）与 nginx 限速兜底。登录成功清零。
  */
 @Component
 public class LoginAttemptTracker {
@@ -37,17 +39,19 @@ public class LoginAttemptTracker {
     public void recordFailure(String clientIp, String username) {
         long now = clock.millis();
         cleanupIfNeeded(now);
-        int ipCount = increment(ipKey(clientIp), now);
+        increment(ipKey(clientIp), now);
         increment(usernameKey(username), now);
-        if (ipCount >= properties.getCooldownThreshold()) {
-            cooldowns.put(clientIp, now + properties.getCooldownDuration().toMillis());
+        int pairCount = increment(pairKey(clientIp, username), now);
+        if (pairCount >= properties.getCooldownThreshold()) {
+            cooldowns.put(pairKey(clientIp, username), now + properties.getCooldownDuration().toMillis());
         }
     }
 
     public void clear(String clientIp, String username) {
         failures.remove(ipKey(clientIp));
         failures.remove(usernameKey(username));
-        cooldowns.remove(clientIp);
+        failures.remove(pairKey(clientIp, username));
+        cooldowns.remove(pairKey(clientIp, username));
     }
 
     /** 同 IP 或同用户名失败达到阈值即要求图形验证码；username 可为 null（取 challenge 时未填）。 */
@@ -59,15 +63,19 @@ public class LoginAttemptTracker {
         return username != null && !username.isBlank() && count(usernameKey(username)) >= threshold;
     }
 
-    /** @return 冷却剩余时长；空表示未处于冷却。 */
-    public Optional<Duration> cooldownRemaining(String clientIp) {
-        Long until = cooldowns.get(clientIp);
+    /** @return 该 (IP, 用户名) 配对的冷却剩余时长；空表示未处于冷却。username 缺省（取 challenge 未填）不判冷却。 */
+    public Optional<Duration> cooldownRemaining(String clientIp, String username) {
+        if (username == null || username.isBlank()) {
+            return Optional.empty();
+        }
+        var key = pairKey(clientIp, username);
+        Long until = cooldowns.get(key);
         if (until == null) {
             return Optional.empty();
         }
         long remaining = until - clock.millis();
         if (remaining <= 0) {
-            cooldowns.remove(clientIp, until);
+            cooldowns.remove(key, until);
             return Optional.empty();
         }
         return Optional.of(Duration.ofMillis(remaining));
@@ -117,6 +125,10 @@ public class LoginAttemptTracker {
 
     private String usernameKey(String username) {
         return "user:" + username.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String pairKey(String clientIp, String username) {
+        return "pair:" + clientIp + ":" + username.trim().toLowerCase(Locale.ROOT);
     }
 
     private static final class Window {

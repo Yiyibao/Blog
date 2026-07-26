@@ -1067,7 +1067,8 @@ class BlogApiIntegrationTest {
     @Test
     @Order(34)
     void tenthFailureTriggersCooldown() throws Exception {
-        // L-7：同 IP 第 10 次失败进入冷却——登录与取 challenge 均 429 且带 Retry-After
+        // L-7 + FD-0：同 (IP, 用户名) 配对第 10 次失败进入冷却——该用户名的登录与带名 challenge
+        // 均 429 且带 Retry-After；同 IP 其他用户名不受牵连（家庭共用 Wi-Fi 不互锁）
         for (int i = 0; i < 10; i++) {
             rateLimiter.reset(); // 隔离 P0-3 的 5 次/分限流，只验证冷却层
             mockMvc.perform(post("/api/v1/auth/login")
@@ -1081,8 +1082,13 @@ class BlogApiIntegrationTest {
                 .content("{\"username\":\"admin\",\"password\":\"admin-pass-12345\",\"challengeId\":\"x\",\"nonce\":\"0\"}"))
             .andExpect(status().isTooManyRequests())
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().exists("Retry-After"));
-        mockMvc.perform(get("/api/v1/auth/challenge"))
+        mockMvc.perform(get("/api/v1/auth/challenge").param("username", "admin"))
             .andExpect(status().isTooManyRequests());
+        // FD-0：另一位家庭成员（同 IP 不同用户名）不被锁死，仍可正常取 challenge
+        mockMvc.perform(get("/api/v1/auth/challenge").param("username", "someone-else"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/auth/challenge"))
+            .andExpect(status().isOk());
         attemptTracker.reset();
     }
 

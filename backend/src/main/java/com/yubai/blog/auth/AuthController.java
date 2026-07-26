@@ -2,6 +2,8 @@ package com.yubai.blog.auth;
 
 import java.time.Duration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -23,6 +25,8 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     /** P0-3：登录按 IP 限流，防在线暴力猜解；nginx 层另有 limit_req 双保险。 */
     static final int LOGIN_LIMIT = 5;
     static final Duration LOGIN_WINDOW = Duration.ofMinutes(1);
@@ -51,7 +55,7 @@ public class AuthController {
     public ApiResponse<ChallengeResponse> challenge(@RequestParam(required = false) String username,
                                                     HttpServletRequest httpRequest) {
         var clientIp = ClientIps.resolve(httpRequest);
-        rejectIfCoolingDown(clientIp);
+        rejectIfCoolingDown(clientIp, username);
         if (!rateLimiter.tryAcquire("challenge:" + clientIp, CHALLENGE_LIMIT, CHALLENGE_WINDOW)) {
             throw new TooManyRequestsException("请求过于频繁，请稍后再试");
         }
@@ -61,7 +65,7 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         var clientIp = ClientIps.resolve(httpRequest);
-        rejectIfCoolingDown(clientIp);
+        rejectIfCoolingDown(clientIp, request.username());
         if (!rateLimiter.tryAcquire("login:" + clientIp, LOGIN_LIMIT, LOGIN_WINDOW)) {
             throw new TooManyRequestsException("登录尝试过于频繁，请一分钟后再试");
         }
@@ -77,11 +81,13 @@ public class AuthController {
             throw e;
         }
         attemptTracker.clear(clientIp, request.username());
+        // FD-0：登录成功审计——多账号后需要能回答"谁在什么时候从哪登录过"
+        log.info("login success: user={} ip={}", request.username(), clientIp);
         return ApiResponse.ok(jwtService.issue(request.username()));
     }
 
-    private void rejectIfCoolingDown(String clientIp) {
-        attemptTracker.cooldownRemaining(clientIp)
+    private void rejectIfCoolingDown(String clientIp, String username) {
+        attemptTracker.cooldownRemaining(clientIp, username)
             .ifPresent(remaining -> {
                 throw new LoginCooldownException(remaining);
             });
