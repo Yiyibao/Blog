@@ -35,6 +35,20 @@ public class QuoteEntity {
     protected QuoteEntity() {
     }
 
+    /** 4F：管理端 CRUD 写入口。 */
+    public static QuoteEntity create(QuoteRequest request) {
+        var quote = new QuoteEntity();
+        quote.update(request);
+        return quote;
+    }
+
+    public void update(QuoteRequest request) {
+        this.content = request.content().trim();
+        this.author = request.author().trim();
+        this.category = request.category().trim();
+        this.displayOrder = request.displayOrder();
+    }
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

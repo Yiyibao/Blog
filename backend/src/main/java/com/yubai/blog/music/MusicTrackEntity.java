@@ -44,6 +44,23 @@ public class MusicTrackEntity {
     protected MusicTrackEntity() {
     }
 
+    /** 4F：管理端 CRUD 写入口。 */
+    public static MusicTrackEntity create(MusicTrackRequest request) {
+        var track = new MusicTrackEntity();
+        track.update(request);
+        return track;
+    }
+
+    public void update(MusicTrackRequest request) {
+        this.trackId = request.trackId().trim();
+        this.title = request.title().trim();
+        this.artist = request.artist().trim();
+        this.duration = request.duration();
+        this.audioUrl = request.audioUrl().trim();
+        this.coverUrl = request.coverUrl() == null ? "" : request.coverUrl().trim();
+        this.sortOrder = request.sortOrder();
+    }
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

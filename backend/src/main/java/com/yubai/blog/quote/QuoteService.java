@@ -19,12 +19,42 @@ public class QuoteService {
         this.repository = repository;
     }
 
-    /** P1-5：语录当前无管理写入口，TTL 失效即可（4F 管理端上线时须补 evict）。 */
+    /** P1-5：公开列表缓存；4F 管理写入口已补 evict（TTL 兜底不变）。 */
     @Cacheable(CacheConfig.QUOTES)
     public List<QuoteResponse> findAll() {
         return repository.findAllByOrderByDisplayOrderAscIdAsc().stream()
             .map(QuoteResponse::from)
             .toList();
+    }
+
+    // ── 4F：管理端 CRUD（不改迁移即可增删语录；NB-6 按日轮转基于同一有序列表天然生效）──
+
+    public List<AdminQuoteResponse> findAdmin() {
+        return repository.findAllByOrderByDisplayOrderAscIdAsc().stream()
+            .map(AdminQuoteResponse::from)
+            .toList();
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.cache.annotation.CacheEvict(cacheNames = CacheConfig.QUOTES, allEntries = true)
+    public AdminQuoteResponse create(QuoteRequest request) {
+        return AdminQuoteResponse.from(repository.save(QuoteEntity.create(request)));
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.cache.annotation.CacheEvict(cacheNames = CacheConfig.QUOTES, allEntries = true)
+    public AdminQuoteResponse update(long id, QuoteRequest request) {
+        var quote = repository.findById(id)
+            .orElseThrow(() -> new com.yubai.blog.common.NotFoundException("语录不存在：" + id));
+        quote.update(request);
+        return AdminQuoteResponse.from(quote);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.cache.annotation.CacheEvict(cacheNames = CacheConfig.QUOTES, allEntries = true)
+    public void delete(long id) {
+        if (!repository.existsById(id)) throw new com.yubai.blog.common.NotFoundException("语录不存在：" + id);
+        repository.deleteById(id);
     }
 
     /**

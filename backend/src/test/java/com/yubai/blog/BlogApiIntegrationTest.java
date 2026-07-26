@@ -1019,6 +1019,68 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(54)
+    void adminLibraryCrudManagesTracksAndQuotesWithCacheEviction() throws Exception {
+        // 4F：曲目/语录管理端 CRUD 全链路 + 公开缓存 evict 生效
+        String token = login();
+
+        String trackBody = """
+            {"trackId":"qc-track","title":"测试曲目","artist":"测试艺人","duration":180,
+             "audioUrl":"https://cdn.test/qc.mp3","coverUrl":"","sortOrder":99}
+            """;
+        long trackId = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/library/tracks")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(trackBody))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+
+        // MUSIC 缓存已 evict：公开列表立即可见新曲目
+        mockMvc.perform(get("/api/v1/music/tracks"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("测试曲目")));
+
+        // 非 https/站内路径的音频地址如实 400（杜绝再写入占位域名）
+        mockMvc.perform(post("/api/v1/admin/library/tracks")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(trackBody.replace("qc-track", "qc-track-2").replace("https://cdn.test/qc.mp3", "http://cdn.example.com/x.mp3")))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(put("/api/v1/admin/library/tracks/" + trackId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(trackBody.replace("测试曲目", "改名曲目")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.title").value("改名曲目"));
+
+        mockMvc.perform(delete("/api/v1/admin/library/tracks/" + trackId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/music/tracks"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("改名曲目"))));
+
+        // 语录：新增后 daily 长度 +1（QUOTES 缓存已 evict），删除恢复
+        int before = objectMapper.readTree(mockMvc.perform(get("/api/v1/quotes/daily"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").size();
+        long quoteId = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/library/quotes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"测试语录\",\"author\":\"测试\",\"category\":\"测试\",\"displayOrder\":99}"))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+        int after = objectMapper.readTree(mockMvc.perform(get("/api/v1/quotes/daily"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").size();
+        assertEquals(before + 1, after, "quote create must evict QUOTES cache");
+
+        mockMvc.perform(delete("/api/v1/admin/library/quotes/" + quoteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(53)
     void stage3ViewCountsRssAndNeighborsWork() throws Exception {
         rateLimiter.reset();

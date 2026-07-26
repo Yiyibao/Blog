@@ -193,6 +193,64 @@ export function deletePost(id: number) {
   return api.delete(`/admin/posts/${id}`, { headers: tokenHeader() })
 }
 
+// 4F：曲目与语录管理
+export interface AdminMusicTrack {
+  id: number
+  trackId: string
+  title: string
+  artist: string
+  duration: number
+  audioUrl: string
+  coverUrl: string
+  sortOrder: number
+  createdAt: string
+}
+
+export type MusicTrackPayload = Omit<AdminMusicTrack, 'id' | 'createdAt'>
+
+export interface AdminQuote {
+  id: number
+  content: string
+  author: string
+  category: string
+  displayOrder: number
+  createdAt: string
+}
+
+export type QuotePayload = Omit<AdminQuote, 'id' | 'createdAt'>
+
+export function fetchAdminTracks() {
+  return unwrap<AdminMusicTrack[]>(api.get('/admin/library/tracks', { headers: tokenHeader() }))
+}
+
+export function createAdminTrack(payload: MusicTrackPayload) {
+  return unwrap<AdminMusicTrack>(api.post('/admin/library/tracks', payload, { headers: tokenHeader() }))
+}
+
+export function updateAdminTrack(id: number, payload: MusicTrackPayload) {
+  return unwrap<AdminMusicTrack>(api.put(`/admin/library/tracks/${id}`, payload, { headers: tokenHeader() }))
+}
+
+export function deleteAdminTrack(id: number) {
+  return api.delete(`/admin/library/tracks/${id}`, { headers: tokenHeader() })
+}
+
+export function fetchAdminQuotes() {
+  return unwrap<AdminQuote[]>(api.get('/admin/library/quotes', { headers: tokenHeader() }))
+}
+
+export function createAdminQuote(payload: QuotePayload) {
+  return unwrap<AdminQuote>(api.post('/admin/library/quotes', payload, { headers: tokenHeader() }))
+}
+
+export function updateAdminQuote(id: number, payload: QuotePayload) {
+  return unwrap<AdminQuote>(api.put(`/admin/library/quotes/${id}`, payload, { headers: tokenHeader() }))
+}
+
+export function deleteAdminQuote(id: number) {
+  return api.delete(`/admin/library/quotes/${id}`, { headers: tokenHeader() })
+}
+
 // 3A-2：存量 HTML→Markdown 一次性转换（响应即人工校对清单）
 export interface MarkdownConversionReport {
   id: number
