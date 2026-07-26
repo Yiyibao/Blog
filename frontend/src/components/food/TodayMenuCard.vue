@@ -13,7 +13,7 @@ const props = defineProps<{
   canEdit: boolean
   arrivals: number[]
 }>()
-const emit = defineEmits<{ open: [] }>()
+const emit = defineEmits<{ open: []; 'check-in-item': [item: DailyMenu['items'][number]] }>()
 
 const SLOT_LABEL: Record<MealSlot, string> = {
   BREAKFAST: '早',
@@ -57,6 +57,13 @@ function slotLabel(slot: MealSlot) {
           <i class="menu-slot" aria-hidden="true">{{ slotLabel(item.mealSlot) }}</i>
           <span class="menu-title">{{ item.title }}</span>
           <small class="menu-author">{{ item.authorName }} 点的</small>
+          <button
+            v-if="canEdit && item.id > 0"
+            class="menu-check tap-44"
+            type="button"
+            :aria-label="`把${item.title}记进美食足迹`"
+            @click.stop="emit('check-in-item', item)"
+          >✓</button>
         </li>
       </ul>
       <footer class="menu-card-foot">
@@ -93,6 +100,10 @@ function slotLabel(slot: MealSlot) {
 .menu-slot { flex: 0 0 auto; display: grid; place-items: center; min-width: 34px; height: 22px; padding: 0 7px; color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 62%, transparent); border-radius: 999px; font-size: .62rem; font-style: normal; font-weight: 650; letter-spacing: .05em; }
 .menu-title { flex: 1; min-width: 0; overflow: hidden; color: var(--ink); font: 500 .98rem/1.35 Georgia, "Songti SC", serif; text-overflow: ellipsis; white-space: nowrap; }
 .menu-author { flex: 0 0 auto; color: var(--faint); font-size: .68rem; }
+/* FD-18：一键打卡——从"想记一笔"到"记完"两次点击以内 */
+.menu-check { flex: 0 0 auto; display: grid; place-items: center; color: var(--accent); font-size: .9rem; background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line)); border-radius: 50%; cursor: pointer; transition: color .2s, background .2s, transform .25s var(--ease); }
+.menu-check:hover { color: #fff; background: var(--accent); transform: scale(1.06); }
+.menu-check:focus-visible { outline: 2px solid #0071e3; outline-offset: 2px; }
 .menu-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
 .menu-status { color: var(--muted); font-size: .74rem; }
 .menu-card.confirmed .menu-status { color: var(--accent); font-weight: 600; }

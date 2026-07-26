@@ -11,11 +11,13 @@ import { removeLegacyKey } from '../../utils/localStore'
 import { useRequestToken } from '../../composables/useRequestToken'
 import { refreshReveals } from '../../composables/useReveals'
 import { useAuthStore } from '../../stores/auth'
-import { useFoodStore } from '../../stores/foodStore'
+import { useFoodStore, todayISO } from '../../stores/foodStore'
+import { classifyError, createMealLog, fetchDishStats, type DishCookStat, type MenuItem } from '../../api/kitchen'
 import DishPanel from './DishPanel.vue'
 import DishRoulette from './DishRoulette.vue'
 import TodayMenuCard from './TodayMenuCard.vue'
 import TodayMenuBoard from './TodayMenuBoard.vue'
+import FoodTimeline from './FoodTimeline.vue'
 const route = useRoute()
 const router = useRouter()
 const dishes = ref<Dish[]>([])
@@ -49,8 +51,66 @@ const visibleDishes = computed(() => {
 })
 // FD-3：排行榜从"当前页 12 条按后台手填评分排序"换成全站真实点亮数据（后端收藏榜端点）
 const favoriteBoard = ref<DishFavoriteItem[]>([])
-const showRanking = computed(() => favoriteBoard.value.length > 0 && favoriteBoard.value[0].favoriteCount > 0)
-const championCount = computed(() => Math.max(1, favoriteBoard.value[0]?.favoriteCount ?? 1))
+
+// FD-19：登录后主口径换"你们做过 N 次"（meal_logs 聚合），点亮数降为副口径；
+// 匿名或还没做过菜时回退点亮榜。名字/图取自收藏榜条目（聚合是轻量投影）。
+const cookStats = ref<DishCookStat[]>([])
+interface BoardRow { slug: string; name: string; imageUrl: string; primary: number; primaryLabel: string; secondary?: string }
+const boardRows = computed<BoardRow[]>(() => {
+  const cookRows = cookStats.value
+    .map(stat => ({ stat, fav: favoriteBoard.value.find(item => item.slug === stat.slug) }))
+    .filter((pair): pair is { stat: DishCookStat; fav: DishFavoriteItem } => Boolean(pair.fav))
+    .slice(0, 5)
+  if (cookRows.length) {
+    return cookRows.map(({ stat, fav }) => ({
+      slug: stat.slug, name: fav.name, imageUrl: fav.imageUrl,
+      primary: stat.cookCount, primaryLabel: `你们做过 ${stat.cookCount} 次`,
+      secondary: `大家点亮 ${fav.favoriteCount} 次`,
+    }))
+  }
+  return favoriteBoard.value.map(item => ({
+    slug: item.slug, name: item.name, imageUrl: item.imageUrl,
+    primary: item.favoriteCount, primaryLabel: `大家点亮 ${item.favoriteCount} 次`,
+  }))
+})
+const cookMode = computed(() => boardRows.value[0]?.secondary !== undefined)
+const showRanking = computed(() => boardRows.value.length > 0 && boardRows.value[0].primary > 0)
+const championCount = computed(() => Math.max(1, boardRows.value[0]?.primary ?? 1))
+
+async function loadCookStats() {
+  try {
+    cookStats.value = auth.canKitchen ? await fetchDishStats() : []
+  } catch {
+    cookStats.value = []
+  }
+}
+
+// FD-18：一键打卡——菜单卡 ✓ / 抽屉"今天吃了"，成功后时光机就地刷新
+const timelineRef = ref<InstanceType<typeof FoodTimeline> | null>(null)
+async function onCheckInItem(item: MenuItem) {
+  try {
+    await createMealLog({
+      ...(item.dishSlug ? { dishSlug: item.dishSlug } : { title: item.title }),
+      mealSlot: item.mealSlot,
+      logDate: foodStore.menuDate,
+    })
+    uiStore.showToast(`已记一笔：${item.title} ✓`)
+    timelineRef.value?.reload()
+    void loadCookStats()
+  } catch (cause) {
+    uiStore.showToast(classifyError(cause).message)
+  }
+}
+async function onDishCheckIn(dish: Dish) {
+  try {
+    await createMealLog({ dishSlug: dish.slug, mealSlot: 'DINNER', logDate: todayISO() })
+    uiStore.showToast(`已记一笔：${dish.name} ✓`)
+    timelineRef.value?.reload()
+    void loadCookStats()
+  } catch (cause) {
+    uiStore.showToast(classifyError(cause).message)
+  }
+}
 
 const uiStore = useUiStore()
 const auth = useAuthStore()
@@ -73,6 +133,7 @@ function initialMenuDate(): string | undefined {
 function startMenu() {
   void foodStore.loadMenu(initialMenuDate())
   foodStore.startMenuPolling()
+  void loadCookStats()
 }
 // FD-14：匿名点"一起定菜单"→ /login?next=/recipes?view=menu&intent=addDish ——
 // 登录回来编辑板已开且输入框已聚焦，这里补句欢迎语并消费掉 intent
@@ -277,6 +338,7 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
             :can-edit="foodStore.canEdit"
             :arrivals="foodStore.arrivals"
             @open="openBoard"
+            @check-in-item="onCheckInItem"
           />
           <template v-else>
             <dl class="food-stats" aria-label="菜谱统计">
@@ -361,36 +423,38 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
       <section v-if="showRanking" class="food-ranking" aria-labelledby="food-ranking-title">
         <header class="ranking-head">
           <div><p>TASTE CLUB · TOP 05</p><h2 id="food-ranking-title">美食爱好榜</h2></div>
-          <p>按真实点亮次数排名，记录此刻最让人惦记的家常味道。</p>
+          <p>{{ cookMode ? '按你们真实做过的次数排名——最常端上桌的，才是真爱。' : '按真实点亮次数排名，记录此刻最让人惦记的家常味道。' }}</p>
         </header>
         <div class="ranking-board">
           <button
-            v-if="favoriteBoard[0]"
+            v-if="boardRows[0]"
             class="ranking-champion"
             type="button"
-            :aria-label="`查看榜首${favoriteBoard[0].name}，被点亮 ${favoriteBoard[0].favoriteCount} 次`"
-            @click="openBySlug(favoriteBoard[0].slug, $event)"
+            :aria-label="`查看榜首${boardRows[0].name}，${boardRows[0].primaryLabel}`"
+            @click="openBySlug(boardRows[0].slug, $event)"
           >
-            <span class="champion-media"><img :src="favoriteBoard[0].imageUrl" :alt="favoriteBoard[0].name" loading="lazy"><i /><b>NO. 01</b></span>
-            <span class="champion-copy"><small>本期味蕾冠军</small><strong>{{ favoriteBoard[0].name }}</strong><span>{{ favoriteBoard[0].summary }}</span><u>查看冠军菜谱 ↗</u></span>
-            <span class="score-orbit"><b>{{ favoriteBoard[0].favoriteCount }}</b><small>点亮</small></span>
+            <span class="champion-media"><img :src="boardRows[0].imageUrl" :alt="boardRows[0].name" loading="lazy"><i /><b>NO. 01</b></span>
+            <span class="champion-copy"><small>{{ cookMode ? '你们最常做的' : '本期味蕾冠军' }}</small><strong>{{ boardRows[0].name }}</strong><span>{{ boardRows[0].secondary ?? boardRows[0].primaryLabel }}</span><u>查看冠军菜谱 ↗</u></span>
+            <span class="score-orbit"><b>{{ boardRows[0].primary }}</b><small>{{ cookMode ? '次' : '点亮' }}</small></span>
           </button>
           <ol class="ranking-list">
             <li
-              v-for="(item, index) in favoriteBoard.slice(1)"
+              v-for="(item, index) in boardRows.slice(1)"
               :key="item.slug"
               :style="{ '--rank-delay': `${index * 80 + 160}ms` }"
             >
-              <button type="button" :aria-label="`查看${item.name}，被点亮 ${item.favoriteCount} 次`" @click="openBySlug(item.slug, $event)">
+              <button type="button" :aria-label="`查看${item.name}，${item.primaryLabel}`" @click="openBySlug(item.slug, $event)">
                 <span class="rank-number">{{ String(index + 2).padStart(2, '0') }}</span>
                 <img :src="item.imageUrl" :alt="item.name" loading="lazy">
-                <span class="rank-info"><strong>{{ item.name }}</strong><small>大家点亮 {{ item.favoriteCount }} 次</small><span class="rank-meter"><i :style="{ width: `${Math.round(item.favoriteCount / championCount * 100)}%` }" /></span></span>
-                <b class="rank-score">{{ item.favoriteCount }}</b><span class="rank-arrow">↗</span>
+                <span class="rank-info"><strong>{{ item.name }}</strong><small>{{ item.primaryLabel }}<template v-if="item.secondary"> · {{ item.secondary }}</template></small><span class="rank-meter"><i :style="{ width: `${Math.round(item.primary / championCount * 100)}%` }" /></span></span>
+                <b class="rank-score">{{ item.primary }}</b><span class="rank-arrow">↗</span>
               </button>
             </li>
           </ol>
         </div>
       </section>
+
+      <FoodTimeline v-if="auth.canKitchen" ref="timelineRef" @open="openBySlug($event)" />
     </div>
   </section>
 
@@ -404,7 +468,7 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
 
   <TodayMenuBoard v-if="boardOpen" :dishes="dishes" @close="closeBoard" />
   <DishRoulette v-if="rouletteOpen" :dishes="roulettePool" @close="rouletteOpen = false" @open="onRouletteOpen" />
-  <DishPanel :dish="selectedDish" @close="closeDish" @favorite="onFavorite" />
+  <DishPanel :dish="selectedDish" :can-check-in="auth.canKitchen" @close="closeDish" @favorite="onFavorite" @check-in="onDishCheckIn" />
 </template>
 
 <style scoped>

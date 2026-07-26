@@ -175,3 +175,72 @@ export function putDailyMenu(date: string, payload: DailyMenuPut) {
 export function deleteMenuItem(id: number) {
   return unwrap<DailyMenu>(api.delete(`/kitchen/menus/items/${id}`))
 }
+
+// ---- FD-15/17/18/19：打卡与聚合 ----
+
+export interface MealLog {
+  id: number
+  logDate: string
+  dishId: number | null
+  dishSlug: string | null
+  title: string
+  mealSlot: MealSlot
+  rating: number | null
+  note: string
+  authorId: number
+  authorName: string
+  createdAt: string
+}
+
+export interface MealLogDraft {
+  dishSlug?: string
+  title?: string
+  mealSlot: MealSlot
+  logDate: string
+  rating?: number
+  note?: string
+}
+
+export interface MealLogPage {
+  items: MealLog[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+export interface DishCookStat {
+  dishId: number
+  slug: string
+  cookCount: number
+  lastCookedAt: string
+}
+
+export function fetchMealLogs(page = 0, size = 20, filters: { from?: string; to?: string; dishSlug?: string } = {}) {
+  return unwrap<MealLogPage>(api.get('/kitchen/meal-logs', {
+    params: {
+      page, size,
+      ...(filters.from ? { from: filters.from } : {}),
+      ...(filters.to ? { to: filters.to } : {}),
+      ...(filters.dishSlug ? { dishSlug: filters.dishSlug } : {}),
+    },
+  }))
+}
+
+export function createMealLog(draft: MealLogDraft) {
+  return unwrap<MealLog>(api.post('/kitchen/meal-logs', draft))
+}
+
+/** 一键打卡整桌菜（服务端按同日同名同餐次幂等去重），返回本次新记的条目。 */
+export function checkInMenu(date: string) {
+  return unwrap<MealLog[]>(api.post('/kitchen/menus/check-in', null, { params: { date } }))
+}
+
+export function deleteMealLog(id: number) {
+  return api.delete(`/kitchen/meal-logs/${id}`)
+}
+
+/** "我们做过 N 次"聚合——FD-19 榜单主口径数据源。 */
+export function fetchDishStats() {
+  return unwrap<DishCookStat[]>(api.get('/kitchen/dish-stats'))
+}

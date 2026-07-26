@@ -3,8 +3,8 @@ import { onBeforeUnmount, nextTick, reactive, ref, watch } from 'vue'
 import type { Dish } from '../../data'
 import { useFocusTrap } from '../../composables/useFocusTrap'
 
-const props = defineProps<{ dish: Dish | null }>()
-const emit = defineEmits<{ close: []; favorite: [dish: Dish] }>()
+const props = defineProps<{ dish: Dish | null; canCheckIn?: boolean }>()
+const emit = defineEmits<{ close: []; favorite: [dish: Dish]; 'check-in': [dish: Dish] }>()
 
 const panelRoot = ref<HTMLElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
@@ -93,6 +93,13 @@ onBeforeUnmount(() => {
               :aria-label="`为${dish.name}点亮爱心，已被点亮 ${dish.favoriteCount} 次`"
               @click="onHeart"
             ><i aria-hidden="true">♥</i><b>{{ dish.favoriteCount }}</b></button>
+            <button
+              v-if="canCheckIn"
+              class="dish-checkin-btn tap-44"
+              type="button"
+              :aria-label="`把${dish.name}记进今天的美食足迹`"
+              @click="emit('check-in', dish)"
+            >今天吃了 ✓</button>
             <div><small>{{ dish.category }} · ★ {{ dish.rating.toFixed(1) }}</small><h2 :id="`dish-title-${dish.id}`">{{ dish.name }}</h2><p>{{ dish.summary }}</p></div>
           </header>
           <div class="dish-panel-body">
@@ -137,6 +144,9 @@ onBeforeUnmount(() => {
 .ingredient-item:hover { background: rgba(255, 255, 255, .06); }
 .ingredient-item.checked { text-decoration: line-through; opacity: .55; }
 .ingredient-checkbox { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--cinema-line); border-radius: 4px; color: var(--accent); font-size: 11px; }
+/* FD-18：打卡按钮——与爱心同排玻璃语言 */
+.dish-checkin-btn { position: absolute; z-index: 2; right: 122px; bottom: 30px; display: inline-flex; align-items: center; padding: 9px 14px; color: #fff; font-size: .78rem; font-weight: 600; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .3); border-radius: 999px; cursor: pointer; backdrop-filter: blur(12px); transition: transform .25s var(--ease), border-color .25s; }
+.dish-checkin-btn:hover { transform: scale(1.05); border-color: color-mix(in srgb, var(--accent) 70%, #fff); }
 /* FD-3：爱心点亮——纯计数非 toggle，动画只在主动点击时播放 */
 .dish-heart-btn { position: absolute; z-index: 2; right: 22px; bottom: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; color: #fff; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .3); border-radius: 999px; cursor: pointer; backdrop-filter: blur(12px); transition: transform .25s var(--ease), border-color .25s; }
 .dish-heart-btn i { font-style: normal; font-size: 1rem; line-height: 1; color: #ff8fa8; }

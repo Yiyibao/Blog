@@ -14,6 +14,7 @@ const mockFetchDailyMenu = vi.fn()
 const mockAppendMenuItem = vi.fn()
 const mockPutDailyMenu = vi.fn()
 const mockDeleteMenuItem = vi.fn()
+const mockCreateMealLog = vi.fn()
 
 vi.mock('../api/kitchen', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/kitchen')>()
@@ -23,6 +24,9 @@ vi.mock('../api/kitchen', async (importOriginal) => {
     appendMenuItem: (...args: unknown[]) => mockAppendMenuItem(...args),
     putDailyMenu: (...args: unknown[]) => mockPutDailyMenu(...args),
     deleteMenuItem: (...args: unknown[]) => mockDeleteMenuItem(...args),
+    fetchMealLogs: vi.fn().mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 }),
+    fetchDishStats: vi.fn().mockResolvedValue([]),
+    createMealLog: (...args: unknown[]) => mockCreateMealLog(...args),
   }
 })
 
@@ -97,6 +101,7 @@ beforeEach(() => {
   mockAppendMenuItem.mockReset()
   mockPutDailyMenu.mockReset()
   mockDeleteMenuItem.mockReset()
+  mockCreateMealLog.mockReset().mockResolvedValue({})
   mockFetchDishes.mockReset().mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
   mockFetchDish.mockReset()
   mockFavoriteDish.mockReset()
