@@ -5,7 +5,12 @@ import com.yubai.blog.admin.ai.AiProviderResponse;
 import com.yubai.blog.admin.ai.AiProviderService;
 import com.yubai.blog.admin.ai.AiProviderTestResult;
 import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.common.ClientIps;
+import com.yubai.blog.common.RateLimiter;
+import com.yubai.blog.common.TooManyRequestsException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.time.Duration;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,10 +29,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/admin/ai/providers")
 public class AdminAiProviderController {
-    private final AiProviderService providerService;
+    /** 连通测试代发外部请求，单独限流防止被当作出网探测跳板刷请求。 */
+    static final int TEST_LIMIT = 6;
+    static final Duration TEST_WINDOW = Duration.ofMinutes(1);
 
-    public AdminAiProviderController(AiProviderService providerService) {
+    private final AiProviderService providerService;
+    private final RateLimiter rateLimiter;
+
+    public AdminAiProviderController(AiProviderService providerService, RateLimiter rateLimiter) {
         this.providerService = providerService;
+        this.rateLimiter = rateLimiter;
     }
 
     @GetMapping
@@ -58,7 +69,11 @@ public class AdminAiProviderController {
     }
 
     @PostMapping("/{id}/test")
-    public ApiResponse<AiProviderTestResult> testConnection(@PathVariable Long id) {
+    public ApiResponse<AiProviderTestResult> testConnection(@PathVariable Long id, HttpServletRequest request) {
+        var clientIp = ClientIps.resolve(request);
+        if (!rateLimiter.tryAcquire("ai-provider-test:" + clientIp, TEST_LIMIT, TEST_WINDOW)) {
+            throw new TooManyRequestsException("连通测试过于频繁，请稍后再试");
+        }
         return ApiResponse.ok(providerService.testConnection(id));
     }
 }

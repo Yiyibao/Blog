@@ -98,8 +98,10 @@ async function sendMessage() {
   if (!content || loading.value || content.length > 8000) return
 
   const userMsg: AiChatMessage = { role: 'user', content }
+  // 发送给后端的历史窗口维持 20 条（与服务端限额一致）；
+  // 展示层放宽到 100 条，避免达到 20 条后发送瞬间最早一条消息凭空消失
   const history = [...messages.value, userMsg].slice(-20)
-  messages.value = history
+  messages.value = [...messages.value, userMsg].slice(-100)
   saveMessagesToStorage(messages.value)
 
   userInput.value = ''
@@ -110,7 +112,7 @@ async function sendMessage() {
 
   // 4A-2：流式渲染——先挂空的助手气泡，增量到达时就地追加（必须改代理对象保证响应式）
   const liveSeed: AiChatMessage = { role: 'assistant', content: '' }
-  messages.value = [...messages.value, liveSeed].slice(-20)
+  messages.value = [...messages.value, liveSeed].slice(-100)
   const live = messages.value[messages.value.length - 1]!
   const controller = new AbortController()
   abortController = controller
@@ -168,7 +170,7 @@ onMounted(() => {
       <header class="admin-topbar">
         <div>
           <span class="admin-breadcrumb">后台管理 / AI 助手</span>
-          <h1>DeepSeek AI 对话</h1>
+          <h1>AI 助手对话</h1>
         </div>
         <div class="topbar-actions">
           <button v-if="messages.length" class="clear-btn" type="button" @click="clearConversation">清空对话</button>
@@ -182,7 +184,7 @@ onMounted(() => {
           <div v-if="!messages.length && !loading" class="chat-welcome">
             <div class="welcome-icon">🤖</div>
             <h2>管理员 AI 助手</h2>
-            <p>基于 DeepSeek 大模型，协助文章撰写、代码重构与内容总结。</p>
+            <p>基于可配置的大模型供应商，协助文章撰写、代码重构与内容总结。</p>
             <small>最多保存最近 20 条消息 · 支持 8,000 字长文本输入</small>
           </div>
 
@@ -198,7 +200,7 @@ onMounted(() => {
             </div>
             <div class="bubble-body">
               <header class="bubble-header">
-                <span class="sender-name">{{ msg.role === 'user' ? username : 'DeepSeek AI' }}</span>
+                <span class="sender-name">{{ msg.role === 'user' ? username : 'AI 助手' }}</span>
               </header>
               <div class="bubble-content">{{ msg.content }}</div>
             </div>
@@ -208,7 +210,7 @@ onMounted(() => {
             <div class="bubble-avatar">🤖</div>
             <div class="bubble-body">
               <header class="bubble-header">
-                <span class="sender-name">DeepSeek AI</span>
+                <span class="sender-name">AI 助手</span>
               </header>
               <div class="bubble-content loading-indicator">
                 <span class="dot" /><span class="dot" /><span class="dot" />

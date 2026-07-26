@@ -11,7 +11,10 @@ import com.yubai.blog.admin.ai.AiServiceException;
 import com.yubai.blog.admin.ai.AiStreamListener;
 import com.yubai.blog.admin.ai.ChatResponse;
 import com.yubai.blog.config.AiProperties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,17 +41,23 @@ class AdminAiControllerTest {
     @MockitoBean(name = "aiStreamExecutor")
     ExecutorService streamExecutor;
 
+    @MockitoBean(name = "aiSseHeartbeatScheduler")
+    ScheduledExecutorService heartbeatScheduler;
+
     @BeforeEach
     void setUpLimits() {
-        when(aiProperties.getMaxHistoryMessages()).thenReturn(20);
-        when(aiProperties.getMaxInputChars()).thenReturn(8000);
-        when(aiProperties.getMaxTotalChars()).thenReturn(40000);
         when(aiProperties.getRequestTimeout()).thenReturn(60);
         // 测试内联执行流式任务，保证 SSE 输出在断言前完成
-        org.mockito.Mockito.doAnswer(invocation -> {
+        when(streamExecutor.submit(org.mockito.ArgumentMatchers.any(Runnable.class))).thenAnswer(invocation -> {
             ((Runnable) invocation.getArgument(0)).run();
-            return null;
-        }).when(streamExecutor).execute(org.mockito.ArgumentMatchers.any(Runnable.class));
+            return CompletableFuture.completedFuture(null);
+        });
+        when(heartbeatScheduler.scheduleAtFixedRate(
+                org.mockito.ArgumentMatchers.any(Runnable.class),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any()))
+            .thenAnswer(invocation -> org.mockito.Mockito.mock(ScheduledFuture.class));
     }
 
     @Test
@@ -89,16 +98,13 @@ class AdminAiControllerTest {
     }
 
     @Test
-    void tooManyMessagesRejected() throws Exception {
-        var msgs = new StringBuilder("[");
-        for (int i = 0; i < 21; i++) {
-            if (i > 0) msgs.append(",");
-            msgs.append("{\"role\":\"user\",\"content\":\"m\"}");
-        }
-        msgs.append("]");
+    void serviceLimitViolationMapsTo400() throws Exception {
+        // 限额校验已收敛到 AiChatService（见 AiChatServiceTest），这里验证异常映射
+        when(chatService.chat(any()))
+            .thenThrow(new AiServiceException(HttpStatus.BAD_REQUEST, "Message count exceeds maximum of 20"));
         mockMvc.perform(post("/api/v1/admin/ai/chat")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"messages\":" + msgs + "}"))
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
             .andExpect(status().isBadRequest());
     }
 
@@ -118,14 +124,6 @@ class AdminAiControllerTest {
             .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void contentTooLongRejected() throws Exception {
-        var content = "x".repeat(8001);
-        mockMvc.perform(post("/api/v1/admin/ai/chat")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"" + content + "\"}]}"))
-            .andExpect(status().isBadRequest());
-    }
 
     // ===== 4A-2：SSE 流式端点 =====
 
@@ -174,11 +172,16 @@ class AdminAiControllerTest {
 
     @Test
     void streamEndpointValidatesLimitsBeforeStreaming() throws Exception {
-        var content = "x".repeat(8001);
+        // 建流前校验失败 → 普通 HTTP 400，且不进入流式执行
+        org.mockito.Mockito.doThrow(new AiServiceException(HttpStatus.BAD_REQUEST,
+                "Message length exceeds maximum of 8000"))
+            .when(chatService).validateLimits(any());
         mockMvc.perform(post("/api/v1/admin/ai/chat/stream")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"" + content + "\"}]}"))
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
             .andExpect(status().isBadRequest());
         org.mockito.Mockito.verify(chatService, org.mockito.Mockito.never()).stream(any(), any());
+        org.mockito.Mockito.verify(streamExecutor, org.mockito.Mockito.never())
+            .submit(org.mockito.ArgumentMatchers.any(Runnable.class));
     }
 }

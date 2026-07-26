@@ -96,8 +96,10 @@ class OpenAiCompatibleClientTest {
         server.expect(requestTo(COMPLETIONS_URL))
             .andExpect(method(POST))
             .andExpect(content().json("""
-                {"model":"deepseek-v4-flash","stream":false,"thinking":{"type":"disabled"},"tool_choice":"none","max_tokens":2048,"messages":[{"role":"system","content":"You are a helpful assistant. Provide concise and accurate responses."},{"role":"user","content":"hi"}]}
+                {"model":"deepseek-v4-flash","stream":false,"thinking":{"type":"disabled"},"max_tokens":2048,"messages":[{"role":"system","content":"You are a helpful assistant. Provide concise and accurate responses."},{"role":"user","content":"hi"}]}
                 """, false))
+            // tool_choice 不能在未附带 tools 时下发（OpenAI 会 400），已从请求体移除
+            .andExpect(jsonPath("$.tool_choice").doesNotExist())
             .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
 
         client.chat(endpoint, List.of(new ChatMessage("user", "hi")));
@@ -296,6 +298,64 @@ class OpenAiCompatibleClientTest {
         var e = assertThrows(AiServiceException.class,
             () -> client.stream(endpoint, List.of(new ChatMessage("user", "hi")), new CollectingListener()));
         assertEquals(502, e.getStatus().value());
+    }
+
+    @Test
+    void nonDeepSeekEndpointOmitsThinkingField() {
+        // thinking 是 DeepSeek 私有字段，发给 OpenAI 等供应商会被 400 拒绝
+        var openAiEndpoint = new AiEndpoint("https://api.openai.com/v1", "test-key", "gpt-4o-mini", 60, 2048);
+        server.expect(requestTo(COMPLETIONS_URL))
+            .andExpect(method(POST))
+            .andExpect(jsonPath("$.thinking").doesNotExist())
+            .andExpect(jsonPath("$.tool_choice").doesNotExist())
+            .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
+
+        client.chat(openAiEndpoint, List.of(new ChatMessage("user", "hi")));
+        server.verify();
+    }
+
+    @Test
+    void deepSeekHostDetection() {
+        assertTrue(OpenAiCompatibleClient.isDeepSeekEndpoint("https://api.deepseek.com"));
+        assertTrue(OpenAiCompatibleClient.isDeepSeekEndpoint("https://api.deepseek.com/v1"));
+        assertFalse(OpenAiCompatibleClient.isDeepSeekEndpoint("https://api.openai.com/v1"));
+        assertFalse(OpenAiCompatibleClient.isDeepSeekEndpoint("https://open.bigmodel.cn/api/paas/v4"));
+        // host 之外出现 deepseek 字样不应误判
+        assertFalse(OpenAiCompatibleClient.isDeepSeekEndpoint("https://example.com/deepseek"));
+    }
+
+    @Test
+    void streamParserJoinsMultiLineDataPerSseSpec() throws Exception {
+        // SSE 规范：一个事件可由多个 data: 行组成，按换行拼接后再解析
+        var body = """
+            data: {"choices":[{"delta":
+            data: {"content":"Hi"}}]}
+
+            data: [DONE]
+            """;
+        var listener = new CollectingListener();
+        var response = OpenAiCompatibleClient.parseSseStream(
+            new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            "m", listener);
+        assertEquals("Hi", response.content());
+        assertEquals(List.of("Hi"), listener.deltas());
+    }
+
+    @Test
+    void streamParserStopsWhenThreadInterrupted() {
+        // 客户端断开后 emitter 取消工作线程：解析循环应尽早退出，停止消耗上游 token
+        var body = "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\ndata: [DONE]\n";
+        var listener = new CollectingListener();
+        Thread.currentThread().interrupt();
+        try {
+            assertThrows(java.io.IOException.class, () -> OpenAiCompatibleClient.parseSseStream(
+                new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                "m", listener));
+        } finally {
+            // 清除中断标志，避免污染后续测试
+            Thread.interrupted();
+        }
+        assertEquals(List.of(), listener.deltas());
     }
 
     @Test

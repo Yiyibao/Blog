@@ -70,12 +70,43 @@ class AiChatServiceTest {
     @Test
     void aggregateContentExceedsMaxThrows400() {
         build(true, "test-key", null);
+        properties.setMaxInputChars(30000);
         var content = "x".repeat(20001);
         var overLimit = new ChatRequest(List.of(
             new ChatMessage("user", content), new ChatMessage("assistant", content)));
         var e = assertThrows(AiServiceException.class, () -> service.chat(overLimit));
         assertEquals(400, e.getStatus().value());
         verify(client, never()).chat(any(), anyList());
+    }
+
+    @Test
+    void tooManyMessagesThrows400() {
+        // 限额校验收敛到服务层：绕过控制器的调用方同样不能失守
+        build(true, "test-key", null);
+        properties.setMaxHistoryMessages(3);
+        var overLimit = new ChatRequest(List.of(
+            new ChatMessage("user", "a"), new ChatMessage("assistant", "b"),
+            new ChatMessage("user", "c"), new ChatMessage("assistant", "d")));
+        var e = assertThrows(AiServiceException.class, () -> service.chat(overLimit));
+        assertEquals(400, e.getStatus().value());
+        verify(client, never()).chat(any(), anyList());
+    }
+
+    @Test
+    void singleMessageTooLongThrows400() {
+        build(true, "test-key", null);
+        var e = assertThrows(AiServiceException.class, () -> service.chat(request("x".repeat(8001))));
+        assertEquals(400, e.getStatus().value());
+        verify(client, never()).chat(any(), anyList());
+    }
+
+    @Test
+    void streamValidatesLimitsToo() {
+        build(true, "test-key", null);
+        var e = assertThrows(AiServiceException.class,
+            () -> service.stream(request("x".repeat(8001)), content -> { }));
+        assertEquals(400, e.getStatus().value());
+        verify(client, never()).stream(any(), anyList(), any());
     }
 
     @Test

@@ -13,6 +13,7 @@ import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -36,7 +37,8 @@ import org.springframework.web.client.RestClientException;
  */
 @Component
 public class OpenAiCompatibleClient {
-    static final int MAX_RESPONSE_BYTES = 2_000_000;
+    /** 出网加固上限：既防异常上游拖垮内存，又给长流式回复（SSE 帧有 JSON 包裹开销）留足余量。 */
+    static final int MAX_RESPONSE_BYTES = 8_000_000;
     private static final String SYSTEM_PROMPT =
         "You are a helpful assistant. Provide concise and accurate responses.";
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -121,64 +123,104 @@ public class OpenAiCompatibleClient {
     }
 
     /**
-     * SSE 帧解析（包级可见便于单测）：只认 data: 行，[DONE] 或 EOF 结束；
-     * 无任何增量内容视为空响应 502。
+     * SSE 帧解析（包级可见便于单测）：按规范以空行为事件边界、多个 data: 行拼接为一个事件，
+     * [DONE] 或 EOF 结束；无任何增量内容视为空响应 502。
+     * 线程被中断（客户端断开后 emitter 取消工作线程）时尽早退出，停止消耗上游 token。
      */
     static ChatResponse parseSseStream(InputStream bodyStream, String fallbackModel,
                                        AiStreamListener listener) throws IOException {
         var reader = new BufferedReader(new InputStreamReader(bodyStream, StandardCharsets.UTF_8));
-        var content = new StringBuilder();
-        var model = fallbackModel;
-        ChatResponse.Usage usage = null;
+        var state = new StreamState(fallbackModel);
+        var data = new StringBuilder();
+        var terminated = false;
         String line;
-        while ((line = reader.readLine()) != null) {
+        while (!terminated && (line = reader.readLine()) != null) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new IOException("SSE stream cancelled");
+            }
+            if (line.isEmpty()) {
+                terminated = flushEvent(data, state, listener);
+                continue;
+            }
             if (!line.startsWith("data:")) {
                 continue;
             }
-            var payload = line.substring(5).trim();
-            if (payload.isEmpty()) {
-                continue;
+            var piece = line.substring(5);
+            if (piece.startsWith(" ")) {
+                piece = piece.substring(1);
             }
-            if ("[DONE]".equals(payload)) {
-                break;
+            if (!data.isEmpty()) {
+                data.append('\n');
             }
-            JsonNode node;
-            try {
-                node = MAPPER.readTree(payload);
-            } catch (JsonProcessingException exception) {
-                throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Invalid response from AI service");
-            }
-            var modelNode = node.get("model");
-            if (modelNode != null && !modelNode.isNull()) {
-                model = modelNode.asText();
-            }
-            var usageNode = node.get("usage");
-            if (usageNode != null && !usageNode.isNull()) {
-                usage = new ChatResponse.Usage(
-                    getInt(usageNode, "prompt_tokens"),
-                    getInt(usageNode, "completion_tokens"),
-                    getInt(usageNode, "total_tokens"));
-            }
-            var choices = node.get("choices");
-            if (choices == null || !choices.isArray() || choices.isEmpty()) {
-                continue;
-            }
-            var delta = choices.get(0).get("delta");
-            if (delta == null) {
-                continue;
-            }
-            var deltaContent = delta.get("content");
-            if (deltaContent != null && !deltaContent.isNull() && !deltaContent.asText().isEmpty()) {
-                content.append(deltaContent.asText());
-                listener.onDelta(deltaContent.asText());
-            }
+            data.append(piece);
         }
-        if (content.isEmpty()) {
+        if (!terminated) {
+            // EOF 前最后一个未以空行闭合的事件
+            flushEvent(data, state, listener);
+        }
+        if (state.content.isEmpty()) {
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Empty response from AI service");
         }
-        var response = new ChatResponse(content.toString(), model, usage);
+        var response = new ChatResponse(state.content.toString(), state.model, state.usage);
         listener.onComplete(response);
         return response;
+    }
+
+    /** 分发一个累积完成的 SSE 事件。@return true 表示收到 [DONE] 终止帧。 */
+    private static boolean flushEvent(StringBuilder data, StreamState state, AiStreamListener listener) {
+        if (data.isEmpty()) {
+            return false;
+        }
+        var payload = data.toString().trim();
+        data.setLength(0);
+        if (payload.isEmpty()) {
+            return false;
+        }
+        if ("[DONE]".equals(payload)) {
+            return true;
+        }
+        JsonNode node;
+        try {
+            node = MAPPER.readTree(payload);
+        } catch (JsonProcessingException exception) {
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Invalid response from AI service");
+        }
+        var modelNode = node.get("model");
+        if (modelNode != null && !modelNode.isNull()) {
+            state.model = modelNode.asText();
+        }
+        var usageNode = node.get("usage");
+        if (usageNode != null && !usageNode.isNull()) {
+            state.usage = new ChatResponse.Usage(
+                getInt(usageNode, "prompt_tokens"),
+                getInt(usageNode, "completion_tokens"),
+                getInt(usageNode, "total_tokens"));
+        }
+        var choices = node.get("choices");
+        if (choices == null || !choices.isArray() || choices.isEmpty()) {
+            return false;
+        }
+        var delta = choices.get(0).get("delta");
+        if (delta == null) {
+            return false;
+        }
+        var deltaContent = delta.get("content");
+        if (deltaContent != null && !deltaContent.isNull() && !deltaContent.asText().isEmpty()) {
+            state.content.append(deltaContent.asText());
+            listener.onDelta(deltaContent.asText());
+        }
+        return false;
+    }
+
+    /** 流式解析的可变累积状态。 */
+    private static final class StreamState {
+        final StringBuilder content = new StringBuilder();
+        String model;
+        ChatResponse.Usage usage;
+
+        StreamState(String fallbackModel) {
+            this.model = fallbackModel;
+        }
     }
 
     /** 供「测试连通」使用：GET /models，返回模型 id 列表（最多 50 个）。 */
@@ -223,14 +265,26 @@ public class OpenAiCompatibleClient {
         for (var message : messages) {
             payload.add(Map.of("role", message.role(), "content", message.content()));
         }
-        return Map.of(
-            "model", endpoint.model(),
-            "messages", payload,
-            "thinking", Map.of("type", "disabled"),
-            "tool_choice", "none",
-            "stream", stream,
-            "max_tokens", endpoint.maxOutputTokens()
-        );
+        var body = new LinkedHashMap<String, Object>();
+        body.put("model", endpoint.model());
+        body.put("messages", payload);
+        // thinking 是 DeepSeek 私有字段，OpenAI/Azure 等对未知字段直接 400；
+        // tool_choice 未附带 tools 时 OpenAI 同样报错——均不能无条件下发。
+        if (isDeepSeekEndpoint(endpoint.baseUrl())) {
+            body.put("thinking", Map.of("type", "disabled"));
+        }
+        body.put("stream", stream);
+        body.put("max_tokens", endpoint.maxOutputTokens());
+        return body;
+    }
+
+    static boolean isDeepSeekEndpoint(String baseUrl) {
+        try {
+            var host = java.net.URI.create(baseUrl).getHost();
+            return host != null && host.toLowerCase(java.util.Locale.ROOT).contains("deepseek");
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     private static ChatResponse parseChatResponse(AiEndpoint endpoint, JsonNode body) {

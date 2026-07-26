@@ -32,12 +32,28 @@ public class AiChatService {
         return client.stream(endpoint, request.messages(), listener);
     }
 
-    private AiEndpoint resolveValidated(ChatRequest request) {
+    /**
+     * 限额校验的唯一入口（条数/单条长度/总长）。控制器在建立 SSE 流之前调用以便返回普通
+     * HTTP 400；chat/stream 内部同样执行，保证绕过控制器的调用方也不会失守。
+     */
+    public void validateLimits(ChatRequest request) {
+        if (request.messages().size() > properties.getMaxHistoryMessages()) {
+            throw new AiServiceException(HttpStatus.BAD_REQUEST,
+                "Message count exceeds maximum of " + properties.getMaxHistoryMessages());
+        }
+        if (request.messages().stream().anyMatch(m -> m.content().length() > properties.getMaxInputChars())) {
+            throw new AiServiceException(HttpStatus.BAD_REQUEST,
+                "Message length exceeds maximum of " + properties.getMaxInputChars());
+        }
         var totalChars = request.messages().stream().mapToInt(m -> m.content().length()).sum();
         if (totalChars > properties.getMaxTotalChars()) {
             throw new AiServiceException(HttpStatus.BAD_REQUEST,
                 "Total content length exceeds maximum of " + properties.getMaxTotalChars());
         }
+    }
+
+    private AiEndpoint resolveValidated(ChatRequest request) {
+        validateLimits(request);
         return providerService.resolveEndpoint(request.providerId(), request.model());
     }
 }

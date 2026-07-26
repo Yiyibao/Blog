@@ -115,13 +115,18 @@ public class AiProviderService {
                 repository.save(other);
             }
         }
+        // 先落库清除旧默认，再写新默认——V16 的部分唯一索引不允许瞬时双默认
+        repository.flush();
         entity.markDefault(true);
         var saved = repository.save(entity);
         return AiProviderResponse.from(saved, keyTail(saved));
     }
 
-    /** 连通性测试：以该供应商配置请求 /models；失败作为结果返回而非抛错，便于界面展示。 */
-    @Transactional(readOnly = true)
+    /**
+     * 连通性测试：以该供应商配置请求 /models；失败作为结果返回而非抛错，便于界面展示。
+     * 刻意不加 @Transactional——外部 HTTP 最长阻塞 requestTimeout 秒，
+     * 包在事务里会长时间占用连接池连接，几次并发点击即可耗尽 HikariCP。
+     */
     public AiProviderTestResult testConnection(Long id) {
         var entity = repository.findById(id)
             .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
