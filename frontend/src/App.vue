@@ -7,6 +7,7 @@ import AmbientSound from './components/AmbientSound.vue'
 import { useUiStore } from './stores/uiStore'
 import { usePageMeta } from './composables/usePageMeta'
 import { useStructuredData, webSite } from './composables/useStructuredData'
+import { refreshReveals, disconnectReveals } from './composables/useReveals'
 
 const route = useRoute()
 const ui = useUiStore()
@@ -14,7 +15,6 @@ const ui = useUiStore()
 const menuOpen = ref(false)
 const readingProgress = ref(0)
 const showBackToTop = ref(false)
-let revealObserver: IntersectionObserver | undefined
 let scrollFrame: number | undefined
 
 const isAdminRoute = computed(() => String(route.path).startsWith('/admin'))
@@ -47,71 +47,13 @@ function scheduleProgressUpdate() {
   })
 }
 
-function setupReveals() {
-  revealObserver?.disconnect()
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const selector = [
-    'main > section',
-    '.ticker',
-    '.section-heading',
-    '.featured-card',
-    '.post-card',
-    '.archive-row',
-    '.project-card',
-    '.related-grid > a',
-    '.values article',
-    '.manifesto blockquote',
-    '.manifesto > div span',
-    '.pagination',
-  ].join(', ')
-
-  const nodes = [...document.querySelectorAll<HTMLElement>(selector)]
-  const groupCount = new Map<string, number>()
-
-  nodes.forEach((element) => {
-    if (element.classList.contains('hero')) return
-    element.classList.add('reveal-item')
-    const parent = element.closest('section, .post-grid, .projects, .related-grid, .values, .manifesto, .archive-list')
-    const key = parent ? `${parent.className}|${parent.tagName}` : 'root'
-    const index = groupCount.get(key) ?? 0
-    groupCount.set(key, index + 1)
-    element.style.setProperty('--reveal-delay', `${Math.min(index, 8) * 70}ms`)
-
-    if (element.classList.contains('featured-card')) element.dataset.reveal = 'scale'
-    else if (element.classList.contains('project-card') && index % 2 === 1) element.dataset.reveal = 'right'
-    else if (element.classList.contains('project-card')) element.dataset.reveal = 'left'
-    else if (element.matches('.related-grid > a') && index % 2 === 1) element.dataset.reveal = 'right'
-    else if (element.matches('.related-grid > a')) element.dataset.reveal = 'left'
-
-    if (reduceMotion) {
-      element.classList.add('is-visible')
-      return
-    }
-  })
-
-  if (reduceMotion) return
-
-  revealObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return
-      entry.target.classList.add('is-visible')
-      revealObserver?.unobserve(entry.target)
-    })
-  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' })
-
-  nodes.forEach((element) => {
-    if (element.classList.contains('hero')) return
-    revealObserver?.observe(element)
-  })
-}
-
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 function handlePointerMove(event: PointerEvent) {
   if (event.pointerType === 'touch') return
-  const target = (event.target as HTMLElement).closest<HTMLElement>('.featured-card, .post-card, .project-card, .about-card, .related-grid > a, .values article')
+  const target = (event.target as HTMLElement).closest<HTMLElement>('.featured-card, .post-card, .project-card, .about-card, .related-grid > a, .values article, .dish-card')
   if (!target) return
   const rect = target.getBoundingClientRect()
   const x = (event.clientX - rect.left) / rect.width
@@ -183,7 +125,7 @@ watch(() => route.fullPath, () => {
       },
     })
   }
-  void nextTick(setupReveals)
+  void nextTick(refreshReveals)
 })
 
 onMounted(() => {
@@ -191,14 +133,14 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('scroll', scheduleProgressUpdate, { passive: true })
   updateProgress()
-  void nextTick(setupReveals)
+  void nextTick(refreshReveals)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('scroll', scheduleProgressUpdate)
   if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
-  revealObserver?.disconnect()
+  disconnectReveals()
 })
 </script>
 
