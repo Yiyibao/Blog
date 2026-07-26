@@ -38,7 +38,7 @@ class SitemapServiceTest {
     @BeforeEach
     void setUp() {
         siteUrlConfig = new SiteUrlConfig("https://example.test");
-        service = new SitemapService(siteUrlConfig, postRepository, dishRepository, noteRepository);
+        service = new SitemapService(new com.yubai.blog.config.PublicUrls(siteUrlConfig), postRepository, dishRepository, noteRepository);
     }
 
     @Test

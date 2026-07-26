@@ -40,11 +40,18 @@ public class WebConfiguration implements WebMvcConfigurer {
             @Override
             public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
                 if ("GET".equals(request.getMethod())) {
-                    response.setHeader("Cache-Control",
-                        CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic().getHeaderValue());
+                    // NB-7：计数类端点（浏览/点赞/收藏统计）不能被 5 分钟 public 缓存冻结
+                    response.setHeader("Cache-Control", isCounterEndpoint(request.getRequestURI())
+                        ? CacheControl.noCache().getHeaderValue()
+                        : CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic().getHeaderValue());
                 }
                 return true;
             }
-        }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories/**", "/api/v1/search", "/api/v1/music/**");
+        // NB-7：/graph、/quotes 纳入可缓存列表，与 P1-5 服务端 Caffeine 5 分钟 TTL 对齐
+        }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**");
+    }
+
+    private static boolean isCounterEndpoint(String path) {
+        return path.endsWith("/stats") || path.equals("/api/v1/dishes/favorites");
     }
 }

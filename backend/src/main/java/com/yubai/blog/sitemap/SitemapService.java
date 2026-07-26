@@ -13,7 +13,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import com.yubai.blog.config.CacheConfig;
-import com.yubai.blog.config.SiteUrlConfig;
+import com.yubai.blog.config.PublicUrls;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
@@ -21,14 +21,14 @@ import com.yubai.blog.post.PostRepository;
 @Service
 public class SitemapService {
 
-    private final SiteUrlConfig siteUrlConfig;
+    private final PublicUrls urls;
     private final PostRepository postRepository;
     private final DishRepository dishRepository;
     private final NoteRepository noteRepository;
 
-    public SitemapService(SiteUrlConfig siteUrlConfig, PostRepository postRepository,
+    public SitemapService(PublicUrls urls, PostRepository postRepository,
                           DishRepository dishRepository, NoteRepository noteRepository) {
-        this.siteUrlConfig = siteUrlConfig;
+        this.urls = urls;
         this.postRepository = postRepository;
         this.dishRepository = dishRepository;
         this.noteRepository = noteRepository;
@@ -43,37 +43,33 @@ public class SitemapService {
 
     List<SitemapEntry> collectEntries() {
         var entries = new ArrayList<SitemapEntry>();
-        var base = siteUrlConfig.getSiteUrl();
 
-        entries.add(new SitemapEntry(base + "/", null));
-        entries.add(new SitemapEntry(base + "/articles", null));
-        entries.add(new SitemapEntry(base + "/notes", null));
-        entries.add(new SitemapEntry(base + "/recipes", null));
-        entries.add(new SitemapEntry(base + "/archive", null));
-        entries.add(new SitemapEntry(base + "/about", null));
-        entries.add(new SitemapEntry(base + "/categories", null));
+        entries.add(new SitemapEntry(urls.home(), null));
+        for (var page : List.of("articles", "notes", "recipes", "archive", "about", "categories")) {
+            entries.add(new SitemapEntry(urls.staticPage(page), null));
+        }
 
         for (var post : postRepository.findPublishedSitemap()) {
             entries.add(new SitemapEntry(
-                base + "/articles/" + post.getSlug(),
+                urls.article(post.getSlug()),
                 post.getDate().format(DateTimeFormatter.ISO_LOCAL_DATE)));
         }
 
         for (var dish : dishRepository.findPublishedSitemap()) {
             entries.add(new SitemapEntry(
-                base + "/recipes?dish=" + dish.getSlug(),
+                urls.recipe(dish.getSlug()),
                 dish.getUpdatedAt().toString()));
         }
 
         for (var note : noteRepository.findPublishedSitemap()) {
             entries.add(new SitemapEntry(
-                base + "/notes?note=" + note.getId(),
+                urls.note(note.getId()),
                 note.getUpdatedAt().toString()));
         }
 
         for (var cat : postRepository.findPublishedCategoriesWithCount()) {
             entries.add(new SitemapEntry(
-                base + "/categories/" + cat.getCategorySlug(),
+                urls.category(cat.getCategorySlug()),
                 null));
         }
 
