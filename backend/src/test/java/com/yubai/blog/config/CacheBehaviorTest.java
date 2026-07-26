@@ -66,9 +66,9 @@ class CacheBehaviorTest {
 
     @Test
     void graphIsCachedAcrossCalls() {
-        graphService.buildGraph();
-        graphService.buildGraph();
-        graphService.buildGraph();
+        graphService.buildGraph(true);
+        graphService.buildGraph(true);
+        graphService.buildGraph(true);
 
         verify(postRepository, times(1)).findPublishedGraphRows();
         verify(noteRepository, times(1)).findPublishedGraphRows();
@@ -77,8 +77,8 @@ class CacheBehaviorTest {
 
     @Test
     void adminWriteEvictsGraphCache() {
-        graphService.buildGraph();
-        graphService.buildGraph();
+        graphService.buildGraph(true);
+        graphService.buildGraph(true);
         verify(postRepository, times(1)).findPublishedGraphRows();
 
         when(postRepository.existsBySlug("evict-check")).thenReturn(false);
@@ -87,7 +87,7 @@ class CacheBehaviorTest {
         postService.create(new PostRequest("evict-check", "标题", "摘要", LocalDate.of(2026, 1, 1),
             5, "工程实践", List.of(), "#000000", "01", false, PostStatus.DRAFT, "<p>x</p>"));
 
-        graphService.buildGraph();
+        graphService.buildGraph(true);
         verify(postRepository, times(2)).findPublishedGraphRows();
     }
 }

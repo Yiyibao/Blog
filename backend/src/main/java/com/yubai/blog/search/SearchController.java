@@ -9,6 +9,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.common.CurrentUser;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -26,16 +27,17 @@ public class SearchController {
         this.searchService = searchService;
     }
 
+    /** L-16/D-17：游客搜索剔除学习笔记（分组分支笔记恒空；类型化分支 NOTE 返回空页）。 */
     @GetMapping
     public ApiResponse<SearchResponse> search(
         @RequestParam(defaultValue = "") String q,
         @RequestParam(defaultValue = "5") @Min(1) @Max(10) int limit
     ) {
-        return ApiResponse.ok(searchService.search(q, limit));
+        return ApiResponse.ok(searchService.search(q, limit, CurrentUser.isAuthenticated()));
     }
 
     @PostMapping
     public ApiResponse<SearchPostResponse> searchByType(@Valid @RequestBody SearchRequest request) {
-        return ApiResponse.ok(searchService.search(request));
+        return ApiResponse.ok(searchService.search(request, CurrentUser.isAuthenticated()));
     }
 }

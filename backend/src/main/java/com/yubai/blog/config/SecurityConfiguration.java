@@ -45,7 +45,8 @@ public class SecurityConfiguration {
                 .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/api/v1/auth/challenge", "/sitemap.xml", "/robots.txt", "/error").permitAll()
                 // P2-3：文档路径放行但功能默认关闭（SPRINGDOC_ENABLED=false 时如实 404），生产不暴露内容
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/note-assets/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**").permitAll()
+                // L-16/D-17：/notes 与 /note-assets 移出公开白名单——学习笔记对游客真隐藏（落入下方 /api/** authenticated）
+                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dishes/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/dishes/*/favorite", "/api/v1/posts/*/like", "/api/v1/search").permitAll()
                 // FD-7：kitchen（今日菜单/打卡）为两人私有空间——必须登录，ADMIN 与 PARTNER 皆可；
                 // 规则须在 /api/** 通配之前，顺序敏感

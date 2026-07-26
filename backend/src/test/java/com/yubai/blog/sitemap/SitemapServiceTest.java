@@ -17,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.yubai.blog.config.SiteUrlConfig;
 import com.yubai.blog.dish.DishRepository;
-import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,16 +28,13 @@ class SitemapServiceTest {
     @Mock
     DishRepository dishRepository;
 
-    @Mock
-    NoteRepository noteRepository;
-
     SiteUrlConfig siteUrlConfig;
     SitemapService service;
 
     @BeforeEach
     void setUp() {
         siteUrlConfig = new SiteUrlConfig("https://example.test");
-        service = new SitemapService(new com.yubai.blog.config.PublicUrls(siteUrlConfig), postRepository, dishRepository, noteRepository);
+        service = new SitemapService(new com.yubai.blog.config.PublicUrls(siteUrlConfig), postRepository, dishRepository);
     }
 
     @Test
@@ -46,7 +42,6 @@ class SitemapServiceTest {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
         when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
         var entries = service.collectEntries();
 
@@ -55,9 +50,10 @@ class SitemapServiceTest {
             "https://example.test/",
             "https://example.test/articles",
             "https://example.test/categories",
-            "https://example.test/notes",
             "https://example.test/recipes",
             "https://example.test/about");
+        // L-16/D-17：/notes 静态页退出 sitemap
+        assertThat(locs).doesNotContain("https://example.test/notes");
     }
 
     @Test
@@ -69,7 +65,6 @@ class SitemapServiceTest {
             }));
         when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
         var entries = service.collectEntries();
 
@@ -86,7 +81,6 @@ class SitemapServiceTest {
                 public String getSlug() { return "test-dish"; }
                 public Instant getUpdatedAt() { return Instant.parse("2026-07-15T12:00:00Z"); }
             }));
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
         var entries = service.collectEntries();
 
@@ -94,19 +88,15 @@ class SitemapServiceTest {
     }
 
     @Test
-    void publishedNotesAreIncluded() {
+    void notesAreNeverIncluded() {
+        // L-16/D-17：学习笔记退出 SEO 收录——sitemap 不再包含任何笔记 URL
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
         when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of(
-            new NoteRepository.NoteSitemapProjection() {
-                public Long getId() { return 42L; }
-                public Instant getUpdatedAt() { return Instant.parse("2026-07-20T08:30:00Z"); }
-            }));
 
         var entries = service.collectEntries();
 
-        assertThat(entries).anyMatch(e -> e.loc().equals("https://example.test/notes?note=42"));
+        assertThat(entries).noneMatch(e -> e.loc().endsWith("/notes") || e.loc().contains("/notes?"));
     }
 
     @Test
@@ -119,7 +109,6 @@ class SitemapServiceTest {
                 public long getCnt() { return 2; }
             }));
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
         var entries = service.collectEntries();
 
@@ -131,7 +120,6 @@ class SitemapServiceTest {
     void lastmodUsesEntityTimestamps() {
         var postDate = LocalDate.of(2026, 6, 15);
         var dishTime = Instant.parse("2026-07-10T14:00:00Z");
-        var noteTime = Instant.parse("2026-07-20T08:30:00Z");
 
         when(postRepository.findPublishedSitemap()).thenReturn(List.of(
             new PostRepository.PostSitemapProjection() {
@@ -144,11 +132,6 @@ class SitemapServiceTest {
                 public String getSlug() { return "d"; }
                 public Instant getUpdatedAt() { return dishTime; }
             }));
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of(
-            new NoteRepository.NoteSitemapProjection() {
-                public Long getId() { return 1L; }
-                public Instant getUpdatedAt() { return noteTime; }
-            }));
 
         var entries = service.collectEntries();
 
@@ -157,9 +140,6 @@ class SitemapServiceTest {
 
         var dishEntry = entries.stream().filter(e -> e.loc().contains("/recipes?dish=d")).findFirst().orElseThrow();
         assertThat(dishEntry.lastmod()).isEqualTo("2026-07-10T14:00:00Z");
-
-        var noteEntry = entries.stream().filter(e -> e.loc().contains("/notes?note=1")).findFirst().orElseThrow();
-        assertThat(noteEntry.lastmod()).isEqualTo("2026-07-20T08:30:00Z");
     }
 
     @Test
@@ -167,7 +147,6 @@ class SitemapServiceTest {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
         when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
         var entries = service.collectEntries();
 
@@ -175,7 +154,6 @@ class SitemapServiceTest {
             e.loc().equals("https://example.test/") ||
             e.loc().equals("https://example.test/articles") ||
             e.loc().equals("https://example.test/categories") ||
-            e.loc().equals("https://example.test/notes") ||
             e.loc().equals("https://example.test/recipes") ||
             e.loc().equals("https://example.test/about")).toList();
 
@@ -187,7 +165,6 @@ class SitemapServiceTest {
         when(postRepository.findPublishedSitemap()).thenReturn(List.of());
         when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of());
 
         var xml = service.buildSitemapXml();
 
@@ -214,11 +191,6 @@ class SitemapServiceTest {
                 public String getSlug() { return "sweet-sour"; }
                 public Instant getUpdatedAt() { return Instant.parse("2026-07-15T12:00:00Z"); }
             }));
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of(
-            new NoteRepository.NoteSitemapProjection() {
-                public Long getId() { return 7L; }
-                public Instant getUpdatedAt() { return Instant.parse("2026-07-20T08:30:00Z"); }
-            }));
 
         var xml = service.buildSitemapXml();
 
@@ -241,11 +213,6 @@ class SitemapServiceTest {
         when(dishRepository.findPublishedSitemap()).thenReturn(List.of(
             new DishRepository.DishSitemapProjection() {
                 public String getSlug() { return "test-dish"; }
-                public Instant getUpdatedAt() { return Instant.parse("2026-07-15T12:00:00Z"); }
-            }));
-        when(noteRepository.findPublishedSitemap()).thenReturn(List.of(
-            new NoteRepository.NoteSitemapProjection() {
-                public Long getId() { return 99L; }
                 public Instant getUpdatedAt() { return Instant.parse("2026-07-15T12:00:00Z"); }
             }));
 

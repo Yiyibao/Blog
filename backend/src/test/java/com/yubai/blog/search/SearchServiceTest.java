@@ -39,7 +39,7 @@ class SearchServiceTest {
 
     @Test
     void emptyQueryReturnsEmptyResponse() {
-        var result = service.search("   ", 5);
+        var result = service.search("   ", 5, true);
         assertThat(result.total()).isZero();
         assertThat(result.articles()).isEmpty();
         assertThat(result.dishes()).isEmpty();
@@ -52,7 +52,7 @@ class SearchServiceTest {
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var result = service.search("keyword", 5);
+        var result = service.search("keyword", 5, true);
         assertThat(result.total()).isZero();
     }
 
@@ -62,10 +62,10 @@ class SearchServiceTest {
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var result = service.search("test", 100);
+        var result = service.search("test", 100, true);
         assertThat(result.total()).isZero();
 
-        result = service.search("test", 0);
+        result = service.search("test", 0, true);
         assertThat(result.total()).isZero();
     }
 
@@ -90,7 +90,7 @@ class SearchServiceTest {
                 return Page.empty();
             });
 
-        service.search("test", 3);
+        service.search("test", 3, true);
     }
 
     @Test
@@ -98,7 +98,7 @@ class SearchServiceTest {
         when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
 
         var request = new SearchRequest("test", SearchType.POST, 0, 10, null, null);
-        var result = service.search(request);
+        var result = service.search(request, true);
 
         assertThat(result.type()).isEqualTo("POST");
         assertThat(result.results()).isEmpty();
@@ -109,7 +109,7 @@ class SearchServiceTest {
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
         var request = new SearchRequest("test", SearchType.DISH, 0, 10, null, null);
-        var result = service.search(request);
+        var result = service.search(request, true);
 
         assertThat(result.type()).isEqualTo("DISH");
         assertThat(result.results()).isEmpty();
@@ -120,7 +120,7 @@ class SearchServiceTest {
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
         var request = new SearchRequest("test", SearchType.NOTE, 0, 10, null, null);
-        var result = service.search(request);
+        var result = service.search(request, true);
 
         assertThat(result.type()).isEqualTo("NOTE");
         assertThat(result.results()).isEmpty();
@@ -133,7 +133,7 @@ class SearchServiceTest {
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
         var request = new SearchRequest("test", SearchType.ALL, 0, 10, null, null);
-        var result = service.search(request);
+        var result = service.search(request, true);
 
         assertThat(result.type()).isEqualTo("ALL");
         assertThat(result.results()).isEmpty();
@@ -142,7 +142,7 @@ class SearchServiceTest {
     @Test
     void emptyQueryInPostSearchReturnsEmptyResponse() {
         var request = new SearchRequest("   ", SearchType.POST, 0, 10, null, null);
-        var result = service.search(request);
+        var result = service.search(request, true);
 
         assertThat(result.type()).isEqualTo("POST");
         assertThat(result.totalElements()).isZero();
@@ -153,11 +153,44 @@ class SearchServiceTest {
         when(postRepository.searchPublished(anyString(), any(), pageableCaptor.capture())).thenReturn(Page.empty());
 
         var request = new SearchRequest("test", SearchType.POST, 2, 5, null, null);
-        service.search(request);
+        service.search(request, true);
 
         var captured = pageableCaptor.getValue();
         assertThat(captured.getPageNumber()).isEqualTo(2);
         assertThat(captured.getPageSize()).isEqualTo(5);
+    }
+
+    // L-16/D-17：游客（includeNotes=false）搜索剔除学习笔记
+
+    @Test
+    void guestGroupedSearchNeverTouchesNoteRepository() {
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
+        when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var result = service.search("keyword", 5, false);
+
+        assertThat(result.notes()).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(noteRepository);
+    }
+
+    @Test
+    void guestNoteTypeSearchReturnsEmptyPageWithoutQuerying() {
+        var result = service.search(new SearchRequest("test", SearchType.NOTE, 0, 10, null, null), false);
+
+        assertThat(result.type()).isEqualTo("NOTE");
+        assertThat(result.totalElements()).isZero();
+        org.mockito.Mockito.verifyNoInteractions(noteRepository);
+    }
+
+    @Test
+    void guestAllTypeSearchExcludesNotesFromResultsAndTotal() {
+        when(postRepository.searchPublished(anyString(), any(), any(Pageable.class))).thenReturn(Page.empty());
+        when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        var result = service.search(new SearchRequest("test", SearchType.ALL, 0, 10, null, null), false);
+
+        assertThat(result.totalElements()).isZero();
+        org.mockito.Mockito.verifyNoInteractions(noteRepository);
     }
 
     // L-8：分类过滤/排序下推 + POST 命中补 date/readTime/tags
@@ -168,7 +201,7 @@ class SearchServiceTest {
         when(postRepository.searchPublished(anyString(), slugCaptor.capture(), pageableCaptor.capture()))
             .thenReturn(Page.empty());
 
-        service.search(new SearchRequest("test", SearchType.POST, 0, 10, "engineering", SearchSort.DATE_ASC));
+        service.search(new SearchRequest("test", SearchType.POST, 0, 10, "engineering", SearchSort.DATE_ASC), true);
 
         assertThat(slugCaptor.getValue()).isEqualTo("engineering");
         var sort = pageableCaptor.getValue().getSort().getOrderFor("date");
@@ -182,7 +215,7 @@ class SearchServiceTest {
         when(postRepository.searchPublished(anyString(), slugCaptor.capture(), pageableCaptor.capture()))
             .thenReturn(Page.empty());
 
-        service.search(new SearchRequest("test", SearchType.POST, 0, 10, "  ", null));
+        service.search(new SearchRequest("test", SearchType.POST, 0, 10, "  ", null), true);
 
         assertThat(slugCaptor.getValue()).isNull();
         var sort = pageableCaptor.getValue().getSort().getOrderFor("date");
@@ -198,7 +231,7 @@ class SearchServiceTest {
         when(postRepository.findTagRows(java.util.List.of(7L)))
             .thenReturn(java.util.List.<Object[]>of(new Object[]{7L, "vue"}, new Object[]{7L, "vite"}));
 
-        var result = service.search(new SearchRequest("标题", SearchType.POST, 0, 10, null, null));
+        var result = service.search(new SearchRequest("标题", SearchType.POST, 0, 10, null, null), true);
 
         var hit = result.results().get(0);
         assertThat(hit.date()).isEqualTo("2026-07-01");
@@ -213,7 +246,7 @@ class SearchServiceTest {
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        var hit = service.search("标题", 5).articles().get(0);
+        var hit = service.search("标题", 5, true).articles().get(0);
         assertThat(hit.date()).isNull();
         assertThat(hit.readTime()).isNull();
         assertThat(hit.tags()).isNull();
@@ -272,7 +305,7 @@ class SearchServiceTest {
         when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
         when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
 
-        service.search("50%_off", 5);
+        service.search("50%_off", 5, true);
 
         assertThat(patternCaptor.getValue()).isEqualTo("%50\\%\\_off%");
     }

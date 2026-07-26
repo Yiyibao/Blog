@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import com.yubai.blog.config.CacheConfig;
 import com.yubai.blog.config.PublicUrls;
 import com.yubai.blog.dish.DishRepository;
-import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
 
 @Service
@@ -24,14 +23,12 @@ public class SitemapService {
     private final PublicUrls urls;
     private final PostRepository postRepository;
     private final DishRepository dishRepository;
-    private final NoteRepository noteRepository;
 
     public SitemapService(PublicUrls urls, PostRepository postRepository,
-                          DishRepository dishRepository, NoteRepository noteRepository) {
+                          DishRepository dishRepository) {
         this.urls = urls;
         this.postRepository = postRepository;
         this.dishRepository = dishRepository;
-        this.noteRepository = noteRepository;
     }
 
     /** P1-5：整份 XML 缓存（TTL 兜底 + admin 写操作 evict），四个全量投影查询不再逐请求执行。 */
@@ -44,8 +41,9 @@ public class SitemapService {
     List<SitemapEntry> collectEntries() {
         var entries = new ArrayList<SitemapEntry>();
 
+        // L-16/D-17：学习笔记退出 SEO 收录——/notes 静态页与笔记条目均不再进 sitemap
         entries.add(new SitemapEntry(urls.home(), null));
-        for (var page : List.of("articles", "notes", "recipes", "archive", "about", "categories")) {
+        for (var page : List.of("articles", "recipes", "archive", "about", "categories")) {
             entries.add(new SitemapEntry(urls.staticPage(page), null));
         }
 
@@ -59,12 +57,6 @@ public class SitemapService {
             entries.add(new SitemapEntry(
                 urls.recipe(dish.getSlug()),
                 dish.getUpdatedAt().toString()));
-        }
-
-        for (var note : noteRepository.findPublishedSitemap()) {
-            entries.add(new SitemapEntry(
-                urls.note(note.getId()),
-                note.getUpdatedAt().toString()));
         }
 
         for (var cat : postRepository.findPublishedCategoriesWithCount()) {

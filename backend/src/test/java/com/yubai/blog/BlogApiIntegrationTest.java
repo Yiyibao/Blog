@@ -396,13 +396,13 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/notes").param("status", "DRAFT")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
-        mockMvc.perform(get("/api/v1/notes"))
+        mockMvc.perform(get("/api/v1/notes").header("Authorization", "Bearer " + token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1))
             // P1-2：公开笔记列表为摘要 DTO，不含 markdown 正文
             .andExpect(jsonPath("$.data.items[0].title").isNotEmpty())
             .andExpect(jsonPath("$.data.items[0].markdownContent").doesNotExist());
-        mockMvc.perform(get("/api/v1/notes/" + draftId)).andExpect(status().isNotFound());
-        mockMvc.perform(get("/api/v1/notes/" + publishedId)).andExpect(status().isOk())
+        mockMvc.perform(get("/api/v1/notes/" + draftId).header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/notes/" + publishedId).header("Authorization", "Bearer " + token)).andExpect(status().isOk())
             // P1-2：详情保留全文
             .andExpect(jsonPath("$.data.markdownContent").isNotEmpty());
 
@@ -435,7 +435,7 @@ class BlogApiIntegrationTest {
                     throw new AssertionError("authenticated draft preview did not return attachment bytes");
                 }
             });
-        mockMvc.perform(get("/api/v1/note-assets/" + publicId)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId).header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
         MvcResult attachmentPublished = mockMvc.perform(put("/api/v1/admin/notes/" + draftId + "/publish")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -444,7 +444,7 @@ class BlogApiIntegrationTest {
             .andReturn();
         long attachmentPublishedVersion = objectMapper.readTree(attachmentPublished.getResponse().getContentAsString())
             .path("data").path("version").asLong();
-        mockMvc.perform(get("/api/v1/note-assets/" + publicId))
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId).header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(result -> {
                 // P1-6：publicId 不可变，公开附件允许长缓存（撤回后服务端仍 404，已缓存副本残留为计划批准的取舍）
@@ -459,10 +459,10 @@ class BlogApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"version\":" + attachmentPublishedVersion + "}"))
             .andExpect(status().isOk());
-        mockMvc.perform(get("/api/v1/note-assets/" + publicId)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId).header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
         mockMvc.perform(delete("/api/v1/admin/notes/" + draftId + "/attachments/" + attachmentId)
                 .header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
-        mockMvc.perform(get("/api/v1/note-assets/" + publicId)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/note-assets/" + publicId).header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
 
         mockMvc.perform(delete("/api/v1/admin/notes/" + draftId).header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
         mockMvc.perform(delete("/api/v1/admin/notes/" + publishedId).header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
@@ -593,7 +593,7 @@ class BlogApiIntegrationTest {
         long id = draft.path("id").asLong();
         long version = draft.path("version").asLong();
 
-        mockMvc.perform(get("/api/v1/notes/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/notes/" + id).header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
 
         String attemptedImplicitPublish = draftBody.replace("\"status\":\"DRAFT\"", "\"status\":\"PUBLISHED\"")
             .replace("\"version\":0", "\"version\":" + version);
@@ -615,7 +615,7 @@ class BlogApiIntegrationTest {
             .andReturn();
         long publishedVersion = objectMapper.readTree(published.getResponse().getContentAsString()).path("data").path("version").asLong();
 
-        mockMvc.perform(get("/api/v1/notes/" + id))
+        mockMvc.perform(get("/api/v1/notes/" + id).header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.title").value("Publish workflow"));
 
@@ -628,7 +628,7 @@ class BlogApiIntegrationTest {
             .andReturn();
         long unpublishedVersion = objectMapper.readTree(unpublished.getResponse().getContentAsString()).path("data").path("version").asLong();
 
-        mockMvc.perform(get("/api/v1/notes/" + id)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/notes/" + id).header("Authorization", "Bearer " + token)).andExpect(status().isNotFound());
         mockMvc.perform(put("/api/v1/admin/notes/" + id + "/publish")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -708,7 +708,13 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data.articles[0].type").value("POST"))
             .andExpect(jsonPath("$.data.articles[0].url").value("/articles/clarity-by-design"));
 
+        // L-16/D-17：游客搜索剔除笔记；登录后（任意角色）笔记命中恢复
         mockMvc.perform(get("/api/v1/search").param("q", "public-note-sentinel"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.total").value(0))
+            .andExpect(jsonPath("$.data.notes.length()").value(0));
+        mockMvc.perform(get("/api/v1/search").param("q", "public-note-sentinel")
+                .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.total").value(1))
             .andExpect(jsonPath("$.data.notes[0].type").value("NOTE"))
@@ -765,7 +771,9 @@ class BlogApiIntegrationTest {
         assertTrue(locs.contains("http://localhost:5173/"), "home");
         assertTrue(locs.contains("http://localhost:5173/articles"), "articles list");
         assertTrue(locs.contains("http://localhost:5173/categories"), "categories index");
-        assertTrue(locs.contains("http://localhost:5173/notes"), "notes list");
+        // L-16/D-17：学习笔记退出 SEO 收录——sitemap 不含 /notes 静态页与 /notes?note= 详情
+        assertTrue(locs.stream().noneMatch(l -> l.endsWith("/notes") || l.contains("/notes?")),
+            "no note URLs in sitemap");
         assertTrue(locs.contains("http://localhost:5173/recipes"), "recipes list");
         assertTrue(locs.contains("http://localhost:5173/about"), "about");
 
@@ -1008,6 +1016,72 @@ class BlogApiIntegrationTest {
         }
         assertTrue(sawTag, "graph should expose TAG nodes");
         assertTrue(sawContent, "graph should expose content nodes");
+    }
+
+    @Test
+    @Order(43)
+    void guestVisibilityLockdownHidesNotesEverywhere() throws Exception {
+        // L-16/D-17：游客收权四联断言——公开笔记端点 401、图谱剔除、搜索剔除（登录即恢复）
+        String token = login();
+        String noteBody = objectMapper.writeValueAsString(java.util.Map.of(
+            "title", "guest-lockdown-note",
+            "markdownContent", "# guest-lockdown-note\n\nguest-lockdown-sentinel",
+            "folder", "Lockdown",
+            "status", "PUBLISHED",
+            "tags", java.util.List.of("lockdown"),
+            "version", 0
+        ));
+        MvcResult created = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(noteBody))
+            .andExpect(status().isCreated()).andReturn();
+        long noteId = objectMapper.readTree(created.getResponse().getContentAsString()).path("data").path("id").asLong();
+
+        // 1) 公开笔记端点对游客 401
+        mockMvc.perform(get("/api/v1/notes")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/notes/" + noteId)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/note-assets/00000000-0000-0000-0000-000000000000"))
+            .andExpect(status().isUnauthorized());
+        // 登录后可读
+        mockMvc.perform(get("/api/v1/notes/" + noteId).header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk());
+
+        // 2) 图谱：匿名无 NOTE 节点，登录后出现
+        var guestNodes = objectMapper.readTree(mockMvc.perform(get("/api/v1/graph/nodes"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("nodes");
+        for (var node : guestNodes) {
+            assertFalse("NOTE".equals(node.path("type").asText()), "guest graph must not expose NOTE nodes");
+        }
+        var authedNodes = objectMapper.readTree(mockMvc.perform(get("/api/v1/graph/nodes")
+                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("nodes");
+        var sawNote = false;
+        for (var node : authedNodes) {
+            if ("NOTE".equals(node.path("type").asText())) sawNote = true;
+        }
+        assertTrue(sawNote, "authenticated graph should expose NOTE nodes");
+
+        // 3) 类型化搜索：游客 NOTE 空页，登录命中
+        mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"guest-lockdown-sentinel\",\"type\":\"NOTE\",\"page\":0,\"size\":5}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(0));
+        mockMvc.perform(post("/api/v1/search")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"guest-lockdown-sentinel\",\"type\":\"NOTE\",\"page\":0,\"size\":5}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.totalElements").value(1));
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
     }
 
     @Test

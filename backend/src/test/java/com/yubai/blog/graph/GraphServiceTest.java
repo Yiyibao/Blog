@@ -109,7 +109,7 @@ class GraphServiceTest {
             List.of(new D(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"))
         );
 
-        var result = service.buildGraph();
+        var result = service.buildGraph(true);
 
         var postNode = nodeById(result, "p-1");
         assertThat(postNode.label()).isEqualTo("设计系统与透明度");
@@ -130,6 +130,23 @@ class GraphServiceTest {
     }
 
     @Test
+    void guestGraphExcludesNotesEntirely() {
+        // L-16/D-17：游客视图连笔记仓库都不触碰——节点/边/纯笔记标签一并消失
+        when(postRepository.findPublishedGraphRows())
+            .thenReturn(List.of(row(new P(1L, "文章", "post-a", "设计", List.of("共享标签")))));
+        when(postRepository.findPublishedTagRows())
+            .thenReturn(List.<Object[]>of(new Object[]{1L, "共享标签"}));
+        when(dishRepository.findAllPublishedForGraph()).thenReturn(List.of());
+
+        var result = service.buildGraph(false);
+
+        assertThat(result.nodes()).noneMatch(node -> node.type().equals("NOTE"));
+        assertThat(result.edges()).noneMatch(edge -> edge.source().startsWith("n-"));
+        assertThat(nodeById(result, "p-1").type()).isEqualTo("POST");
+        org.mockito.Mockito.verifyNoInteractions(noteRepository);
+    }
+
+    @Test
     void tagNodesHaveNullUrlBecausePublicCategoryPagesWereRemoved() {
         stubAll(
             List.of(new P(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计"))),
@@ -137,7 +154,7 @@ class GraphServiceTest {
             List.of(new D(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"))
         );
 
-        var result = service.buildGraph();
+        var result = service.buildGraph(true);
 
         var tagNodes = result.nodes().stream().filter(n -> n.type().equals("TAG")).toList();
         assertThat(tagNodes).isNotEmpty();
@@ -162,7 +179,7 @@ class GraphServiceTest {
         ));
 
         stubAll(posts, notes, dishes);
-        var baseline = service.buildGraph();
+        var baseline = service.buildGraph(true);
 
         var random = new Random(20260726L);
         for (int i = 0; i < 5; i++) {
@@ -170,7 +187,7 @@ class GraphServiceTest {
             Collections.shuffle(notes, random);
             Collections.shuffle(dishes, random);
 
-            var shuffled = service.buildGraph();
+            var shuffled = service.buildGraph(true);
 
             assertThat(shuffled.nodes()).containsExactlyElementsOf(baseline.nodes());
             assertThat(shuffled.edges()).containsExactlyElementsOf(baseline.edges());
@@ -196,7 +213,7 @@ class GraphServiceTest {
 
         stubAll(posts, notes, dishes);
 
-        var result = service.buildGraph();
+        var result = service.buildGraph(true);
 
         assertThat(result.nodes()).extracting(GraphNode::id).contains("p-1", "p-2", "n-1", "d-1");
         assertThat(result.nodes()).filteredOn(n -> n.type().equals("TAG"))
@@ -216,7 +233,7 @@ class GraphServiceTest {
             List.of()
         );
 
-        var result = service.buildGraph();
+        var result = service.buildGraph(true);
 
         assertThat(result.edges()).doesNotHaveDuplicates().hasSize(2);
         assertThat(result.nodes()).filteredOn(n -> n.type().equals("TAG"))
@@ -236,7 +253,7 @@ class GraphServiceTest {
             List.of()
         );
 
-        var result = service.buildGraph();
+        var result = service.buildGraph(true);
 
         var tagNodes = result.nodes().stream().filter(n -> n.type().equals("TAG")).toList();
         assertThat(tagNodes).hasSize(2);
@@ -247,7 +264,7 @@ class GraphServiceTest {
     void buildGraphReturnsEmptyWhenNoContent() {
         stubAll(List.of(), List.of(), List.of());
 
-        var result = service.buildGraph();
+        var result = service.buildGraph(true);
 
         assertThat(result.nodes()).isEmpty();
         assertThat(result.edges()).isEmpty();

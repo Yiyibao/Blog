@@ -29,7 +29,8 @@ public class SearchService {
         this.noteRepository = noteRepository;
     }
 
-    public SearchResponse search(String query, int requestedLimit) {
+    /** L-16/D-17：includeNotes=false（游客）时笔记命中整体剔除。 */
+    public SearchResponse search(String query, int requestedLimit, boolean includeNotes) {
         var normalized = query.trim().toLowerCase();
         if (normalized.isBlank()) {
             return SearchResponse.empty();
@@ -47,14 +48,16 @@ public class SearchService {
             .map(SearchService::toResult)
             .toList();
 
-        var notes = noteRepository.searchPublished(likePattern, pageable).stream()
-            .map(SearchService::toResult)
-            .toList();
+        var notes = includeNotes
+            ? noteRepository.searchPublished(likePattern, pageable).stream()
+                .map(SearchService::toResult)
+                .toList()
+            : List.<SearchResult>of();
 
         return new SearchResponse(articles, notes, dishes, articles.size() + notes.size() + dishes.size());
     }
 
-    public SearchPostResponse search(SearchRequest request) {
+    public SearchPostResponse search(SearchRequest request, boolean includeNotes) {
         var normalized = request.query().trim().toLowerCase();
         if (normalized.isBlank()) {
             return SearchPostResponse.empty(request.type().name(), request.query());
@@ -64,19 +67,27 @@ public class SearchService {
         var likePattern = "%" + escapeLike(normalized) + "%";
         var type = request.type();
 
+        // L-16/D-17：游客的 NOTE 类型检索直接空页（枚举合法故不 400，与"不可见"语义一致）
+        if (type == SearchType.NOTE && !includeNotes) {
+            return SearchPostResponse.empty("NOTE", request.query());
+        }
+
         if (type == SearchType.ALL) {
             var maxSize = Math.max(1, Math.min(10, request.size()));
             var allPageable = PageRequest.of(0, maxSize);
             var posts = postRepository.searchPublished(likePattern, null, withDateSort(allPageable, SearchSort.DATE_DESC));
             var dishes = dishRepository.searchPublished(likePattern, allPageable);
-            var notes = noteRepository.searchPublished(likePattern, allPageable);
 
             List<SearchResult> allResults = new ArrayList<>();
             allResults.addAll(posts.stream().map(SearchService::toResult).toList());
             allResults.addAll(dishes.stream().map(SearchService::toResult).toList());
-            allResults.addAll(notes.stream().map(SearchService::toResult).toList());
 
-            long total = posts.getTotalElements() + dishes.getTotalElements() + notes.getTotalElements();
+            long total = posts.getTotalElements() + dishes.getTotalElements();
+            if (includeNotes) {
+                var notes = noteRepository.searchPublished(likePattern, allPageable);
+                allResults.addAll(notes.stream().map(SearchService::toResult).toList());
+                total += notes.getTotalElements();
+            }
             return new SearchPostResponse("ALL", request.query(), allResults, 0, allResults.size(), total, 1);
         }
 

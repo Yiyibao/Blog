@@ -68,9 +68,10 @@ public class GraphService {
     /**
      * P1-5：只读热点缓存（TTL 兜底 + admin 写操作 evict）；
      * NB-5：全部改为轻量投影查询，构图不再加载文章/笔记正文列。
+     * L-16/D-17：游客视图剔除笔记——按 includeNotes 拆两份缓存条目（evict 均为 allEntries，两份同失效）。
      */
-    @Cacheable(CacheConfig.GRAPH)
-    public GraphResponse buildGraph() {
+    @Cacheable(cacheNames = CacheConfig.GRAPH, key = "#includeNotes")
+    public GraphResponse buildGraph(boolean includeNotes) {
         List<GraphNode> contentNodes = new ArrayList<>();
         Set<GraphEdge> edges = new LinkedHashSet<>();
         // normalised tag key -> display label, sorted so tag emission never depends on query order.
@@ -87,15 +88,17 @@ public class GraphService {
             linkTag(nodeId, post.getCategory(), tagLabels, edges);
         }
 
-        var noteTags = groupPairs(noteRepository.findPublishedTagRows());
-        for (var note : noteRepository.findPublishedGraphRows()) {
-            if (note == null || note.getId() == null) {
-                continue;
+        if (includeNotes) {
+            var noteTags = groupPairs(noteRepository.findPublishedTagRows());
+            for (var note : noteRepository.findPublishedGraphRows()) {
+                if (note == null || note.getId() == null) {
+                    continue;
+                }
+                String nodeId = "n-" + note.getId();
+                contentNodes.add(new GraphNode(nodeId, note.getTitle(), TYPE_NOTE, "/notes?note=" + note.getId()));
+                linkTags(nodeId, noteTags.get(note.getId()), tagLabels, edges);
+                linkTag(nodeId, note.getFolder(), tagLabels, edges);
             }
-            String nodeId = "n-" + note.getId();
-            contentNodes.add(new GraphNode(nodeId, note.getTitle(), TYPE_NOTE, "/notes?note=" + note.getId()));
-            linkTags(nodeId, noteTags.get(note.getId()), tagLabels, edges);
-            linkTag(nodeId, note.getFolder(), tagLabels, edges);
         }
 
         for (var dish : dishRepository.findAllPublishedForGraph()) {
