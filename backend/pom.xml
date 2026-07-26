@@ -88,6 +88,12 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- P2-4：本机/CI 无现成 PG 时自动起容器跑集成测试（版本由 spring-boot-dependencies 管理） -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

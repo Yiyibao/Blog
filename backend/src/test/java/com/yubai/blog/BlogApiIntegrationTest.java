@@ -13,11 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
-import java.sql.DriverManager;
-import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -51,8 +47,6 @@ import com.yubai.blog.post.PostService;
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BlogApiIntegrationTest {
-    private static final String TEST_DB = "yubai_blog_it";
-    private static final Properties ENV = loadEnv();
     /** 可完整解码的最小真 PNG（P0-6 magic-byte + NB-4 尺寸预检双关卡都要过）。 */
     private static final byte[] PNG_SAMPLE = buildTinyPng(2, 2);
 
@@ -83,36 +77,16 @@ class BlogApiIntegrationTest {
         }
     }
 
+    // P2-4：数据库解析统一收敛到 TestDatabase（可达直连快速模式 / Testcontainers 自起容器）
+
     @BeforeAll
     static void prepareDatabase() {
-        var url = ENV.getProperty("DB_URL", "jdbc:postgresql://localhost:5432/yubai_blog");
-        var username = ENV.getProperty("DB_USERNAME", "yubai_app");
-        var password = ENV.getProperty("DB_PASSWORD", "");
-        var testUrl = url.replaceAll("/[^/]+$", "/" + TEST_DB);
-        // Prefer connecting to the dedicated IT database. Create it outside tests if missing:
-        // psql -U postgres -c "CREATE DATABASE yubai_blog_it OWNER yubai_app;"
-        try (var connection = DriverManager.getConnection(testUrl, username, password);
-             var statement = connection.createStatement()) {
-            statement.execute("drop schema if exists public cascade");
-            statement.execute("create schema public");
-            statement.execute("grant all on schema public to " + username);
-            statement.execute("grant all on schema public to public");
-        } catch (Exception exception) {
-            throw new IllegalStateException(
-                "Integration database is unavailable. Create PostgreSQL database '" + TEST_DB
-                    + "' for user '" + username + "' before running the test suite.",
-                exception
-            );
-        }
+        TestDatabase.resetSchema();
     }
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        var baseUrl = ENV.getProperty("DB_URL", "jdbc:postgresql://localhost:5432/yubai_blog");
-        var testUrl = baseUrl.replaceAll("/[^/]+$", "/" + TEST_DB);
-        registry.add("spring.datasource.url", () -> testUrl);
-        registry.add("spring.datasource.username", () -> ENV.getProperty("DB_USERNAME", "yubai_app"));
-        registry.add("spring.datasource.password", () -> ENV.getProperty("DB_PASSWORD", ""));
+        TestDatabase.register(registry);
         registry.add("spring.flyway.clean-disabled", () -> "false");
         registry.add("app.jwt.secret", () -> "integration-test-secret-key-32chars!");
         registry.add("app.admin.username", () -> "admin");
@@ -1799,28 +1773,4 @@ class BlogApiIntegrationTest {
         }
     }
 
-    private static Properties loadEnv() {
-        var properties = new Properties();
-        var candidates = new Path[] {
-            Path.of(".env.properties"),
-            Path.of("backend/.env.properties")
-        };
-        for (var candidate : candidates) {
-            if (!Files.isRegularFile(candidate)) continue;
-            try (var reader = Files.newBufferedReader(candidate)) {
-                properties.load(reader);
-                break;
-            } catch (Exception ignored) {
-                // fall through to defaults
-            }
-        }
-        if (properties.isEmpty()) {
-            var env = System.getenv();
-            for (var key : new String[]{"DB_URL", "DB_USERNAME", "DB_PASSWORD"}) {
-                var val = env.get(key);
-                if (val != null) properties.setProperty(key, val);
-            }
-        }
-        return properties;
-    }
 }

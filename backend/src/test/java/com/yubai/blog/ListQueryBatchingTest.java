@@ -3,11 +3,8 @@ package com.yubai.blog;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Properties;
 
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -61,12 +58,8 @@ class ListQueryBatchingTest {
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        var env = loadEnv();
-        var baseUrl = env.getProperty("DB_URL", "jdbc:postgresql://localhost:5432/yubai_blog");
-        var testUrl = baseUrl.replaceAll("/[^/]+$", "/yubai_blog_it");
-        registry.add("spring.datasource.url", () -> testUrl);
-        registry.add("spring.datasource.username", () -> env.getProperty("DB_USERNAME", "yubai_app"));
-        registry.add("spring.datasource.password", () -> env.getProperty("DB_PASSWORD", ""));
+        // P2-4：数据库解析统一收敛到 TestDatabase（可达直连快速模式 / Testcontainers 自起容器）
+        TestDatabase.register(registry);
     }
 
     @Test
@@ -142,26 +135,4 @@ class ListQueryBatchingTest {
         return entityManager.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
     }
 
-    /** 与 BlogApiIntegrationTest 相同的 .env.properties / 环境变量回退（P2-4 Testcontainers 时统一收敛）。 */
-    private static Properties loadEnv() {
-        var properties = new Properties();
-        var candidates = new Path[]{Path.of(".env.properties"), Path.of("backend/.env.properties")};
-        for (var candidate : candidates) {
-            if (!Files.isRegularFile(candidate)) continue;
-            try (var reader = Files.newBufferedReader(candidate)) {
-                properties.load(reader);
-                break;
-            } catch (Exception ignored) {
-                // fall through to defaults
-            }
-        }
-        if (properties.isEmpty()) {
-            var env = System.getenv();
-            for (var key : new String[]{"DB_URL", "DB_USERNAME", "DB_PASSWORD"}) {
-                var val = env.get(key);
-                if (val != null) properties.setProperty(key, val);
-            }
-        }
-        return properties;
-    }
 }

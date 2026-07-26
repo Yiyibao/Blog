@@ -167,4 +167,3 @@ export const posts: Post[] = [
   },
 ]
 
-export const categories = ['全部', ...new Set(posts.map((post) => post.category))]

@@ -3,7 +3,6 @@ import { defineStore } from 'pinia'
 
 export const useUiStore = defineStore('ui', () => {
   const searchOpen = ref(false)
-  const menuOpen = ref(false)
   const toast = ref('')
   const isDark = ref(false)
 
@@ -29,7 +28,6 @@ export const useUiStore = defineStore('ui', () => {
 
   function openSearch() {
     searchOpen.value = true
-    menuOpen.value = false
   }
 
   function closeSearch() {
@@ -37,7 +35,7 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   return {
-    searchOpen, menuOpen, toast, isDark,
+    searchOpen, toast, isDark,
     initTheme, toggleTheme, showToast, openSearch, closeSearch,
   }
 })
