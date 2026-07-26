@@ -86,6 +86,11 @@ public class GlobalExceptionHandler {
         return error(exception.getStatus(), exception.getMessage());
     }
 
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<Map<String, Object>> handleTooManyRequests(TooManyRequestsException exception) {
+        return error(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage());
+    }
+
     private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(Map.of(
             "status", status.value(),
