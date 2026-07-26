@@ -159,4 +159,27 @@ class SearchServiceTest {
         assertThat(captured.getPageNumber()).isEqualTo(2);
         assertThat(captured.getPageSize()).isEqualTo(5);
     }
+
+    // P0-9：LIKE 通配符转义
+
+    @Test
+    void escapeLikeEscapesWildcardsAndBackslash() {
+        assertThat(SearchService.escapeLike("100%")).isEqualTo("100\\%");
+        assertThat(SearchService.escapeLike("a_b")).isEqualTo("a\\_b");
+        assertThat(SearchService.escapeLike("c:\\dir")).isEqualTo("c:\\\\dir");
+        assertThat(SearchService.escapeLike("%_\\")).isEqualTo("\\%\\_\\\\");
+        assertThat(SearchService.escapeLike("普通查询")).isEqualTo("普通查询");
+    }
+
+    @Test
+    void groupedSearchEscapesWildcardsInLikePattern() {
+        var patternCaptor = ArgumentCaptor.forClass(String.class);
+        when(postRepository.searchPublished(patternCaptor.capture(), any(Pageable.class))).thenReturn(Page.empty());
+        when(dishRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+        when(noteRepository.searchPublished(anyString(), any(Pageable.class))).thenReturn(Page.empty());
+
+        service.search("50%_off", 5);
+
+        assertThat(patternCaptor.getValue()).isEqualTo("%50\\%\\_off%");
+    }
 }

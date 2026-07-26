@@ -34,7 +34,7 @@ public class SearchService {
 
         var limit = Math.max(1, Math.min(10, requestedLimit));
         var pageable = PageRequest.of(0, limit);
-        var likePattern = "%" + normalized + "%";
+        var likePattern = "%" + escapeLike(normalized) + "%";
 
         var articles = postRepository.searchPublished(likePattern, pageable).stream()
             .map(post -> new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
@@ -72,7 +72,7 @@ public class SearchService {
         }
 
         var pageable = PageRequests.of(request.page(), request.size());
-        var likePattern = "%" + normalized + "%";
+        var likePattern = "%" + escapeLike(normalized) + "%";
         var type = request.type();
 
         if (type == SearchType.ALL) {
@@ -153,5 +153,16 @@ public class SearchService {
         }
 
         return SearchPostResponse.empty(request.type().name(), request.query());
+    }
+
+    /**
+     * P0-9：转义 LIKE 通配符，防止 %/_/\ 注入模式匹配。
+     * PostgreSQL 中 LIKE 的默认转义符即反斜杠。
+     */
+    static String escapeLike(String input) {
+        return input
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_");
     }
 }
