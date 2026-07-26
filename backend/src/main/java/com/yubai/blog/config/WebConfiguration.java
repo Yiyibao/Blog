@@ -49,6 +49,16 @@ public class WebConfiguration implements WebMvcConfigurer {
             }
         // NB-7：/graph、/quotes 纳入可缓存列表，与 P1-5 服务端 Caffeine 5 分钟 TTL 对齐
         }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**");
+
+        // FD-11：kitchen（今日菜单/打卡）是两人私有生活数据——一律 no-store，
+        // 任何共享缓存/磁盘副本都不许落（与 NB-7 计数端点的 no-cache 可再验证语义刻意区分）
+        registry.addInterceptor(new HandlerInterceptor() {
+            @Override
+            public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+                response.setHeader("Cache-Control", CacheControl.noStore().getHeaderValue());
+                return true;
+            }
+        }).addPathPatterns("/api/v1/kitchen/**");
     }
 
     private static boolean isCounterEndpoint(String path) {
