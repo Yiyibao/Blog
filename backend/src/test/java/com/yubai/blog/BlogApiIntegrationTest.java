@@ -106,6 +106,8 @@ class BlogApiIntegrationTest {
         registry.add("app.jwt.secret", () -> "integration-test-secret-key-32chars!");
         registry.add("app.admin.username", () -> "admin");
         registry.add("app.admin.password", () -> "admin-pass-12345");
+        // FD-10：固定展示名——本地 .env.properties 的 APP_ADMIN_DISPLAY_NAME 会渗入测试上下文
+        registry.add("app.admin.display-name", () -> "测试站长");
         // FD-6：伴侣账号——FD-7 的 PARTNER 越权用例依赖它
         registry.add("app.partner.username", () -> "partner");
         registry.add("app.partner.password", () -> "partner-pass-12345");
@@ -1215,11 +1217,15 @@ class BlogApiIntegrationTest {
         // 控制器 FD-10 才落地，规则放行后无处理器 → 404，足以证明授权层语义正确
         mockMvc.perform(get("/api/v1/kitchen/menus")).andExpect(status().isUnauthorized());
         String partnerToken = loginAs("partner", "partner-pass-12345");
-        mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + partnerToken))
-            .andExpect(status().isNotFound());
+        // FD-10 起控制器已落地：带 date 返回 200 空壳（exists:false），语义从 404 升级
+        mockMvc.perform(get("/api/v1/kitchen/menus").param("date", "2026-01-01")
+                .header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.exists").value(false));
         String adminToken = login();
-        mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + adminToken))
-            .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/kitchen/menus").param("date", "2026-01-01")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
     }
 
     @Test
@@ -1322,6 +1328,197 @@ class BlogApiIntegrationTest {
         attemptTracker.reset();
         challengeService.reset();
         loginAs("partner", "partner-pass-12345");
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(46)
+    void kitchenMenuSupportsCollaborativeEditing() throws Exception {
+        // FD-10：伴侣按 slug 点菜（快照菜谱名+署名）→ 站长自由文本加菜 → 全量 PUT 重排定档（署名保真）
+        String partnerToken = loginAs("partner", "partner-pass-12345");
+        String adminToken = login();
+        rateLimiter.reset();
+
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-01")
+                .header("Authorization", "Bearer " + partnerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dishSlug\":\"authentic-mapo-tofu\",\"mealSlot\":\"DINNER\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.exists").value(true))
+            .andExpect(jsonPath("$.data.items[0].title").value("麻婆豆腐"))
+            .andExpect(jsonPath("$.data.items[0].dishSlug").value("authentic-mapo-tofu"))
+            .andExpect(jsonPath("$.data.items[0].authorName").value("测试伴侣"));
+
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-01")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"楼下的烤冷面\",\"mealSlot\":\"SNACK\",\"note\":\"加蛋\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.items.length()").value(2));
+
+        var menuJson = objectMapper.readTree(mockMvc.perform(get("/api/v1/kitchen/menus")
+                .param("date", "2026-08-01")
+                .header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        long partnerItemId = menuJson.path("items").get(0).path("id").asLong();
+        long version = menuJson.path("version").asLong();
+
+        // 全量 PUT：保留伴侣的菜（署名必须仍是她）+ 新增一道 + 定档 CONFIRMED
+        mockMvc.perform(put("/api/v1/kitchen/menus").param("date", "2026-08-01")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"CONFIRMED\",\"note\":\"今晚一起做\",\"expectedVersion\":" + version + ",\"items\":["
+                    + "{\"id\":" + partnerItemId + ",\"mealSlot\":\"DINNER\"},"
+                    + "{\"title\":\"番茄蛋汤\",\"mealSlot\":\"DINNER\"}]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+            .andExpect(jsonPath("$.data.items.length()").value(2))
+            .andExpect(jsonPath("$.data.items[0].authorName").value("测试伴侣"))
+            .andExpect(jsonPath("$.data.items[1].authorName").value("测试站长"));
+
+        // 旧 version 的 PUT 如实 409
+        mockMvc.perform(put("/api/v1/kitchen/menus").param("date", "2026-08-01")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"DRAFT\",\"note\":\"\",\"expectedVersion\":" + version + ",\"items\":[]}"))
+            .andExpect(status().isConflict());
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(47)
+    void kitchenConcurrentAppendsBothSucceed() throws Exception {
+        // FD-10：append 是可交换操作——两人同刻加菜双方都成功（含菜单首创竞态）
+        String partnerToken = loginAs("partner", "partner-pass-12345");
+        String adminToken = login();
+        rateLimiter.reset();
+        var statuses = new java.util.concurrent.CopyOnWriteArrayList<Integer>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var tasks = java.util.List.of(
+                (java.util.concurrent.Callable<Void>) () -> {
+                    statuses.add(mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-02")
+                            .header("Authorization", "Bearer " + partnerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"title\":\"她想吃的煲仔饭\",\"mealSlot\":\"DINNER\"}"))
+                        .andReturn().getResponse().getStatus());
+                    return null;
+                },
+                (java.util.concurrent.Callable<Void>) () -> {
+                    statuses.add(mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-02")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"title\":\"我想吃的水煮鱼\",\"mealSlot\":\"DINNER\"}"))
+                        .andReturn().getResponse().getStatus());
+                    return null;
+                });
+            for (var future : pool.invokeAll(tasks)) future.get();
+        }
+        assertEquals(java.util.List.of(201, 201), statuses.stream().sorted().toList(), "并发 append 双方都应成功");
+        mockMvc.perform(get("/api/v1/kitchen/menus").param("date", "2026-08-02")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(jsonPath("$.data.items.length()").value(2));
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(48)
+    void kitchenConcurrentPutsOneConflicts() throws Exception {
+        // FD-10：真并发全量 PUT——FORCE_INCREMENT 下恰有一方 409（顺序化测试会假绿，必须真并发）
+        String adminToken = login();
+        rateLimiter.reset();
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-03")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"占位菜\",\"mealSlot\":\"DINNER\"}"))
+            .andExpect(status().isCreated());
+        var statuses = new java.util.concurrent.CopyOnWriteArrayList<Integer>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<Void> putOnce = () -> {
+                statuses.add(mockMvc.perform(put("/api/v1/kitchen/menus").param("date", "2026-08-03")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CONFIRMED\",\"note\":\"并发\",\"expectedVersion\":0,\"items\":[]}"))
+                    .andReturn().getResponse().getStatus());
+                return null;
+            };
+            for (var future : pool.invokeAll(java.util.List.of(putOnce, putOnce))) future.get();
+        }
+        assertEquals(java.util.List.of(200, 409), statuses.stream().sorted().toList(),
+            "并发 PUT 应恰有一方成功、一方版本冲突");
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(49)
+    void kitchenDeletePermissionsFollowAuthorship() throws Exception {
+        // FD-10：删自己的菜可以；删对方的 403；ADMIN 可代删
+        String partnerToken = loginAs("partner", "partner-pass-12345");
+        String adminToken = login();
+        rateLimiter.reset();
+        var created = objectMapper.readTree(mockMvc.perform(post("/api/v1/kitchen/menus/items")
+                .param("date", "2026-08-04")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"站长的菜\",\"mealSlot\":\"DINNER\"}"))
+            .andReturn().getResponse().getContentAsString()).path("data");
+        long adminItem = created.path("items").get(0).path("id").asLong();
+
+        mockMvc.perform(delete("/api/v1/kitchen/menus/items/" + adminItem)
+                .header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/kitchen/menus/items/" + adminItem)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items.length()").value(0));
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(50)
+    void kitchenValidatesDatesAndDishReferences() throws Exception {
+        String adminToken = login();
+        rateLimiter.reset();
+        mockMvc.perform(get("/api/v1/kitchen/menus").param("date", "8月1日")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("YYYY-MM-DD")));
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-05")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"mealSlot\":\"DINNER\"}"))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-05")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dishSlug\":\"ghost-dish\",\"mealSlot\":\"DINNER\"}"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/kitchen/menus").param("date", "2099-01-01")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"DRAFT\",\"note\":\"\",\"expectedVersion\":0,\"items\":[]}"))
+            .andExpect(status().isNotFound());
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(51)
+    void kitchenWritesAreRateLimitedPerUser() throws Exception {
+        // FD-10：写限流按 uid（两人共用家庭 IP，按 IP 会互吃额度）——第 31 次 429
+        String adminToken = login();
+        rateLimiter.reset();
+        for (int i = 0; i < 30; i++) {
+            mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-06")
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"title\":\"限流菜" + i + "\",\"mealSlot\":\"DINNER\"}"))
+                .andExpect(status().isCreated());
+        }
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-06")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"第 31 道\",\"mealSlot\":\"DINNER\"}"))
+            .andExpect(status().isTooManyRequests());
         rateLimiter.reset();
     }
 
