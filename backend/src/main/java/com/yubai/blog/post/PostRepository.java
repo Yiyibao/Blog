@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -40,6 +41,11 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     @Query("SELECT p FROM PostEntity p LEFT JOIN FETCH p.tags WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
     List<PostEntity> findAllPublishedWithTags();
+
+    /** P0-4：数据库端原子自增，消除读-改-写并发丢失更新。 */
+    @Modifying
+    @Query("UPDATE PostEntity p SET p.likeCount = p.likeCount + 1 WHERE p.slug = :slug AND p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
+    int incrementLikeCount(@Param("slug") String slug);
 
     @Query("select distinct p.category from PostEntity p where p.status = com.yubai.blog.post.PostStatus.PUBLISHED order by p.category")
     List<String> findDistinctPublishedCategories();

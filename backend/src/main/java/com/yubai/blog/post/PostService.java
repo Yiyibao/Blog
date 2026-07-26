@@ -44,9 +44,12 @@ public class PostService {
 
     @Transactional
     public PostLikeResponse likePost(String slug) {
+        // P0-4：改为数据库端原子 UPDATE，避免并发读-改-写丢失计数
+        if (repository.incrementLikeCount(slug) == 0) {
+            throw new NotFoundException("文章不存在：" + slug);
+        }
         var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
             .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
-        post.setLikeCount(post.getLikeCount() + 1);
         return PostLikeResponse.from(post);
     }
 

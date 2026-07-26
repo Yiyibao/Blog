@@ -28,12 +28,18 @@ public class DishService {
             .orElseThrow(() -> new NotFoundException("菜品不存在：" + slug));
     }
 
+    /**
+     * P0-7（已批准）：语义改为纯计数 favorite——每次调用 +1，不再假装 toggle。
+     * P0-4：计数走数据库端原子 UPDATE。
+     */
     @Transactional
-    public DishFavoriteResponse toggleFavorite(String slug) {
+    public DishFavoriteResponse favorite(String slug) {
+        if (repository.incrementFavoriteCount(slug) == 0) {
+            throw new NotFoundException("菜品不存在：" + slug);
+        }
         var dish = repository.findBySlugAndPublishedTrue(slug)
             .orElseThrow(() -> new NotFoundException("菜品不存在：" + slug));
-        dish.setFavoriteCount(dish.getFavoriteCount() + 1);
-        return DishFavoriteResponse.from(dish, true);
+        return DishFavoriteResponse.from(dish);
     }
 
     public PageResponse<DishFavoriteItem> findFavorites(int page, int size) {

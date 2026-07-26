@@ -151,21 +151,22 @@ class DishServiceTest {
     }
 
     @Test
-    void toggleFavoriteIncrementsCount() {
+    void favoriteIncrementsCountAtomically() {
         var dish = mockDish(1L, "mapo-tofu", true);
-        dish.setFavoriteCount(5);
+        dish.setFavoriteCount(6); // 原子 UPDATE 之后重新读取到的值
+        when(repository.incrementFavoriteCount("mapo-tofu")).thenReturn(1);
         when(repository.findBySlugAndPublishedTrue("mapo-tofu")).thenReturn(Optional.of(dish));
 
-        var result = service.toggleFavorite("mapo-tofu");
+        var result = service.favorite("mapo-tofu");
         assertThat(result.slug()).isEqualTo("mapo-tofu");
-        assertThat(result.isFavorite()).isTrue();
         assertThat(result.favoriteCount()).isEqualTo(6);
+        verify(repository).incrementFavoriteCount("mapo-tofu");
     }
 
     @Test
-    void toggleFavoriteThrowsWhenNotFound() {
-        when(repository.findBySlugAndPublishedTrue("missing")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.toggleFavorite("missing")).isInstanceOf(NotFoundException.class);
+    void favoriteThrowsWhenNotFound() {
+        when(repository.incrementFavoriteCount("missing")).thenReturn(0);
+        assertThatThrownBy(() -> service.favorite("missing")).isInstanceOf(NotFoundException.class);
     }
 
     @Test

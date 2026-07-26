@@ -157,19 +157,21 @@ class PostServiceTest {
     }
 
     @Test
-    void likePostIncrementsCount() {
+    void likePostIncrementsCountAtomically() {
         var post = samplePost();
-        post.setLikeCount(10);
+        post.setLikeCount(11); // 原子 UPDATE 之后重新读取到的值
+        when(repository.incrementLikeCount("test-slug")).thenReturn(1);
         when(repository.findBySlugAndStatus("test-slug", PostStatus.PUBLISHED)).thenReturn(Optional.of(post));
 
         var result = service.likePost("test-slug");
         assertThat(result.slug()).isEqualTo("test-slug");
         assertThat(result.likeCount()).isEqualTo(11);
+        verify(repository).incrementLikeCount("test-slug");
     }
 
     @Test
     void likePostThrowsWhenNotFound() {
-        when(repository.findBySlugAndStatus("missing", PostStatus.PUBLISHED)).thenReturn(Optional.empty());
+        when(repository.incrementLikeCount("missing")).thenReturn(0);
         assertThatThrownBy(() -> service.likePost("missing")).isInstanceOf(NotFoundException.class);
     }
 
