@@ -161,4 +161,26 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     /** L-9：精选文章不再受首页取窗限制，直接按标记检索。 */
     Page<PostListRow> findByFeaturedTrueAndStatusOrderByDateDesc(PostStatus status, Pageable pageable);
+
+    /** 3D：相邻文章导航——按 (date, id) 元组序取前一篇/后一篇（轻量投影）。 */
+    interface PostNeighborRow {
+        String getSlug();
+        String getTitle();
+    }
+
+    @Query("""
+        SELECT p.slug as slug, p.title as title FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (p.date < :date OR (p.date = :date AND p.id < :id))
+        ORDER BY p.date DESC, p.id DESC
+        """)
+    List<PostNeighborRow> findPreviousNeighbors(@Param("date") LocalDate date, @Param("id") long id, Pageable pageable);
+
+    @Query("""
+        SELECT p.slug as slug, p.title as title FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (p.date > :date OR (p.date = :date AND p.id > :id))
+        ORDER BY p.date ASC, p.id ASC
+        """)
+    List<PostNeighborRow> findNextNeighbors(@Param("date") LocalDate date, @Param("id") long id, Pageable pageable);
 }

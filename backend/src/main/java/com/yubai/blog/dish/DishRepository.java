@@ -64,6 +64,11 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
     @Query("UPDATE DishEntity d SET d.favoriteCount = d.favoriteCount + 1 WHERE d.slug = :slug AND d.published = true")
     int incrementFavoriteCount(@Param("slug") String slug);
 
+    /** 3C：浏览量同走数据库端原子自增（IP+slug 短窗去重在 Controller 层，不落 IP 明文）。 */
+    @Modifying
+    @Query("UPDATE DishEntity d SET d.viewsCount = d.viewsCount + 1 WHERE d.slug = :slug AND d.published = true")
+    int incrementViewsCount(@Param("slug") String slug);
+
     @Query(value = """
         SELECT DISTINCT d.id as id, d.name as name, d.summary as summary, d.category as category,
                d.slug as slug, d.featured as featured, d.displayOrder as displayOrder

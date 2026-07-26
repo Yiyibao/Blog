@@ -1019,6 +1019,69 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(53)
+    void stage3ViewCountsRssAndNeighborsWork() throws Exception {
+        rateLimiter.reset();
+
+        // 3C：菜谱详情读即计浏览量，同 IP 短窗去重
+        int dishViews = objectMapper.readTree(mockMvc.perform(get("/api/v1/dishes/authentic-mapo-tofu"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("viewsCount").asInt();
+        int dishViewsDeduped = objectMapper.readTree(mockMvc.perform(get("/api/v1/dishes/authentic-mapo-tofu"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("viewsCount").asInt();
+        assertEquals(dishViews, dishViewsDeduped, "dedup window must swallow the second view");
+        rateLimiter.reset();
+        int dishViewsAfter = objectMapper.readTree(mockMvc.perform(get("/api/v1/dishes/authentic-mapo-tofu"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("viewsCount").asInt();
+        assertEquals(dishViews + 1, dishViewsAfter, "new window must count one more view");
+
+        // 3C：笔记同模式（登录读，L-16 收权后公开笔记端点需 token）
+        String token = login();
+        String noteBody = objectMapper.writeValueAsString(java.util.Map.of(
+            "title", "views-note", "markdownContent", "# views-note", "folder", "Stats",
+            "status", "PUBLISHED", "tags", java.util.List.of("stats"), "version", 0));
+        long noteId = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(noteBody))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
+            .path("data").path("id").asLong();
+        rateLimiter.reset();
+        int noteViews = objectMapper.readTree(mockMvc.perform(get("/api/v1/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("viewsCount").asInt();
+        rateLimiter.reset();
+        int noteViewsAfter = objectMapper.readTree(mockMvc.perform(get("/api/v1/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("viewsCount").asInt();
+        assertEquals(noteViews + 1, noteViewsAfter, "note views must increment per window");
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+
+        // 3D：RSS feed——公开可达、rss+xml、含种子文章链接；不含笔记
+        var rss = mockMvc.perform(get("/rss.xml"))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.parseMediaType("application/rss+xml")))
+            .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(rss.contains("<rss"), "rss root element");
+        assertTrue(rss.contains("/articles/clarity-by-design"), "seed post link in feed");
+        assertFalse(rss.contains("/notes?note="), "no note urls in feed");
+
+        // 3D：相邻导航——公开详情响应携带 previous/next（种子多篇，至少一侧非空）
+        var detail = objectMapper.readTree(mockMvc.perform(get("/api/v1/posts/clarity-by-design"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertTrue(detail.has("previous") && detail.has("next"), "neighbor keys present");
+        assertTrue(!detail.path("previous").isNull() || !detail.path("next").isNull(),
+            "at least one neighbor should exist with seed data");
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(44)
     void markdownPostsPersistFormatAndConversionBackfillsLegacy() throws Exception {
         // 3A-1：MARKDOWN 新篇双字段落库；3A-2：存量转换端点回填 markdown 并产出校对清单

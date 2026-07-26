@@ -1,5 +1,7 @@
 package com.yubai.blog.note;
 
+import java.time.Duration;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -8,7 +10,10 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.common.ClientIps;
+import com.yubai.blog.common.RateLimiter;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
@@ -17,8 +22,16 @@ import com.yubai.blog.common.PageResponse;
 @RequestMapping("/api/v1/notes")
 @Validated
 public class PublicNoteController {
+    /** 3C：P1-8 浏览量去重窗口——同 IP 同笔记 10 分钟内只计一次（IP 仅存于进程内窗口）。 */
+    static final Duration VIEW_DEDUP_WINDOW = Duration.ofMinutes(10);
+
     private final NoteService service;
-    public PublicNoteController(NoteService service) { this.service = service; }
+    private final RateLimiter rateLimiter;
+
+    public PublicNoteController(NoteService service, RateLimiter rateLimiter) {
+        this.service = service;
+        this.rateLimiter = rateLimiter;
+    }
 
     /** P1-2：列表只出摘要（不含正文），正文经 /{id} 详情获取。 */
     @GetMapping
@@ -28,7 +41,12 @@ public class PublicNoteController {
     ) { return ApiResponse.ok(service.findPublished(page, size)); }
 
     @GetMapping("/{id}")
-    public ApiResponse<NoteResponse> findPublishedOne(@PathVariable long id) {
+    public ApiResponse<NoteResponse> findPublishedOne(@PathVariable long id, HttpServletRequest request) {
+        // 3C：详情读即计浏览量——先原子 +1 再取详情，响应携带最新计数；未发布/不存在 UPDATE 命中 0 行即静默
+        var clientIp = ClientIps.resolve(request);
+        if (rateLimiter.tryAcquire("view:note:" + clientIp + ":" + id, 1, VIEW_DEDUP_WINDOW)) {
+            service.registerView(id);
+        }
         return ApiResponse.ok(service.findPublishedOne(id));
     }
 }

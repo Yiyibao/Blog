@@ -37,11 +37,19 @@ export interface PostSummary {
   viewsCount?: number
 }
 
+export interface PostNeighbor {
+  slug: string
+  title: string
+}
+
 export interface Post extends PostSummary {
   content: string
   // 3A：Markdown 化双字段——MARKDOWN 篇走受控渲染管线，HTML 为存量默认
   markdownContent?: string | null
   contentFormat?: 'HTML' | 'MARKDOWN'
+  // 3D：相邻文章导航（仅公开详情响应携带）
+  previous?: PostNeighbor | null
+  next?: PostNeighbor | null
 }
 
 export interface CategorySummary {

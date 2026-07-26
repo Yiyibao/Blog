@@ -19,6 +19,12 @@ const ui = useUiStore()
 const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
+// 3D：相邻文章导航（来自公开详情响应，按 (date,id) 序）
+const neighbors = computed(() => ({
+  previous: content.articleDetail?.previous ?? null,
+  next: content.articleDetail?.next ?? null,
+}))
+
 // L-11：返回链接还原来路页码——归档页码存活在 store 中，跨路由仍在
 const backToArchive = computed(() =>
   content.archivePage > 0
@@ -233,6 +239,17 @@ onUnmounted(() => {
         />
         <div v-else class="article-body" v-html="sanitizedContent" />
       </div>
+      <!-- 3D：相邻文章导航 -->
+      <nav v-if="neighbors.previous || neighbors.next" class="article-neighbors section-wrap" aria-label="相邻文章">
+        <RouterLink v-if="neighbors.previous" class="neighbor-link prev" :to="`/articles/${neighbors.previous.slug}`">
+          <small>← 上一篇</small><strong>{{ neighbors.previous.title }}</strong>
+        </RouterLink>
+        <span v-else class="neighbor-spacer" aria-hidden="true" />
+        <RouterLink v-if="neighbors.next" class="neighbor-link next" :to="`/articles/${neighbors.next.slug}`">
+          <small>下一篇 →</small><strong>{{ neighbors.next.title }}</strong>
+        </RouterLink>
+      </nav>
+
       <section v-if="content.relatedPosts.length" class="related section-wrap"><div class="section-heading"><p><span>+</span> 继续阅读</p></div><div class="related-grid"><RouterLink v-for="post in content.relatedPosts" :key="post.slug" :to="`/articles/${post.slug}`"><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong><span>阅读全文 ↗</span></RouterLink></div></section>
     </article>
   </template>
@@ -269,6 +286,37 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 3D：相邻文章导航 */
+.article-neighbors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 40px;
+}
+.neighbor-link {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.3s;
+}
+.neighbor-link:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.neighbor-link small { color: var(--muted); font-size: 12px; }
+.neighbor-link strong { font-size: 15px; line-height: 1.5; }
+.neighbor-link.next { text-align: right; align-items: flex-end; }
+@media (max-width: 640px) {
+  .article-neighbors { grid-template-columns: 1fr; }
+  .neighbor-spacer { display: none; }
+}
+
 /* NF-8：灯箱关闭钮（新元素，样式随组件走，避免与并行改动的全局样式表交叉） */
 .image-lightbox-close {
   position: fixed;

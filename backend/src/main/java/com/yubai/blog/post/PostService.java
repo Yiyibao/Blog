@@ -77,7 +77,21 @@ public class PostService {
     public PostResponse findPublishedBySlug(String slug) {
         var post = repository.findBySlugAndStatus(slug, PostStatus.PUBLISHED)
             .orElseThrow(() -> new NotFoundException("文章不存在：" + slug));
-        return PostResponse.from(post);
+        // 3D：相邻导航——(date, id) 元组序的前后各一篇，轻量投影两条 LIMIT 1 查询；
+        // 未持久化实体（单测夹具）无 id，跳过邻居查询
+        if (post.getId() == null) {
+            return PostResponse.from(post);
+        }
+        var one = PageRequest.of(0, 1);
+        var previous = firstNeighbor(repository.findPreviousNeighbors(post.getDate(), post.getId(), one));
+        var next = firstNeighbor(repository.findNextNeighbors(post.getDate(), post.getId(), one));
+        return PostResponse.from(post, previous, next);
+    }
+
+    private static PostResponse.PostNeighbor firstNeighbor(List<PostRepository.PostNeighborRow> rows) {
+        if (rows == null || rows.isEmpty()) return null;
+        var row = rows.get(0);
+        return new PostResponse.PostNeighbor(row.getSlug(), row.getTitle());
     }
 
     @Transactional
@@ -129,14 +143,14 @@ public class PostService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS}, allEntries = true)
     public PostResponse create(PostRequest request) {
         requireUniqueSlug(request.slug(), null);
         return PostResponse.from(repository.save(PostEntity.create(request, sanitizer)));
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS}, allEntries = true)
     public PostResponse update(long id, PostRequest request) {
         var post = entity(id);
         requireUniqueSlug(request.slug(), id);
@@ -145,7 +159,7 @@ public class PostService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS}, allEntries = true)
     public void delete(long id) {
         if (!repository.existsById(id)) {
             throw new NotFoundException("文章不存在：" + id);

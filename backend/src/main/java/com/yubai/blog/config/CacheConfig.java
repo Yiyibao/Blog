@@ -29,10 +29,12 @@ public class CacheConfig {
     public static final String SITEMAP = "sitemap";
     public static final String QUOTES = "quotes";
     public static final String MUSIC = "music";
+    /** 3D：RSS feed XML——仅文章集合，文章写操作 evict + TTL 兜底。 */
+    public static final String RSS = "rss";
 
     @Bean
     public CacheManager cacheManager() {
-        var manager = new CaffeineCacheManager(GRAPH, SITEMAP, QUOTES, MUSIC);
+        var manager = new CaffeineCacheManager(GRAPH, SITEMAP, QUOTES, MUSIC, RSS);
         manager.setCaffeine(Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5))
             .maximumSize(50));

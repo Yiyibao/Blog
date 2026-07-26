@@ -59,6 +59,12 @@ public class NoteService {
         return NoteResponse.from(note);
     }
 
+    /** 3C：详情读带来的真实浏览计数；未命中（不存在/未发布）静默为 0，不影响详情读取流程。 */
+    @org.springframework.transaction.annotation.Transactional
+    public int registerView(long id) {
+        return repository.incrementViewsCount(id);
+    }
+
     @Transactional
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public NoteResponse create(NoteRequest request) { return NoteResponse.from(repository.saveAndFlush(NoteEntity.create(request))); }

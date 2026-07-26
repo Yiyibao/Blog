@@ -56,6 +56,10 @@ public class NoteEntity {
     @Column(name = "word_count", nullable = false)
     private int wordCount;
 
+    // 3C：P1-8 真实浏览量模式推广——数据库端原子自增，去重窗口在控制器层
+    @Column(name = "views_count", nullable = false)
+    private int viewsCount;
+
     @Version
     private long version;
 
@@ -122,6 +126,7 @@ public class NoteEntity {
     public List<String> getTags() { return List.copyOf(tags); }
     public String getSourceFileName() { return sourceFileName; }
     public int getWordCount() { return wordCount; }
+    public int getViewsCount() { return viewsCount; }
     public long getVersion() { return version; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

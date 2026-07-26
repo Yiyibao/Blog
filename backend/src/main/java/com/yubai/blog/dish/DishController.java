@@ -29,6 +29,9 @@ public class DishController {
     static final int FAVORITE_LIMIT = 10;
     static final Duration FAVORITE_WINDOW = Duration.ofMinutes(1);
 
+    /** 3C：P1-8 浏览量去重窗口——同 IP 同菜谱 10 分钟内只计一次。 */
+    static final Duration VIEW_DEDUP_WINDOW = Duration.ofMinutes(10);
+
     private final DishService service;
     private final RateLimiter rateLimiter;
 
@@ -46,7 +49,12 @@ public class DishController {
     }
 
     @GetMapping("/{slug}")
-    public ApiResponse<DishResponse> findBySlug(@PathVariable String slug) {
+    public ApiResponse<DishResponse> findBySlug(@PathVariable String slug, HttpServletRequest request) {
+        // 3C：详情读即计浏览量（P1-8 模式）——去重窗口内重复访问与未发布 slug 都不计数
+        var clientIp = ClientIps.resolve(request);
+        if (rateLimiter.tryAcquire("view:dish:" + clientIp + ":" + slug, 1, VIEW_DEDUP_WINDOW)) {
+            service.registerView(slug);
+        }
         return ApiResponse.ok(service.findPublishedBySlug(slug));
     }
 

@@ -30,6 +30,12 @@ public class DishService {
             .orElseThrow(() -> new NotFoundException("菜品不存在：" + slug));
     }
 
+    /** 3C：详情读带来的真实浏览计数；未命中（不存在/未发布）静默为 0，不影响详情读取流程。 */
+    @Transactional
+    public int registerView(String slug) {
+        return repository.incrementViewsCount(slug);
+    }
+
     /**
      * P0-7（已批准）：语义改为纯计数 favorite——每次调用 +1，不再假装 toggle。
      * P0-4：计数走数据库端原子 UPDATE。

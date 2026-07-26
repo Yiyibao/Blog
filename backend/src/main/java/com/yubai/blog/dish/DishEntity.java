@@ -73,6 +73,10 @@ public class DishEntity {
     @Column(name = "favorite_count", nullable = false)
     private int favoriteCount;
 
+    // 3C：P1-8 真实浏览量模式推广——数据库端原子自增，去重窗口在控制器层
+    @Column(name = "views_count", nullable = false)
+    private int viewsCount;
+
     // P1-1：列表页批量抓取食材，消除 1+2N 查询
     @BatchSize(size = 50)
     @ElementCollection(fetch = FetchType.EAGER)
@@ -154,6 +158,7 @@ public class DishEntity {
     public int getDisplayOrder() { return displayOrder; }
     public int getFavoriteCount() { return favoriteCount; }
     public void setFavoriteCount(int favoriteCount) { this.favoriteCount = favoriteCount; }
+    public int getViewsCount() { return viewsCount; }
     public List<String> getIngredients() { return List.copyOf(ingredients); }
     public List<String> getSteps() { return List.copyOf(steps); }
     public Instant getCreatedAt() { return createdAt; }
