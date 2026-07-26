@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
 import { useUiStore } from '../stores/uiStore'
 import { createSiteConfig, resolveUrl } from '../config/site'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
 import { blogPosting, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
 
 const route = useRoute()
 const content = useContentStore()
+
+// NF-2：v-html 渲染点前置 DOMPurify 消毒，防存储型 XSS。
+const sanitizedContent = computed(() => sanitizeHtml(content.currentPost?.content ?? ''))
 const ui = useUiStore()
 const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
@@ -126,15 +130,23 @@ watch(() => content.currentPost, (post) => {
   }
 }, { immediate: true })
 
+// NF-3：以 route.params.slug 为响应式输入。文章间跳转（如相关文章）复用本组件，
+// onMounted 不会重跑，必须 watch slug 同步 store 并重拉详情。
+watch(() => route.params.slug, (raw) => {
+  const slug = String(raw ?? '')
+  if (!slug) return // 离开本路由时 slug 变空，交由 onUnmounted 清理
+  content.setCurrentSlug(slug)
+  void content.ensureArticleDetail(slug)
+}, { immediate: true })
+
 onMounted(() => {
   if (!content.contentReady) content.loadRemoteContent()
   content.initFavorites()
-  const slug = String(route.params.slug || '')
-  content.ensureArticleDetail(slug)
   window.addEventListener('scroll', updateScrollProgress, { passive: true })
 })
 
 onUnmounted(() => {
+  content.setCurrentSlug('')
   window.removeEventListener('scroll', updateScrollProgress)
   if (observer) observer.disconnect()
 })
@@ -171,7 +183,7 @@ onUnmounted(() => {
           </div>
           <div class="article-share"><p>分享文章</p><button type="button" @click="copyCurrentLink">复制链接</button><RouterLink to="/about">关于作者</RouterLink></div>
         </aside>
-        <div class="article-body" v-html="content.currentPost.content" />
+        <div class="article-body" v-html="sanitizedContent" />
       </div>
       <section v-if="content.relatedPosts.length" class="related section-wrap"><div class="section-heading"><p><span>+</span> 继续阅读</p></div><div class="related-grid"><RouterLink v-for="post in content.relatedPosts" :key="post.slug" :to="`/articles/${post.slug}`"><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong><span>阅读全文 ↗</span></RouterLink></div></section>
     </article>
