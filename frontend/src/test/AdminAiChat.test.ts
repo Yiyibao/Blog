@@ -2,24 +2,33 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
-import axios from 'axios'
 import AdminAiChat from '../components/AdminAiChat.vue'
 import AdminAiPage from '../pages/AdminAiPage.vue'
 import router from '../router/index'
 import * as adminApi from '../api/admin'
 import { useAuthStore } from '../stores/auth'
 
-const mockSendAiChat = vi.fn()
+const mockStreamAiChat = vi.fn()
 const mockClearAdminSession = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof adminApi>()
   return {
     ...actual,
-    sendAiChat: (...args: unknown[]) => mockSendAiChat(...args),
+    streamAiChat: (...args: unknown[]) => mockStreamAiChat(...args),
     clearAdminSession: (...args: unknown[]) => mockClearAdminSession(...args),
   }
 })
+
+// 4A-2：模拟流式成功——按增量回调后正常结束
+function streamResolve(content: string) {
+  mockStreamAiChat.mockImplementation(
+    async (_messages: unknown, callbacks: adminApi.AiStreamCallbacks) => {
+      callbacks.onDelta(content)
+      callbacks.onDone?.({ model: 'deepseek-v4-flash', usage: null })
+    },
+  )
+}
 
 function createTestRouter() {
   const r = createRouter({
@@ -57,7 +66,7 @@ async function mountComponent(testRouter = createTestRouter()) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  mockSendAiChat.mockReset()
+  mockStreamAiChat.mockReset()
   mockClearAdminSession.mockReset()
   window.sessionStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
@@ -85,21 +94,19 @@ describe('AdminAiChat Component', () => {
     expect(window.sessionStorage.getItem('yubai-admin-ai-messages')).toBeNull()
   })
 
-  it('sends user message, displays response, and updates sessionStorage', async () => {
-    mockSendAiChat.mockResolvedValue({
-      content: 'Hello! I am DeepSeek AI.',
-      model: 'deepseek-v4-flash',
-      usage: null,
-    })
+  it('sends user message, streams response, and updates sessionStorage', async () => {
+    streamResolve('Hello! I am DeepSeek AI.')
 
     const wrapper = await mountComponent()
     const input = wrapper.find('textarea')
     await input.setValue('Hello AI')
     await wrapper.find('button.send-btn').trigger('click')
 
-    expect(mockSendAiChat).toHaveBeenCalledWith([
-      { role: 'user', content: 'Hello AI' },
-    ])
+    expect(mockStreamAiChat).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Hello AI' }],
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
 
     await flushPromises()
 
@@ -114,9 +121,15 @@ describe('AdminAiChat Component', () => {
     expect(parsed[1]).toEqual({ role: 'assistant', content: 'Hello! I am DeepSeek AI.' })
   })
 
-  it('displays loading state and disables inputs during request', async () => {
-    let resolveApi!: (val: unknown) => void
-    mockSendAiChat.mockReturnValue(new Promise((resolve) => { resolveApi = resolve }))
+  it('displays loading state, disables inputs, then renders streamed deltas', async () => {
+    let resolveApi!: () => void
+    let capturedCallbacks!: adminApi.AiStreamCallbacks
+    mockStreamAiChat.mockImplementation(
+      (_messages: unknown, callbacks: adminApi.AiStreamCallbacks) => {
+        capturedCallbacks = callbacks
+        return new Promise<void>((resolve) => { resolveApi = () => resolve() })
+      },
+    )
 
     const wrapper = await mountComponent()
     const input = wrapper.find('textarea')
@@ -124,18 +137,58 @@ describe('AdminAiChat Component', () => {
     await wrapper.find('button.send-btn').trigger('click')
 
     expect(wrapper.text()).toContain('思考中…')
+    expect(wrapper.text()).toContain('停止生成')
     expect(wrapper.find('textarea').attributes('disabled')).toBeDefined()
     expect(wrapper.find('button.send-btn').attributes('disabled')).toBeDefined()
 
-    resolveApi({ content: 'Done thinking', model: 'test' })
+    capturedCallbacks.onDelta('Done ')
+    capturedCallbacks.onDelta('thinking')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('思考中…')
+    expect(wrapper.text()).toContain('Done thinking')
+
+    resolveApi()
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('思考中…')
+    expect(wrapper.text()).not.toContain('停止生成')
     expect(wrapper.text()).toContain('Done thinking')
   })
 
-  it('displays error state when API request fails', async () => {
-    mockSendAiChat.mockRejectedValue(new Error('Network failure'))
+  it('stops streaming on demand and keeps the partial content', async () => {
+    let capturedCallbacks!: adminApi.AiStreamCallbacks
+    mockStreamAiChat.mockImplementation(
+      (_messages: unknown, callbacks: adminApi.AiStreamCallbacks, options: adminApi.AiStreamOptions) =>
+        new Promise<void>((_resolve, reject) => {
+          capturedCallbacks = callbacks
+          options.signal?.addEventListener('abort', () => {
+            const abortError = new Error('aborted')
+            abortError.name = 'AbortError'
+            reject(abortError)
+          })
+        }),
+    )
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('Long generation')
+    await wrapper.find('button.send-btn').trigger('click')
+
+    capturedCallbacks.onDelta('Partial answer')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Partial answer')
+
+    await wrapper.find('button.stop-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Partial answer')
+    expect(wrapper.find('.chat-error-bar').exists()).toBe(false)
+    expect(wrapper.find('button.send-btn').attributes('disabled')).toBeUndefined()
+
+    const saved = JSON.parse(window.sessionStorage.getItem('yubai-admin-ai-messages')!)
+    expect(saved[saved.length - 1]).toEqual({ role: 'assistant', content: 'Partial answer' })
+  })
+
+  it('displays error state when the stream fails', async () => {
+    mockStreamAiChat.mockRejectedValue(new Error('Network failure'))
 
     const wrapper = await mountComponent()
     const input = wrapper.find('textarea')
@@ -148,14 +201,7 @@ describe('AdminAiChat Component', () => {
   })
 
   it('clears session and redirects to /admin/login on 401 error', async () => {
-    const error401 = new axios.AxiosError('Unauthorized', '401', undefined, undefined, {
-      status: 401,
-      data: {},
-      headers: {},
-      config: { headers: {} as any },
-      statusText: 'Unauthorized',
-    })
-    mockSendAiChat.mockRejectedValue(error401)
+    mockStreamAiChat.mockRejectedValue(new adminApi.AiStreamHttpError(401, '未登录或登录已过期'))
 
     const testRouter = createTestRouter()
     const wrapper = await mountComponent(testRouter)
@@ -189,11 +235,7 @@ describe('AdminAiChat Component', () => {
 
   it('renders untrusted content as plain text safely without HTML injection', async () => {
     const htmlPayload = '<script>alert("xss")</script><div id="xss-target">Test HTML</div>'
-    mockSendAiChat.mockResolvedValue({
-      content: htmlPayload,
-      model: 'deepseek-v4-flash',
-      usage: null,
-    })
+    streamResolve(htmlPayload)
 
     const wrapper = await mountComponent()
     const input = wrapper.find('textarea')
@@ -208,10 +250,7 @@ describe('AdminAiChat Component', () => {
   })
 
   it('triggers send on Ctrl + Enter keydown', async () => {
-    mockSendAiChat.mockResolvedValue({
-      content: 'Hotkey response',
-      model: 'deepseek-v4-flash',
-    })
+    streamResolve('Hotkey response')
 
     const wrapper = await mountComponent()
     const input = wrapper.find('textarea')
@@ -220,9 +259,11 @@ describe('AdminAiChat Component', () => {
     await input.trigger('keydown', { key: 'Enter', ctrlKey: true })
     await flushPromises()
 
-    expect(mockSendAiChat).toHaveBeenCalledWith([
-      { role: 'user', content: 'Keyboard message' },
-    ])
+    expect(mockStreamAiChat).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Keyboard message' }],
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
     expect(wrapper.text()).toContain('Hotkey response')
   })
 })

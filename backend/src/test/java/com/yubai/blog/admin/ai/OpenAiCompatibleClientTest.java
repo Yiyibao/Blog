@@ -197,6 +197,107 @@ class OpenAiCompatibleClientTest {
         assertEquals(502, e.getStatus().value());
     }
 
+    // ===== 4A-2：SSE 流式 =====
+
+    private static final String SSE_BODY = """
+        : keep-alive comment
+
+        data: {"id":"x","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant"}}]}
+
+        data: {"id":"x","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"Hel"}}]}
+
+        data: {"id":"x","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":"lo"}}]}
+
+        data: {"id":"x","model":"deepseek-v4-flash","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}
+
+        data: [DONE]
+        """;
+
+    private record CollectingListener(java.util.List<String> deltas,
+                                      java.util.concurrent.atomic.AtomicReference<ChatResponse> completed)
+        implements AiStreamListener {
+        CollectingListener() {
+            this(new java.util.ArrayList<>(), new java.util.concurrent.atomic.AtomicReference<>());
+        }
+
+        @Override
+        public void onDelta(String content) {
+            deltas.add(content);
+        }
+
+        @Override
+        public void onComplete(ChatResponse response) {
+            completed.set(response);
+        }
+    }
+
+    @Test
+    void streamEmitsDeltasInOrderAndCompletes() {
+        server.expect(requestTo(COMPLETIONS_URL))
+            .andExpect(method(POST))
+            .andExpect(content().json("{\"stream\":true}", false))
+            .andRespond(withSuccess(SSE_BODY, MediaType.TEXT_EVENT_STREAM));
+
+        var listener = new CollectingListener();
+        var response = client.stream(endpoint, List.of(new ChatMessage("user", "hi")), listener);
+
+        assertEquals(List.of("Hel", "lo"), listener.deltas());
+        assertEquals("Hello", response.content());
+        assertEquals("deepseek-v4-flash", response.model());
+        assertNotNull(response.usage());
+        assertEquals(5, response.usage().totalTokens());
+        assertEquals(response, listener.completed().get());
+        server.verify();
+    }
+
+    @Test
+    void streamParserToleratesEofWithoutDoneMarker() throws Exception {
+        var body = "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n";
+        var listener = new CollectingListener();
+        var response = OpenAiCompatibleClient.parseSseStream(
+            new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            "fallback-model", listener);
+        assertEquals("partial", response.content());
+        assertEquals("fallback-model", response.model());
+    }
+
+    @Test
+    void streamWithoutAnyDeltaThrows502() {
+        var body = "data: [DONE]\n";
+        var listener = new CollectingListener();
+        var e = assertThrows(AiServiceException.class, () -> OpenAiCompatibleClient.parseSseStream(
+            new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            "m", listener));
+        assertEquals(502, e.getStatus().value());
+        assertNull(listener.completed().get());
+    }
+
+    @Test
+    void streamMalformedChunkThrows502() {
+        var body = "data: not-json\n";
+        var listener = new CollectingListener();
+        var e = assertThrows(AiServiceException.class, () -> OpenAiCompatibleClient.parseSseStream(
+            new java.io.ByteArrayInputStream(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            "m", listener));
+        assertEquals(502, e.getStatus().value());
+    }
+
+    @Test
+    void streamUpstream429MapsTo429() {
+        server.expect(requestTo(COMPLETIONS_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
+        var e = assertThrows(AiServiceException.class,
+            () -> client.stream(endpoint, List.of(new ChatMessage("user", "hi")), new CollectingListener()));
+        assertEquals(429, e.getStatus().value());
+    }
+
+    @Test
+    void streamUpstream5xxMapsTo502() {
+        server.expect(requestTo(COMPLETIONS_URL)).andRespond(withServerError());
+        var e = assertThrows(AiServiceException.class,
+            () -> client.stream(endpoint, List.of(new ChatMessage("user", "hi")), new CollectingListener()));
+        assertEquals(502, e.getStatus().value());
+    }
+
     @Test
     void listModelsParsesIds() {
         server.expect(requestTo(MODELS_URL))

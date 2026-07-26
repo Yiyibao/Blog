@@ -7,13 +7,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.yubai.blog.admin.ai.AiChatService;
+import com.yubai.blog.admin.ai.AiServiceException;
+import com.yubai.blog.admin.ai.AiStreamListener;
 import com.yubai.blog.admin.ai.ChatResponse;
 import com.yubai.blog.config.AiProperties;
+import java.util.concurrent.ExecutorService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -31,11 +35,20 @@ class AdminAiControllerTest {
     @MockitoBean
     AiProperties aiProperties;
 
+    @MockitoBean(name = "aiStreamExecutor")
+    ExecutorService streamExecutor;
+
     @BeforeEach
     void setUpLimits() {
         when(aiProperties.getMaxHistoryMessages()).thenReturn(20);
         when(aiProperties.getMaxInputChars()).thenReturn(8000);
         when(aiProperties.getMaxTotalChars()).thenReturn(40000);
+        when(aiProperties.getRequestTimeout()).thenReturn(60);
+        // 测试内联执行流式任务，保证 SSE 输出在断言前完成
+        org.mockito.Mockito.doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(streamExecutor).execute(org.mockito.ArgumentMatchers.any(Runnable.class));
     }
 
     @Test
@@ -112,5 +125,60 @@ class AdminAiControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"messages\":[{\"role\":\"user\",\"content\":\"" + content + "\"}]}"))
             .andExpect(status().isBadRequest());
+    }
+
+    // ===== 4A-2：SSE 流式端点 =====
+
+    @Test
+    void streamEndpointEmitsDeltaAndDoneEvents() throws Exception {
+        when(chatService.stream(any(), any())).thenAnswer(invocation -> {
+            AiStreamListener listener = invocation.getArgument(1);
+            listener.onDelta("Hel");
+            listener.onDelta("lo");
+            var response = new ChatResponse("Hello", "deepseek-v4-flash", null);
+            listener.onComplete(response);
+            return response;
+        });
+
+        var result = mockMvc.perform(post("/api/v1/admin/ai/chat/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                .header().string("X-Accel-Buffering", "no"))
+            .andReturn();
+
+        var body = result.getResponse().getContentAsString();
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("event:delta"), body);
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("Hel"), body);
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("lo"), body);
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("event:done"), body);
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("deepseek-v4-flash"), body);
+    }
+
+    @Test
+    void streamEndpointSendsErrorEventOnServiceFailure() throws Exception {
+        when(chatService.stream(any(), any()))
+            .thenThrow(new AiServiceException(HttpStatus.SERVICE_UNAVAILABLE, "AI service is not configured"));
+
+        var result = mockMvc.perform(post("/api/v1/admin/ai/chat/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        var body = result.getResponse().getContentAsString();
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("event:error"), body);
+        org.junit.jupiter.api.Assertions.assertTrue(body.contains("503"), body);
+    }
+
+    @Test
+    void streamEndpointValidatesLimitsBeforeStreaming() throws Exception {
+        var content = "x".repeat(8001);
+        mockMvc.perform(post("/api/v1/admin/ai/chat/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"messages\":[{\"role\":\"user\",\"content\":\"" + content + "\"}]}"))
+            .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verify(chatService, org.mockito.Mockito.never()).stream(any(), any());
     }
 }

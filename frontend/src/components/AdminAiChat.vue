@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import axios from 'axios'
 import { nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  clearAdminSession, getAdminSessionName, sendAiChat,
+  AiStreamHttpError, clearAdminSession, getAdminSessionName, streamAiChat,
   type AiChatMessage,
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
@@ -14,8 +13,11 @@ const router = useRouter()
 const username = getAdminSessionName() || 'Admin'
 const userInput = ref('')
 const loading = ref(false)
+/** 4A-2：收到首个增量后隐藏「思考中…」占位，改由增量气泡实时呈现 */
+const streamingStarted = ref(false)
 const error = ref('')
 const chatBoxRef = ref<HTMLElement | null>(null)
+let abortController: AbortController | null = null
 
 function loadStoredMessages(): AiChatMessage[] {
   try {
@@ -96,31 +98,60 @@ async function sendMessage() {
   if (!content || loading.value || content.length > 8000) return
 
   const userMsg: AiChatMessage = { role: 'user', content }
-  const updatedMessages = [...messages.value, userMsg].slice(-20)
-  messages.value = updatedMessages
+  const history = [...messages.value, userMsg].slice(-20)
+  messages.value = history
   saveMessagesToStorage(messages.value)
 
   userInput.value = ''
   error.value = ''
   loading.value = true
+  streamingStarted.value = false
   await scrollToBottom()
 
+  // 4A-2：流式渲染——先挂空的助手气泡，增量到达时就地追加（必须改代理对象保证响应式）
+  messages.value = [...messages.value, { role: 'assistant', content: '' }].slice(-20)
+  const live = messages.value[messages.value.length - 1]!
+  const controller = new AbortController()
+  abortController = controller
+
   try {
-    const result = await sendAiChat(updatedMessages)
-    const assistantMsg: AiChatMessage = { role: 'assistant', content: result.content }
-    messages.value = [...messages.value, assistantMsg].slice(-20)
+    await streamAiChat(history, {
+      onDelta: (text) => {
+        streamingStarted.value = true
+        live.content += text
+        void scrollToBottom()
+      },
+    }, { signal: controller.signal })
+    if (!live.content.trim()) {
+      throw new AiStreamHttpError(502, 'empty response')
+    }
     saveMessagesToStorage(messages.value)
-    await scrollToBottom()
   } catch (cause) {
-    if (axios.isAxiosError(cause) && cause.response?.status === 401) {
+    if (controller.signal.aborted) {
+      // 用户主动停止：保留已生成的部分；一无所出则移除空气泡
+      if (live.content.trim()) {
+        saveMessagesToStorage(messages.value)
+      } else {
+        messages.value = messages.value.filter((msg) => msg !== live)
+      }
+    } else if (cause instanceof AiStreamHttpError && cause.status === 401) {
       clearAdminSession()
       void router.replace('/admin/login')
       return
+    } else {
+      messages.value = messages.value.filter((msg) => msg !== live)
+      error.value = 'AI 响应失败，请检查网络或稍后重试。'
     }
-    error.value = 'AI 响应失败，请检查网络或稍后重试。'
   } finally {
     loading.value = false
+    streamingStarted.value = false
+    abortController = null
+    await scrollToBottom()
   }
+}
+
+function stopStreaming() {
+  abortController?.abort()
 }
 
 onMounted(() => {
@@ -156,6 +187,7 @@ onMounted(() => {
 
           <div
             v-for="(msg, index) in messages"
+            v-show="msg.role === 'user' || msg.content !== ''"
             :key="index"
             class="chat-bubble-wrap"
             :class="msg.role"
@@ -171,7 +203,7 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="loading" class="chat-bubble-wrap assistant loading-bubble">
+          <div v-if="loading && !streamingStarted" class="chat-bubble-wrap assistant loading-bubble">
             <div class="bubble-avatar">🤖</div>
             <div class="bubble-body">
               <header class="bubble-header">
@@ -204,14 +236,24 @@ onMounted(() => {
               <span class="char-count" :class="{ 'near-limit': userInput.length > 7500 }">
                 {{ userInput.length.toLocaleString() }} / 8,000 字
               </span>
-              <button
-                class="send-btn"
-                type="button"
-                :disabled="loading || !userInput.trim() || userInput.length > 8000"
-                @click="sendMessage"
-              >
-                {{ loading ? '发送中…' : '发送 ↗' }}
-              </button>
+              <div class="footer-actions">
+                <button
+                  v-if="loading"
+                  class="stop-btn"
+                  type="button"
+                  @click="stopStreaming"
+                >
+                  停止生成
+                </button>
+                <button
+                  class="send-btn"
+                  type="button"
+                  :disabled="loading || !userInput.trim() || userInput.length > 8000"
+                  @click="sendMessage"
+                >
+                  {{ loading ? '发送中…' : '发送 ↗' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -455,6 +497,24 @@ onMounted(() => {
 .send-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stop-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: transparent;
+  color: #b84f48;
+  border: 1px solid rgba(184, 79, 72, 0.4);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.stop-btn:hover {
+  background: rgba(184, 79, 72, 0.08);
 }
 
 @media (max-width: 820px) {

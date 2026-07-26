@@ -276,3 +276,123 @@ export function sendAiChat(messages: AiChatMessage[]) {
     api.post('/admin/ai/chat', { messages }, { timeout: 120000, headers: tokenHeader() }),
   )
 }
+
+export class AiStreamHttpError extends Error {
+  status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'AiStreamHttpError'
+    this.status = status
+  }
+}
+
+export interface AiStreamDone {
+  model?: string
+  usage?: AiChatResult['usage']
+}
+
+export interface AiStreamCallbacks {
+  onDelta: (text: string) => void
+  onDone?: (info: AiStreamDone) => void
+}
+
+export interface AiStreamOptions {
+  providerId?: number | null
+  model?: string | null
+  signal?: AbortSignal
+}
+
+// 4A-2：SSE 流式对话。EventSource 无法携带 Authorization 头，
+// 改用 fetch + ReadableStream 手工解析 SSE，JWT 走标准请求头、绝不进 URL。
+// 建流前的校验错误以普通 HTTP 错误返回；建流后的错误以 error 事件抛出。
+export async function streamAiChat(
+  messages: AiChatMessage[],
+  callbacks: AiStreamCallbacks,
+  options: AiStreamOptions = {},
+): Promise<void> {
+  const auth = useAuthStore()
+  if (auth.token && auth.expiresAt && Date.parse(auth.expiresAt) <= Date.now()) {
+    auth.clearSession()
+    throw new AiStreamHttpError(401, '登录已过期')
+  }
+  const base = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+  const response = await fetch(`${base}/admin/ai/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+    },
+    body: JSON.stringify({
+      messages,
+      ...(options.providerId != null ? { providerId: options.providerId } : {}),
+      ...(options.model ? { model: options.model } : {}),
+    }),
+    signal: options.signal,
+  })
+  if (response.status === 401) {
+    auth.clearSession()
+    throw new AiStreamHttpError(401, '未登录或登录已过期')
+  }
+  if (!response.ok || !response.body) {
+    let message = 'AI 响应失败'
+    try {
+      const parsed: unknown = await response.json()
+      if (parsed && typeof parsed === 'object'
+        && typeof (parsed as { message?: unknown }).message === 'string') {
+        message = (parsed as { message: string }).message
+      }
+    } catch {
+      // 非 JSON 错误体，使用默认文案
+    }
+    throw new AiStreamHttpError(response.status, message)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = ''
+
+  const handleLine = (rawLine: string) => {
+    const line = rawLine.replace(/\r$/, '')
+    if (line.startsWith('event:')) {
+      currentEvent = line.slice(6).trim()
+      return
+    }
+    if (!line.startsWith('data:')) return
+    const payload = line.slice(5).trim()
+    if (!payload) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(payload)
+    } catch {
+      return
+    }
+    if (!parsed || typeof parsed !== 'object') return
+    const record = parsed as { content?: unknown; status?: unknown; message?: unknown }
+    if (currentEvent === 'delta' && typeof record.content === 'string') {
+      callbacks.onDelta(record.content)
+    } else if (currentEvent === 'done') {
+      callbacks.onDone?.(parsed as AiStreamDone)
+    } else if (currentEvent === 'error') {
+      const status = typeof record.status === 'number' ? record.status : 502
+      const detail = typeof record.message === 'string' ? record.message : 'AI 响应失败'
+      throw new AiStreamHttpError(status, detail)
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let newlineIndex = buffer.indexOf('\n')
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex)
+      buffer = buffer.slice(newlineIndex + 1)
+      handleLine(line)
+      newlineIndex = buffer.indexOf('\n')
+    }
+  }
+  if (buffer) handleLine(buffer)
+}

@@ -1,9 +1,14 @@
 package com.yubai.blog.admin.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
@@ -34,6 +39,7 @@ public class OpenAiCompatibleClient {
     static final int MAX_RESPONSE_BYTES = 2_000_000;
     private static final String SYSTEM_PROMPT =
         "You are a helpful assistant. Provide concise and accurate responses.";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Function<AiEndpoint, RestClient> restClientFactory;
 
@@ -51,7 +57,7 @@ public class OpenAiCompatibleClient {
             var body = restClientFactory.apply(endpoint)
                 .post()
                 .uri("/chat/completions")
-                .body(buildChatBody(endpoint, messages))
+                .body(buildChatBody(endpoint, messages, false))
                 .retrieve()
                 .toEntity(JsonNode.class)
                 .getBody();
@@ -71,6 +77,108 @@ public class OpenAiCompatibleClient {
         } catch (RestClientException exception) {
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Invalid response from AI service");
         }
+    }
+
+    /**
+     * 4A-2：流式对话。SSE 帧逐段回调 listener.onDelta，流结束回调 onComplete 并返回完整响应。
+     * 上游状态码与网络异常的映射与非流式保持一致。
+     */
+    public ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages, AiStreamListener listener) {
+        try {
+            return restClientFactory.apply(endpoint)
+                .post()
+                .uri("/chat/completions")
+                .body(buildChatBody(endpoint, messages, true))
+                .exchange((request, response) -> {
+                    var status = response.getStatusCode();
+                    if (status.value() == HttpStatus.TOO_MANY_REQUESTS.value()) {
+                        throw new AiServiceException(HttpStatus.TOO_MANY_REQUESTS, "AI service rate limit exceeded");
+                    }
+                    if (status.is4xxClientError()) {
+                        throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI service request failed");
+                    }
+                    if (status.is5xxServerError()) {
+                        throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI service returned an error");
+                    }
+                    try {
+                        return parseSseStream(response.getBody(), endpoint.model(), listener);
+                    } catch (SocketTimeoutException exception) {
+                        throw new AiServiceException(HttpStatus.GATEWAY_TIMEOUT, "AI service request timed out");
+                    } catch (IOException exception) {
+                        throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Unable to reach AI service");
+                    }
+                });
+        } catch (AiServiceException exception) {
+            throw exception;
+        } catch (ResourceAccessException exception) {
+            if (exception.getCause() instanceof SocketTimeoutException) {
+                throw new AiServiceException(HttpStatus.GATEWAY_TIMEOUT, "AI service request timed out");
+            }
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Unable to reach AI service");
+        } catch (RestClientException exception) {
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Invalid response from AI service");
+        }
+    }
+
+    /**
+     * SSE 帧解析（包级可见便于单测）：只认 data: 行，[DONE] 或 EOF 结束；
+     * 无任何增量内容视为空响应 502。
+     */
+    static ChatResponse parseSseStream(InputStream bodyStream, String fallbackModel,
+                                       AiStreamListener listener) throws IOException {
+        var reader = new BufferedReader(new InputStreamReader(bodyStream, StandardCharsets.UTF_8));
+        var content = new StringBuilder();
+        var model = fallbackModel;
+        ChatResponse.Usage usage = null;
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (!line.startsWith("data:")) {
+                continue;
+            }
+            var payload = line.substring(5).trim();
+            if (payload.isEmpty()) {
+                continue;
+            }
+            if ("[DONE]".equals(payload)) {
+                break;
+            }
+            JsonNode node;
+            try {
+                node = MAPPER.readTree(payload);
+            } catch (JsonProcessingException exception) {
+                throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Invalid response from AI service");
+            }
+            var modelNode = node.get("model");
+            if (modelNode != null && !modelNode.isNull()) {
+                model = modelNode.asText();
+            }
+            var usageNode = node.get("usage");
+            if (usageNode != null && !usageNode.isNull()) {
+                usage = new ChatResponse.Usage(
+                    getInt(usageNode, "prompt_tokens"),
+                    getInt(usageNode, "completion_tokens"),
+                    getInt(usageNode, "total_tokens"));
+            }
+            var choices = node.get("choices");
+            if (choices == null || !choices.isArray() || choices.isEmpty()) {
+                continue;
+            }
+            var delta = choices.get(0).get("delta");
+            if (delta == null) {
+                continue;
+            }
+            var deltaContent = delta.get("content");
+            if (deltaContent != null && !deltaContent.isNull() && !deltaContent.asText().isEmpty()) {
+                content.append(deltaContent.asText());
+                listener.onDelta(deltaContent.asText());
+            }
+        }
+        if (content.isEmpty()) {
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Empty response from AI service");
+        }
+        var response = new ChatResponse(content.toString(), model, usage);
+        listener.onComplete(response);
+        return response;
     }
 
     /** 供「测试连通」使用：GET /models，返回模型 id 列表（最多 50 个）。 */
@@ -109,7 +217,7 @@ public class OpenAiCompatibleClient {
         }
     }
 
-    private static Map<String, Object> buildChatBody(AiEndpoint endpoint, List<ChatMessage> messages) {
+    private static Map<String, Object> buildChatBody(AiEndpoint endpoint, List<ChatMessage> messages, boolean stream) {
         var payload = new ArrayList<Map<String, String>>();
         payload.add(Map.of("role", "system", "content", SYSTEM_PROMPT));
         for (var message : messages) {
@@ -120,7 +228,7 @@ public class OpenAiCompatibleClient {
             "messages", payload,
             "thinking", Map.of("type", "disabled"),
             "tool_choice", "none",
-            "stream", false,
+            "stream", stream,
             "max_tokens", endpoint.maxOutputTokens()
         );
     }
