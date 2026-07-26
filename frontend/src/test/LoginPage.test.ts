@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+
+// L-15：弹窗 Teleport 到 body——用例间自动卸载组件，防止残留实例跨用例响应
+enableAutoUnmount(afterEach)
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import LoginPage from '../pages/LoginPage.vue'
@@ -67,15 +70,31 @@ async function fillAndSubmit(wrapper: ReturnType<typeof mount>, options: { remem
   if (options.remember) await wrapper.find('input[type="checkbox"]').setValue(true)
   await wrapper.find('form').trigger('submit.prevent')
   await flushPromises()
+  // L-15：提交先过人机验证弹窗（Teleport 到 body）——点击“我不是机器人”并推进打勾停留计时
+  const startBtn = document.body.querySelector<HTMLButtonElement>('.verify-start')
+  if (startBtn) {
+    startBtn.click()
+    await flushPromises()
+    vi.advanceTimersByTime(700)
+    await flushPromises()
+  }
 }
 
 beforeEach(() => {
+  vi.useFakeTimers()
+  document.body.innerHTML = ''
   sessionStorage.clear()
   localStorage.clear()
   setActivePinia(createPinia())
+  // auth.ts 的 memorySession 是模块级兜底缓存，仅清 storage 清不掉——必须经 clearSession 一并清除
+  useAuthStore().clearSession()
   mockLogin.mockReset()
   mockFetchChallenge.mockReset()
   mockFetchChallenge.mockResolvedValue(POW_CHALLENGE)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('FD-9 通用登录页', () => {

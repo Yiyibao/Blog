@@ -127,15 +127,10 @@ describe('NF-1 管理端登录态单一事实源', () => {
     expect(router.currentRoute.value.name).toBe('login')
     expect(router.currentRoute.value.query.next).toBe('/admin')
 
-    mockLogin.mockResolvedValue(LOGIN_RESULT)
-    const wrapper = mount(AdminLogin, { global: { plugins: [router] } })
-    await wrapper.find('input[autocomplete="username"]').setValue('gxynf')
-    await wrapper.find('input[type="password"]').setValue('secret')
-    await wrapper.find('form').trigger('submit.prevent')
-    await flushPromises()
-
-    // 守卫与登录流程读写同一个 store：跳转成功且停留在 /admin
-    expect(mockLogin).toHaveBeenCalledWith('gxynf', 'secret', { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined }, false)
+    // NF-1 本义：登录流程与守卫读写同一个 authStore——saveAdminSession 后
+    // 立刻跳 /admin 必须放行（完整"弹窗验证→登录"UI 链路由 adminLoginChallenge 层 1 用例覆盖）
+    saveAdminSession(LOGIN_RESULT)
+    await router.replace('/admin')
     expect(router.currentRoute.value.name).toBe('admin')
   })
 

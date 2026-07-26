@@ -3,13 +3,14 @@ import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { hasValidAdminSession } from '../api/admin'
 import { useLoginForm } from '../composables/useLoginForm'
+import HumanVerifyModal from './HumanVerifyModal.vue'
 
 const router = useRouter()
 // FD-9：表单逻辑提取为 useLoginForm，与 /login 通用登录页共用
+// L-15：人机验证改显性弹窗——提交先过 HumanVerifyModal，通过后才发登录请求
 const {
-  username, password, error, submitting, verifying, remember,
-  captchaRequired, captchaImage, captchaAnswer,
-  refreshCaptcha, submit,
+  username, password, error, submitting, remember,
+  verifyOpen, handleVerified, handleVerifyCancel, submit,
 } = useLoginForm(async () => {
   await router.replace('/admin')
 })
@@ -33,34 +34,18 @@ onMounted(() => {
       <p>使用本机配置的管理账号继续。</p>
       <label>用户名<input v-model="username" autocomplete="username" required placeholder="admin"></label>
       <label>密码<input v-model="password" type="password" autocomplete="current-password" required placeholder="••••••••••••"></label>
-      <div v-if="captchaRequired" class="admin-captcha">
-        <label for="captcha-answer">图形验证码</label>
-        <button
-          type="button"
-          class="admin-captcha-image"
-          title="看不清？点击换一张"
-          :disabled="submitting"
-          @click="refreshCaptcha"
-        >
-          <img v-if="captchaImage" :src="captchaImage" alt="图形验证码，点击可更换">
-        </button>
-        <div class="admin-captcha-row">
-          <input
-            id="captcha-answer"
-            v-model="captchaAnswer"
-            autocomplete="off"
-            inputmode="text"
-            placeholder="输入图中字符（不区分大小写）"
-          >
-          <button type="button" class="admin-captcha-refresh" :disabled="submitting" @click="refreshCaptcha">换一张</button>
-        </div>
-      </div>
       <p v-if="error" class="admin-error" role="alert" aria-live="assertive">{{ error }}</p>
       <label class="admin-remember"><input v-model="remember" type="checkbox"> 在这台设备上保持登录（24 小时）</label>
       <button class="button primary" type="submit" :disabled="submitting">
-        {{ verifying ? '安全校验中…' : submitting ? '正在验证…' : '进入工作台 ↗' }}
+        {{ submitting ? '正在验证…' : '进入工作台 ↗' }}
       </button>
       <small>{{ remember ? '令牌将在本设备保留 24 小时，可随时退出登录。' : '登录令牌仅保存在当前浏览器会话中。' }}</small>
     </form>
+    <HumanVerifyModal
+      :open="verifyOpen"
+      :username="username"
+      @verified="handleVerified"
+      @cancel="handleVerifyCancel"
+    />
   </section>
 </template>
