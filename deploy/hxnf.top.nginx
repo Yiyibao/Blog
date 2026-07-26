@@ -2,6 +2,9 @@
 limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
 # L-7：登录 challenge 接口限速（重试 + 换一张需要比登录更宽的额度，应用层另有 15 次/分限流）
 limit_req_zone $binary_remote_addr zone=challenge_limit:10m rate=15r/m;
+# FD-1：/api/ 全局兜底限速——应用层限流是进程内固定窗口（重启即失效），nginx 层补第二道防线；
+# burst 120 nodelay 吸收 SPA 页面加载的并发突发，持续超 60r/m 才拒绝
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=60r/m;
 
 server {
     listen 80;
@@ -64,7 +67,24 @@ server {
         proxy_read_timeout 60s;
     }
 
+    # FD-1：kitchen（今日菜单/打卡）为纯 JSON 小请求体，收紧上限防滥用
+    location /api/v1/kitchen/ {
+        limit_req zone=api_limit burst=120 nodelay;
+        limit_req_status 429;
+        client_max_body_size 128k;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+    }
+
     location /api/ {
+        limit_req zone=api_limit burst=120 nodelay;
+        limit_req_status 429;
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
