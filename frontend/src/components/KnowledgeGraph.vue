@@ -18,32 +18,26 @@ export interface GraphEdge {
   target: string
 }
 
-type GraphFilterType = 'ALL' | 'POST' | 'NOTE' | 'DISH' | 'TAG'
-
 const props = withDefaults(
   defineProps<{
     initialNodes?: GraphNode[]
     initialEdges?: GraphEdge[]
     selectedRelation?: string
-    selectedType?: GraphFilterType
   }>(),
   {
     initialNodes: () => [],
     initialEdges: () => [],
     selectedRelation: '',
-    selectedType: 'ALL',
   }
 )
 
 const emit = defineEmits<{
   (e: 'selectTag', tag: string): void
   (e: 'selectNode', node: GraphNode | null): void
-  (e: 'selectType', type: GraphFilterType): void
 }>()
 
 const router = useRouter()
 const isFullscreen = ref(false)
-const filterType = ref<GraphFilterType>(props.selectedType)
 const nodes = ref<GraphNode[]>([])
 const edges = ref<GraphEdge[]>([])
 const loading = ref(false)
@@ -53,6 +47,54 @@ const hoveredNodeId = ref<string | null>(null)
 
 // Maximum nodes to display for clarity
 const MAX_DISPLAY_NODES = 40
+
+// L-13：平移/缩放视窗（viewBox 驱动，零依赖）；reduced-motion 用户仍可用（非动画，是导航）
+const BASE_W = 800
+const BASE_H = 480
+const zoom = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const viewBox = computed(() => {
+  const w = BASE_W / zoom.value
+  const h = BASE_H / zoom.value
+  const x = (BASE_W - w) / 2 + panX.value
+  const y = (BASE_H - h) / 2 + panY.value
+  return `${x} ${y} ${w} ${h}`
+})
+
+function zoomBy(factor: number) {
+  zoom.value = Math.min(3, Math.max(0.6, zoom.value * factor))
+}
+
+function resetView() {
+  zoom.value = 1
+  panX.value = 0
+  panY.value = 0
+}
+
+let dragState: { startX: number; startY: number; panX: number; panY: number } | null = null
+
+function onPointerDown(event: PointerEvent) {
+  // 节点自身可点击/可拖出选中——仅空白处按下才开始平移
+  if ((event.target as Element).closest('.graph-node')) return
+  dragState = { startX: event.clientX, startY: event.clientY, panX: panX.value, panY: panY.value }
+  ;(event.currentTarget as Element).setPointerCapture(event.pointerId)
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (!dragState) return
+  const scale = 1 / zoom.value
+  panX.value = dragState.panX - (event.clientX - dragState.startX) * scale
+  panY.value = dragState.panY - (event.clientY - dragState.startY) * scale
+}
+
+function onPointerUp() {
+  dragState = null
+}
+
+function onWheel(event: WheelEvent) {
+  zoomBy(event.deltaY < 0 ? 1.12 : 1 / 1.12)
+}
 
 async function loadGraphData() {
   if (props.initialNodes && props.initialNodes.length > 0) {
@@ -98,6 +140,7 @@ const nodeDegree = computed(() => {
   return degree
 })
 
+// L-13/D-15：分类筛选整体移除，仅保留数量上限与节点点击驱动的关联交互
 const filteredNodes = computed(() => {
   const tags = nodes.value
     .filter((node) => node.type === 'TAG')
@@ -105,20 +148,7 @@ const filteredNodes = computed(() => {
   const content = nodes.value
     .filter((node) => node.type !== 'TAG')
     .sort((a, b) => a.id.localeCompare(b.id))
-
-  if (filterType.value === 'TAG') return tags.slice(0, MAX_DISPLAY_NODES)
-  if (filterType.value === 'ALL') {
-    return [...tags.slice(0, 12), ...content.slice(0, MAX_DISPLAY_NODES - 12)]
-  }
-
-  const filteredContent = content.filter((node) => node.type === filterType.value).slice(0, 30)
-  const contentIds = new Set(filteredContent.map((node) => node.id))
-  const relatedTagIds = new Set<string>()
-  edges.value.forEach((edge) => {
-    if (contentIds.has(edge.source)) relatedTagIds.add(edge.target)
-    if (contentIds.has(edge.target)) relatedTagIds.add(edge.source)
-  })
-  return [...tags.filter((node) => relatedTagIds.has(node.id)).slice(0, 10), ...filteredContent]
+  return [...tags.slice(0, 12), ...content.slice(0, MAX_DISPLAY_NODES - 12)]
 })
 
 const activeNodeIds = computed(() => new Set(filteredNodes.value.map((n) => n.id)))
@@ -127,7 +157,13 @@ const filteredEdges = computed(() => {
   return edges.value.filter((e) => activeNodeIds.value.has(e.source) && activeNodeIds.value.has(e.target))
 })
 
-// Deterministic layout algorithm: 100% stable SVG coordinates
+/** L-13/D-16：零依赖确定性布局——环形基座 + id 哈希有机抖动（同一数据集坐标恒定，测试可复现）。 */
+function hashJitter(id: string, salt: number): number {
+  let h = salt
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return ((h % 1000) / 1000 - 0.5) * 36
+}
+
 const positionedNodes = computed(() => {
   const list = [...filteredNodes.value].sort((a, b) => {
     const typeOrder: Record<string, number> = { TAG: 1, POST: 2, NOTE: 3, DISH: 4 }
@@ -136,24 +172,23 @@ const positionedNodes = computed(() => {
     return a.id.localeCompare(b.id)
   })
 
-  const width = 800
-  const height = 480
-  const cx = width / 2
-  const cy = height / 2
+  const cx = BASE_W / 2
+  const cy = BASE_H / 2
 
   const tagNodes = list.filter((n) => n.type === 'TAG')
   const contentNodes = list.filter((n) => n.type !== 'TAG')
 
-  const map = new Map<string, GraphNode & { x: number; y: number; radius: number }>()
+  const map = new Map<string, GraphNode & { x: number; y: number; radius: number; order: number }>()
 
   tagNodes.forEach((node, idx) => {
     const total = tagNodes.length
     const angle = total === 1 ? 0 : (idx / total) * Math.PI * 2 - Math.PI / 2
     map.set(node.id, {
       ...node,
-      x: cx + Math.cos(angle) * 90,
-      y: cy + Math.sin(angle) * 90,
+      x: cx + Math.cos(angle) * 90 + hashJitter(node.id, 7),
+      y: cy + Math.sin(angle) * 90 + hashJitter(node.id, 13),
       radius: 18,
+      order: idx,
     })
   })
 
@@ -163,9 +198,10 @@ const positionedNodes = computed(() => {
     const radius = 175 + (idx % 2) * 45
     map.set(node.id, {
       ...node,
-      x: cx + Math.cos(angle) * radius,
-      y: cy + Math.sin(angle) * radius,
+      x: cx + Math.cos(angle) * radius + hashJitter(node.id, 7),
+      y: cy + Math.sin(angle) * radius + hashJitter(node.id, 13),
       radius: 20,
+      order: tagNodes.length + idx,
     })
   })
 
@@ -215,11 +251,6 @@ function handleNodeClick(node: GraphNode) {
   }
 }
 
-function setFilterType(type: GraphFilterType) {
-  filterType.value = type
-  emit('selectType', type)
-}
-
 function clearSelection() {
   if (selectedNode.value?.type === 'TAG') emit('selectTag', '')
   selectedNodeId.value = null
@@ -238,10 +269,6 @@ function toggleFullscreen() {
 
 onMounted(() => {
   void loadGraphData()
-})
-
-watch(() => props.selectedType, (type) => {
-  filterType.value = type
 })
 
 watch([() => props.selectedRelation, nodes], ([relation]) => {
@@ -271,22 +298,10 @@ watch(filteredNodes, (visibleNodes) => {
         <h3>全站知识关联图谱</h3>
       </div>
       <div class="graph-filters">
-        <button
-          v-for="t in [
-            { id: 'ALL', name: '全部' },
-            { id: 'POST', name: '文章' },
-            { id: 'NOTE', name: '笔记' },
-            { id: 'DISH', name: '菜谱' },
-            { id: 'TAG', name: '标签' },
-          ]"
-          :key="t.id"
-          type="button"
-          class="filter-pill"
-          :class="{ active: filterType === t.id }"
-          @click="setFilterType(t.id as GraphFilterType)"
-        >
-          {{ t.name }}
-        </button>
+        <!-- L-13：分类筛选移除；平移/缩放控制取而代之 -->
+        <button type="button" class="view-ctrl-btn" aria-label="放大" @click="zoomBy(1.25)">＋</button>
+        <button type="button" class="view-ctrl-btn" aria-label="缩小" @click="zoomBy(1 / 1.25)">－</button>
+        <button type="button" class="view-ctrl-btn" aria-label="复位视图" @click="resetView">⟳</button>
         <button type="button" class="fullscreen-btn" :title="isFullscreen ? '退出全屏' : '全屏浏览'" @click="toggleFullscreen">
           {{ isFullscreen ? '⤢ 退出全屏' : '⤢ 全屏罗盘' }}
         </button>
@@ -308,20 +323,28 @@ watch(filteredNodes, (visibleNodes) => {
 
     <div v-else class="svg-wrapper">
       <svg
-        viewBox="0 0 800 480"
+        :viewBox="viewBox"
         preserveAspectRatio="xMidYMid meet"
-        aria-label="知识关联图谱"
+        aria-label="知识关联图谱（可拖拽平移、滚轮缩放）"
+        class="graph-svg"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+        @wheel.prevent="onWheel"
       >
-        <!-- Edges -->
+        <!-- Edges：入场描线动画（pathLength 归一化 dasharray） -->
         <g class="graph-edges">
           <line
             v-for="(edge, idx) in filteredEdges"
-            :key="`edge-${idx}-${edge.source}-${edge.target}`"
+            :key="`edge-${edge.source}-${edge.target}`"
             :x1="positionedNodes.get(edge.source)?.x"
             :y1="positionedNodes.get(edge.source)?.y"
             :x2="positionedNodes.get(edge.target)?.x"
             :y2="positionedNodes.get(edge.target)?.y"
+            pathLength="1"
             class="graph-edge"
+            :style="{ animationDelay: `${Math.min(idx * 18, 700) + 250}ms` }"
             :class="{
               highlighted: activeHighlightId && (edge.source === activeHighlightId || edge.target === activeHighlightId),
               faded: activeHighlightId && !(edge.source === activeHighlightId || edge.target === activeHighlightId)
@@ -329,12 +352,13 @@ watch(filteredNodes, (visibleNodes) => {
           />
         </g>
 
-        <!-- Nodes -->
+        <!-- Nodes：transform 定位（布局变化平滑过渡）+ 错峰入场 + 轻微呼吸漂浮 -->
         <g class="graph-nodes">
           <g
             v-for="[id, node] in positionedNodes"
             :key="id"
             class="graph-node"
+            :style="{ transform: `translate(${node.x}px, ${node.y}px)`, animationDelay: `${Math.min(node.order * 45, 900)}ms` }"
             :class="{
               selected: selectedNodeId === id,
               highlighted: activeHighlightId && neighborNodeIds.has(id),
@@ -349,39 +373,36 @@ watch(filteredNodes, (visibleNodes) => {
             @keydown.enter.prevent="handleNodeClick(node)"
             @keydown.space.prevent="handleNodeClick(node)"
           >
-            <!-- 44x44 minimum touch/pointer target area -->
-            <circle :cx="node.x" :cy="node.y" r="22" fill="transparent" class="hit-target" />
+            <g class="node-float" :style="{ animationDelay: `${(node.order % 7) * -1.1}s` }">
+              <!-- 44x44 minimum touch/pointer target area -->
+              <circle r="22" fill="transparent" class="hit-target" />
 
-            <!-- Selection ring -->
-            <circle
-              v-if="selectedNodeId === id"
-              :cx="node.x"
-              :cy="node.y"
-              :r="node.radius + 6"
-              fill="none"
-              stroke="var(--accent)"
-              stroke-width="2"
-              class="selection-ring"
-            />
+              <!-- Selection ring -->
+              <circle
+                v-if="selectedNodeId === id"
+                :r="node.radius + 6"
+                fill="none"
+                stroke="var(--accent)"
+                stroke-width="2"
+                class="selection-ring"
+              />
 
-            <!-- Main Circle -->
-            <circle
-              :cx="node.x"
-              :cy="node.y"
-              :r="node.radius"
-              :fill="getNodeColor(node.type)"
-              class="node-circle"
-            />
+              <!-- Main Circle -->
+              <circle
+                :r="node.radius"
+                :fill="getNodeColor(node.type)"
+                class="node-circle"
+              />
 
-            <!-- Label -->
-            <text
-              :x="node.x"
-              :y="node.y + node.radius + 14"
-              text-anchor="middle"
-              class="node-label"
-            >
-              {{ node.label }}
-            </text>
+              <!-- Label -->
+              <text
+                :y="node.radius + 14"
+                text-anchor="middle"
+                class="node-label"
+              >
+                {{ node.label }}
+              </text>
+            </g>
           </g>
         </g>
       </svg>
@@ -466,24 +487,20 @@ watch(filteredNodes, (visibleNodes) => {
   gap: 8px;
   flex-wrap: wrap;
 }
-.filter-pill {
+/* L-13：平移/缩放控制钮 */
+.view-ctrl-btn {
+  min-width: 44px;
   min-height: 44px;
-  padding: 5px 12px;
   border-radius: 999px;
   background: var(--surface);
   border: 1px solid var(--line);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: color 0.2s, border-color 0.2s;
 }
-.filter-pill:hover {
+.view-ctrl-btn:hover {
   color: var(--ink);
-  border-color: var(--accent);
-}
-.filter-pill.active {
-  background: var(--accent);
-  color: #fff;
   border-color: var(--accent);
 }
 
@@ -523,11 +540,26 @@ svg {
   max-height: 500px;
 }
 
+.graph-svg {
+  cursor: grab;
+  touch-action: none;
+}
+.graph-svg:active {
+  cursor: grabbing;
+}
+
+/* L-13：连线入场描线（pathLength=1 使 dasharray 归一化），随后保持常规态 */
 .graph-edge {
   stroke: var(--line-strong);
   stroke-opacity: 0.4;
   stroke-width: 1.5px;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: edge-draw 0.9s ease-out forwards;
   transition: stroke 0.2s, stroke-opacity 0.2s, stroke-width 0.2s;
+}
+@keyframes edge-draw {
+  to { stroke-dashoffset: 0; }
 }
 .graph-edge.highlighted {
   stroke: var(--accent);
@@ -538,10 +570,17 @@ svg {
   stroke-opacity: 0.1;
 }
 
+/* L-13：节点 transform 定位——布局变化时平滑滑移；错峰浮现入场 */
 .graph-node {
   cursor: pointer;
   outline: none;
-  transition: opacity 0.2s;
+  opacity: 0;
+  animation: node-enter 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
+  transition: opacity 0.25s, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes node-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .graph-node:focus-visible .node-circle {
   stroke: var(--accent);
@@ -549,10 +588,24 @@ svg {
 }
 .graph-node.faded {
   opacity: 0.2;
+  animation: none;
+}
+
+/* L-13：持续的轻微呼吸漂浮（振幅 3px，非大幅循环），负延迟错相 */
+.node-float {
+  animation: node-float 7s ease-in-out infinite alternate;
+}
+@keyframes node-float {
+  from { transform: translateY(-3px); }
+  to { transform: translateY(3px); }
+}
+.graph-node:hover .node-circle,
+.graph-node.highlighted .node-circle {
+  filter: brightness(1.12);
 }
 
 .node-circle {
-  transition: stroke 0.2s, stroke-width 0.2s;
+  transition: stroke 0.2s, stroke-width 0.2s, filter 0.25s;
 }
 
 .node-label {
@@ -658,12 +711,26 @@ svg {
   border-radius: 50%;
 }
 
+/* L-13：reduced-motion 降级为静态布局——入场/呼吸/描线全部关闭，直接呈现终态 */
 @media (prefers-reduced-motion: reduce) {
   .knowledge-graph-container,
   .graph-edge,
   .graph-node,
   .node-circle {
     transition: none !important;
+    animation: none !important;
+  }
+  .graph-node {
+    opacity: 1;
+  }
+  .graph-node.faded {
+    opacity: 0.2;
+  }
+  .graph-edge {
+    stroke-dashoffset: 0;
+  }
+  .node-float {
+    animation: none !important;
   }
 }
 

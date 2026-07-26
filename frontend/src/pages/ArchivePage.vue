@@ -29,34 +29,16 @@ const loadError = ref('')
 /** NF-8：三路数据部分失败时的提示条文案（全败走 loadError 整页错误态） */
 const partialError = ref('')
 
-const viewMode = computed(() => {
-  const raw = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view
-  return raw === 'graph' ? 'graph' : 'timeline'
-})
-
-const typeFilter = computed(() => {
-  const raw = Array.isArray(route.query.type) ? route.query.type[0] : route.query.type
-  const valid = ['article', 'note', 'dish']
-  return typeof raw === 'string' && valid.includes(raw) ? raw : 'all'
-})
-
 const selectedRelation = computed(() => {
   const raw = Array.isArray(route.query.relation) ? route.query.relation[0] : route.query.relation
   return typeof raw === 'string' ? raw : ''
 })
 
-function updateQuery(patch: { view?: string; type?: string; relation?: string | null }) {
+/** L-13：视图切换与类型分类已移除，URL 仅承载 relation；旧链接的 view/type 参数顺带清除。 */
+function updateQuery(patch: { relation?: string | null }) {
   const query = { ...route.query }
-
-  if (patch.view !== undefined) {
-    if (patch.view === 'timeline' || !patch.view) delete query.view
-    else query.view = patch.view
-  }
-
-  if (patch.type !== undefined) {
-    if (patch.type === 'all' || !patch.type) delete query.type
-    else query.type = patch.type
-  }
+  delete query.view
+  delete query.type
 
   if (patch.relation !== undefined) {
     if (!patch.relation) delete query.relation
@@ -89,16 +71,11 @@ function toEntry(item: PostSummary | Dish | AdminNoteSummary, type: ArchiveConte
 }
 
 const allEntries = computed(() => {
-  const result: ArchiveEntry[] = []
-  if (typeFilter.value === 'all' || typeFilter.value === 'article') {
-    result.push(...posts.value.map(p => toEntry(p, 'ARTICLE')))
-  }
-  if (typeFilter.value === 'all' || typeFilter.value === 'dish') {
-    result.push(...dishes.value.map(d => toEntry(d, 'DISH')))
-  }
-  if (typeFilter.value === 'all' || typeFilter.value === 'note') {
-    result.push(...notes.value.map(n => toEntry(n, 'NOTE')))
-  }
+  const result: ArchiveEntry[] = [
+    ...posts.value.map(p => toEntry(p, 'ARTICLE')),
+    ...dishes.value.map(d => toEntry(d, 'DISH')),
+    ...notes.value.map(n => toEntry(n, 'NOTE')),
+  ]
 
   let filtered = result
   if (selectedRelation.value) {
@@ -160,8 +137,6 @@ const typeLabel: Record<string, string> = {
   DISH: '菜品',
 }
 
-const graphType = computed(() => ({ article: 'POST', note: 'NOTE', dish: 'DISH' } as const)[typeFilter.value as 'article' | 'note' | 'dish'] || 'ALL')
-
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -191,11 +166,6 @@ function handleSelectTag(tagText: string) {
   updateQuery({ relation: tagText || null })
 }
 
-function handleGraphType(type: 'ALL' | 'POST' | 'NOTE' | 'DISH' | 'TAG') {
-  const queryType = ({ POST: 'article', NOTE: 'note', DISH: 'dish' } as const)[type as 'POST' | 'NOTE' | 'DISH'] || 'all'
-  updateQuery({ type: queryType })
-}
-
 onMounted(load)
 </script>
 
@@ -204,44 +174,22 @@ onMounted(load)
     <header class="archive-head">
       <div class="head-top">
         <p class="eyebrow"><span /> ARCHIVE / 内容存档</p>
-        <nav class="view-switch-nav" role="tablist" aria-label="视图模式">
-          <button
-            role="tab"
-            :aria-selected="viewMode === 'timeline'"
-            class="view-switch-btn"
-            :class="{ active: viewMode === 'timeline' }"
-            @click="updateQuery({ view: 'timeline' })"
-          >
-            <i>☰</i> 时间轴
-          </button>
-          <button
-            role="tab"
-            :aria-selected="viewMode === 'graph'"
-            class="view-switch-btn"
-            :class="{ active: viewMode === 'graph' }"
-            @click="updateQuery({ view: 'graph' })"
-          >
-            <i>✦</i> 关联图
-          </button>
-        </nav>
       </div>
 
       <h1>从开始到现在，<br><em>所有记录都在这里。</em></h1>
-      <p>按时间倒序浏览所有公开的文章、学习笔记和菜谱，或通过关联图谱发现知识脉络。</p>
+      <p>知识图谱呈现内容脉络，时间轴按时间倒序铺陈全部公开记录。</p>
     </header>
 
-    <!-- Graph View -->
-    <div v-if="viewMode === 'graph'" class="archive-graph-view">
+    <!-- L-13：知识图谱常驻时间轴上方，单页纵向流（旧 ?view=graph 链接落在同一页，参数忽略） -->
+    <div class="archive-graph-view">
       <KnowledgeGraph
         :selected-relation="selectedRelation"
-        :selected-type="graphType"
         @select-tag="handleSelectTag"
-        @select-type="handleGraphType"
       />
     </div>
 
-    <!-- Timeline View -->
-    <div v-else-if="viewMode === 'timeline'" class="archive-timeline-view">
+    <!-- Timeline -->
+    <div class="archive-timeline-view">
       <div class="archive-toolbar">
         <div class="toolbar-left">
           <strong>{{ totalCount }} 条记录</strong>
@@ -250,16 +198,6 @@ onMounted(load)
             <button type="button" aria-label="清除关联筛选" @click="updateQuery({ relation: null })">✕</button>
           </span>
         </div>
-        <nav class="archive-filters" role="tablist" aria-label="内容类型筛选">
-          <button
-            v-for="opt in [['all', '全部'], ['article', '文章'], ['note', '学习笔记'], ['dish', '菜谱']]"
-            :key="opt[0]"
-            role="tab"
-            :aria-selected="typeFilter === opt[0]"
-            :class="{ active: typeFilter === opt[0] }"
-            @click="updateQuery({ type: opt[0] })"
-          >{{ opt[1] }}</button>
-        </nav>
       </div>
 
       <div v-if="!loading && partialError" class="archive-partial-notice" role="alert">
@@ -311,6 +249,9 @@ onMounted(load)
   padding-top: clamp(72px, 9vw, 120px);
   padding-bottom: 110px;
 }
+/* L-13：图谱常驻时间轴上方的纵向间距 */
+.archive-graph-view { margin-bottom: 44px; }
+
 /* NF-8：部分失败提示条 */
 .archive-partial-notice {
   display: flex;

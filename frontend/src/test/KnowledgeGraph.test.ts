@@ -57,32 +57,55 @@ describe('KnowledgeGraph Component', () => {
   })
 
   it('renders deterministic node positions for identical input data across multiple mounts', async () => {
+    // L-13：节点改 transform 定位（布局过渡动画载体）——确定性断言改读 style.transform
+    const readPositions = (wrapper: Awaited<ReturnType<typeof mountGraph>>['wrapper']) =>
+      wrapper.findAll('g.graph-node').map((nodeEl) => ({
+        id: nodeEl.attributes('aria-label'),
+        transform: (nodeEl.attributes('style') || '').match(/translate\([^)]*\)/)?.[0],
+      }))
+
     const { wrapper: wrapper1 } = await mountGraph()
     await flushPromises()
-
-    const nodes1 = wrapper1.findAll('g.graph-node').map((nodeEl) => {
-      const circle = nodeEl.find('circle.node-circle')
-      return {
-        id: nodeEl.attributes('aria-label'),
-        cx: circle.attributes('cx'),
-        cy: circle.attributes('cy'),
-      }
-    })
+    const nodes1 = readPositions(wrapper1)
 
     const { wrapper: wrapper2 } = await mountGraph()
     await flushPromises()
-
-    const nodes2 = wrapper2.findAll('g.graph-node').map((nodeEl) => {
-      const circle = nodeEl.find('circle.node-circle')
-      return {
-        id: nodeEl.attributes('aria-label'),
-        cx: circle.attributes('cx'),
-        cy: circle.attributes('cy'),
-      }
-    })
+    const nodes2 = readPositions(wrapper2)
 
     expect(nodes1.length).toBeGreaterThan(0)
+    expect(nodes1.every((n) => n.transform)).toBe(true)
     expect(nodes1).toEqual(nodes2)
+  })
+
+  it('L-13: category filter pills are gone while pan/zoom controls exist', async () => {
+    const { wrapper } = await mountGraph()
+    await flushPromises()
+
+    expect(wrapper.find('.filter-pill').exists()).toBe(false)
+    const ctrls = wrapper.findAll('.view-ctrl-btn')
+    expect(ctrls.length).toBe(3)
+
+    // 缩放按钮驱动 viewBox 变化（零依赖视窗导航）
+    const svg = wrapper.find('svg.graph-svg')
+    const before = svg.attributes('viewBox')
+    await ctrls[0].trigger('click')
+    expect(svg.attributes('viewBox')).not.toBe(before)
+    // 复位后还原
+    await ctrls[2].trigger('click')
+    expect(svg.attributes('viewBox')).toBe(before)
+  })
+
+  it('L-13: nodes carry staggered entry delays and breathing float wrapper', async () => {
+    const { wrapper } = await mountGraph()
+    await flushPromises()
+
+    const nodes = wrapper.findAll('g.graph-node')
+    expect(nodes.length).toBeGreaterThan(1)
+    // 错峰入场：不同 order 的节点 animation-delay 不同
+    const delays = nodes.map((n) => (n.attributes('style') || '').match(/animation-delay: ([^;]+)/)?.[1])
+    expect(new Set(delays).size).toBeGreaterThan(1)
+    // 呼吸漂浮载体存在
+    expect(wrapper.find('.node-float').exists()).toBe(true)
   })
 
   it('selects content node on first click without immediate navigation', async () => {

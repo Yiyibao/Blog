@@ -70,30 +70,27 @@ describe('ArchivePage', () => {
     expect(text).toContain('菜品名称')
   })
 
-  it('switches between timeline and graph view without rendering both simultaneously', async () => {
+  it('L-13: renders graph above timeline in one page flow (legacy ?view=graph ignored)', async () => {
     mockPosts.mockResolvedValue({ items: [], page: 0, size: 10, totalElements: 0, totalPages: 1 })
     mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
     mockNotes.mockResolvedValue({ items: [], page: 0, size: 20, totalElements: 0, totalPages: 1 })
 
-    const { wrapper, router } = await mountPage('/archive?view=timeline')
+    const { wrapper } = await mountPage('/archive?view=graph')
     await flushPromises()
 
-    expect(wrapper.find('.archive-timeline-view').exists()).toBe(true)
-    expect(wrapper.find('.archive-graph-view').exists()).toBe(false)
-
-    // Switch to graph view by clicking button
-    const buttons = wrapper.findAll('.view-switch-btn')
-    const graphBtn = buttons.find(b => b.text().includes('关联图'))
-    expect(graphBtn).toBeDefined()
-    await graphBtn!.trigger('click')
-    await flushPromises()
-
-    expect(router.currentRoute.value.query.view).toBe('graph')
-    expect(wrapper.find('.archive-graph-view').exists()).toBe(true)
-    expect(wrapper.find('.archive-timeline-view').exists()).toBe(false)
+    // 图谱与时间轴同页纵向呈现，图谱在前
+    const graph = wrapper.find('.archive-graph-view')
+    const timeline = wrapper.find('.archive-timeline-view')
+    expect(graph.exists()).toBe(true)
+    expect(timeline.exists()).toBe(true)
+    const html = wrapper.html()
+    expect(html.indexOf('archive-graph-view')).toBeLessThan(html.indexOf('archive-timeline-view'))
+    // 视图切换与类型分类 tab 已移除
+    expect(wrapper.find('.view-switch-btn').exists()).toBe(false)
+    expect(wrapper.find('.archive-filters').exists()).toBe(false)
   })
 
-  it('syncs type and relation filters to URL query', async () => {
+  it('keeps relation filter in URL and strips legacy view/type params on update', async () => {
     mockPosts.mockResolvedValue({
       items: [{ slug: 'p1', title: 'Vue文章', excerpt: '', date: '2026-07-01', readTime: 1, category: 'Vue', tags: ['Vue'], color: '#000', number: '01', featured: false, status: 'PUBLISHED', content: '' }],
       page: 0, size: 10, totalElements: 1, totalPages: 1,
@@ -104,9 +101,14 @@ describe('ArchivePage', () => {
     const { wrapper, router } = await mountPage('/archive?type=article&relation=Vue')
     await flushPromises()
 
-    expect(router.currentRoute.value.query.type).toBe('article')
-    expect(router.currentRoute.value.query.relation).toBe('Vue')
     expect(wrapper.text()).toContain('关联: Vue')
+
+    // 清除关联时旧 view/type 参数一并剥离
+    await wrapper.find('.relation-pill button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query.relation).toBeUndefined()
+    expect(router.currentRoute.value.query.type).toBeUndefined()
+    expect(router.currentRoute.value.query.view).toBeUndefined()
   })
 
   it('generates correct article, note, and dish URLs', async () => {
