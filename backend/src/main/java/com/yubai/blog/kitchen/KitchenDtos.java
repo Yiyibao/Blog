@@ -74,6 +74,41 @@ public final class KitchenDtos {
         }
     }
 
+    /** FD-15：打卡请求——logDate 为 String（Service 内 parse，统一 400 文案）。 */
+    public record MealLogRequest(
+        @Size(max = 120) String dishSlug,
+        @Size(max = 120) String title,
+        @NotNull MealSlot mealSlot,
+        @NotNull String logDate,
+        @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(5) Integer rating,
+        @Size(max = 300) String note
+    ) {
+    }
+
+    public record MealLogResponse(
+        long id,
+        LocalDate logDate,
+        Long dishId,
+        String dishSlug,
+        String title,
+        MealSlot mealSlot,
+        Integer rating,
+        String note,
+        long authorId,
+        String authorName,
+        Instant createdAt
+    ) {
+    }
+
+    /** FD-15/FD-19："我们做过 N 次"聚合，榜单主口径数据源。 */
+    public record DishCookStat(
+        long dishId,
+        String slug,
+        long cookCount,
+        LocalDate lastCookedAt
+    ) {
+    }
+
     public record DailyMenuSummary(
         LocalDate date,
         MenuStatus status,

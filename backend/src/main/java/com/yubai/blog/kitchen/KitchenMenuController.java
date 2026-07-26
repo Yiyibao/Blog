@@ -40,10 +40,12 @@ public class KitchenMenuController {
     static final Duration WRITE_WINDOW = Duration.ofMinutes(1);
 
     private final DailyMenuService service;
+    private final MealLogService mealLogService;
     private final RateLimiter rateLimiter;
 
-    public KitchenMenuController(DailyMenuService service, RateLimiter rateLimiter) {
+    public KitchenMenuController(DailyMenuService service, MealLogService mealLogService, RateLimiter rateLimiter) {
         this.service = service;
+        this.mealLogService = mealLogService;
         this.rateLimiter = rateLimiter;
     }
 
@@ -89,6 +91,57 @@ public class KitchenMenuController {
         var actor = actorOf(authentication);
         throttleWrites(actor);
         return ApiResponse.ok(service.deleteItem(id, actor));
+    }
+
+    // ---- FD-15：打卡（meal-logs）----
+
+    @PostMapping("/meal-logs")
+    public ResponseEntity<ApiResponse<KitchenDtos.MealLogResponse>> createLog(
+        @Valid @RequestBody KitchenDtos.MealLogRequest request, Authentication authentication) {
+        var actor = actorOf(authentication);
+        throttleLogs(actor);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(mealLogService.create(request, actor)));
+    }
+
+    /** FD-18 一键打卡：整桌菜各记一笔（同日同名同餐次幂等跳过）。 */
+    @PostMapping("/menus/check-in")
+    public ResponseEntity<ApiResponse<java.util.List<KitchenDtos.MealLogResponse>>> checkIn(
+        @RequestParam String date, Authentication authentication) {
+        var actor = actorOf(authentication);
+        throttleLogs(actor);
+        var created = mealLogService.checkInMenu(DailyMenuService.parseDate(date), actor);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(created));
+    }
+
+    @GetMapping("/meal-logs")
+    public ApiResponse<PageResponse<KitchenDtos.MealLogResponse>> timeline(
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "20") int size,
+        @RequestParam(required = false) String from,
+        @RequestParam(required = false) String to,
+        @RequestParam(required = false) String dishSlug) {
+        var fromDate = from == null ? null : DailyMenuService.parseDate(from);
+        var toDate = to == null ? null : DailyMenuService.parseDate(to);
+        return ApiResponse.ok(mealLogService.timeline(page, size, fromDate, toDate, dishSlug));
+    }
+
+    @DeleteMapping("/meal-logs/{id}")
+    public ResponseEntity<Void> deleteLog(@PathVariable long id, Authentication authentication) {
+        var actor = actorOf(authentication);
+        throttleLogs(actor);
+        mealLogService.delete(id, actor);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/dish-stats")
+    public ApiResponse<java.util.List<KitchenDtos.DishCookStat>> dishStats() {
+        return ApiResponse.ok(mealLogService.cookStats());
+    }
+
+    private void throttleLogs(DailyMenuService.Actor actor) {
+        if (!rateLimiter.tryAcquire("meallog:" + actor.id(), WRITE_LIMIT, WRITE_WINDOW)) {
+            throw new TooManyRequestsException("操作太频繁啦，休息一分钟再来");
+        }
     }
 
     private void throttleWrites(DailyMenuService.Actor actor) {

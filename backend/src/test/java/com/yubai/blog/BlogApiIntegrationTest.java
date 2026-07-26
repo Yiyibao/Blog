@@ -1551,6 +1551,134 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(53)
+    void mealLogLifecycleWithSnapshotAndPermissions() throws Exception {
+        // FD-15：打卡（按菜谱/自由文本）→ 时间线 → 删他人 403 → 删自己 204
+        String partnerToken = loginAs("partner", "partner-pass-12345");
+        String adminToken = login();
+        rateLimiter.reset();
+        mockMvc.perform(post("/api/v1/kitchen/meal-logs")
+                .header("Authorization", "Bearer " + partnerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dishSlug\":\"authentic-mapo-tofu\",\"mealSlot\":\"DINNER\",\"logDate\":\"2026-08-10\",\"rating\":5,\"note\":\"今天的豆腐特别嫩\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.title").value("麻婆豆腐"))
+            .andExpect(jsonPath("$.data.dishSlug").value("authentic-mapo-tofu"))
+            .andExpect(jsonPath("$.data.authorName").value("测试伴侣"))
+            .andExpect(jsonPath("$.data.rating").value(5));
+        var free = objectMapper.readTree(mockMvc.perform(post("/api/v1/kitchen/meal-logs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"深夜泡面\",\"mealSlot\":\"SNACK\",\"logDate\":\"2026-08-10\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        long freeId = free.path("id").asLong();
+
+        mockMvc.perform(get("/api/v1/kitchen/meal-logs")
+                .header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.items[0].logDate").value("2026-08-10"));
+
+        mockMvc.perform(delete("/api/v1/kitchen/meal-logs/" + freeId)
+                .header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/kitchen/meal-logs/" + freeId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(54)
+    void menuCheckInIsIdempotentAndFeedsCookStats() throws Exception {
+        // FD-15/FD-18：一键打卡整桌菜；重复打卡幂等跳过；dish-stats 聚合可用
+        String adminToken = login();
+        rateLimiter.reset();
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-11")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dishSlug\":\"authentic-mapo-tofu\",\"mealSlot\":\"DINNER\"}"))
+            .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/kitchen/menus/items").param("date", "2026-08-11")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"手打柠檬茶\",\"mealSlot\":\"SNACK\"}"))
+            .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/kitchen/menus/check-in").param("date", "2026-08-11")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.length()").value(2));
+        // 幂等：再打一次全部跳过
+        mockMvc.perform(post("/api/v1/kitchen/menus/check-in").param("date", "2026-08-11")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.length()").value(0));
+
+        var stats = objectMapper.readTree(mockMvc.perform(get("/api/v1/kitchen/dish-stats")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        boolean found = false;
+        for (var stat : stats) {
+            if ("authentic-mapo-tofu".equals(stat.path("slug").asText())) {
+                found = true;
+                assertTrue(stat.path("cookCount").asLong() >= 1, "麻婆豆腐至少做过一次");
+                assertFalse(stat.path("lastCookedAt").asText().isBlank());
+            }
+        }
+        assertTrue(found, "聚合里应有麻婆豆腐");
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(55)
+    void deletingDishKeepsMealLogTitleSnapshot() throws Exception {
+        // FD-15：删菜谱后打卡仍在——dishId 置空、title 快照保留（ON DELETE SET NULL 回归）
+        String adminToken = login();
+        rateLimiter.reset();
+        var created = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/dishes")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"slug":"fd15-temp-dish","name":"临时炖菜","summary":"回归用","category":"测试",
+                     "imageUrl":"/food/x.jpg","imageAlt":"x","imageCredit":"x","imageSourceUrl":"https://example.com",
+                     "prepMinutes":10,"difficulty":"简单","rating":4.0,"featured":false,"published":true,
+                     "displayOrder":98,"ingredients":["水"],"steps":["炖"]}
+                    """))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        long dishId = created.path("id").asLong();
+
+        var log = objectMapper.readTree(mockMvc.perform(post("/api/v1/kitchen/meal-logs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"dishSlug\":\"fd15-temp-dish\",\"mealSlot\":\"DINNER\",\"logDate\":\"2026-08-12\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString()).path("data");
+        long logId = log.path("id").asLong();
+
+        mockMvc.perform(delete("/api/v1/admin/dishes/" + dishId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isNoContent());
+
+        var timeline = objectMapper.readTree(mockMvc.perform(get("/api/v1/kitchen/meal-logs")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString()).path("data").path("items");
+        boolean kept = false;
+        for (var item : timeline) {
+            if (item.path("id").asLong() == logId) {
+                kept = true;
+                assertTrue(item.path("dishId").isNull(), "菜谱删除后 dishId 应为 null");
+                assertEquals("临时炖菜", item.path("title").asText(), "title 快照保留");
+            }
+        }
+        assertTrue(kept, "打卡记录不应随菜谱删除消失");
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(21)
     void publicCountersAreRateLimitedPerIpAndSlug() throws Exception {
         // P0-2：点赞按 IP+slug 限流，第 11 次 429；其他 slug 不受影响
