@@ -1420,7 +1420,7 @@ a { color: inherit; text-decoration: none; }
   position: absolute;
   z-index: -3;
   inset: -5%;
-  background-image: url('/images/hero-sakura-lake.png');
+  background-image: url('/images/hero-sakura-lake.jpg'); /* NF-6：1.91MB PNG → 171KB JPEG */
   background-position: center center;
   background-size: cover;
   opacity: var(--hero-backdrop-opacity, 1);
