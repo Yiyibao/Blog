@@ -60,7 +60,9 @@ function initAudio() {
   if (!audioEl) {
     audioEl = new Audio()
     audioEl.volume = volume.value
-    audioEl.loop = true
+    // NF-11：loop=true 会困在单曲循环——改为播完自动切下一首
+    audioEl.loop = false
+    audioEl.onended = () => { nextTrack() }
     audioEl.onwaiting = () => { isLoading.value = true }
     audioEl.oncanplay = () => { isLoading.value = false }
     audioEl.onerror = () => {
@@ -137,13 +139,15 @@ onBeforeUnmount(() => {
       class="ambient-music-trigger"
       :class="{ playing: isPlaying, loading: isLoading }"
       :title="isPlaying ? `正在播放：${currentTrack.title}` : '打开舒缓轻音乐播放器'"
+      :aria-label="isPlaying ? `音乐播放器，正在播放：${currentTrack.title}` : '打开音乐播放器'"
+      :aria-expanded="isOpen"
       @click="isOpen = !isOpen"
     >
-      <div class="vinyl-disc" :class="{ spinning: isPlaying }">
+      <div class="vinyl-disc" :class="{ spinning: isPlaying }" aria-hidden="true">
         <span class="vinyl-ring" />
         <span class="vinyl-center">🎵</span>
       </div>
-      <div v-if="isPlaying" class="sound-wave-bars">
+      <div v-if="isPlaying" class="sound-wave-bars" aria-hidden="true">
         <span /><span /><span />
       </div>
     </button>
@@ -171,11 +175,11 @@ onBeforeUnmount(() => {
 
       <!-- Playback Controls (Prev, Play/Pause, Next) -->
       <div class="playback-controls">
-        <button type="button" class="ctrl-btn" title="上一首" @click="prevTrack">⏮</button>
-        <button type="button" class="play-btn" :class="{ active: isPlaying }" title="播放/暂停" @click="togglePlay">
+        <button type="button" class="ctrl-btn" title="上一首" aria-label="上一首" @click="prevTrack">⏮</button>
+        <button type="button" class="play-btn" :class="{ active: isPlaying }" title="播放/暂停" :aria-label="isPlaying ? '暂停' : '播放'" @click="togglePlay">
           {{ isLoading ? '⌛' : (isPlaying ? '⏸' : '▶') }}
         </button>
-        <button type="button" class="ctrl-btn" title="下一首" @click="nextTrack">⏭</button>
+        <button type="button" class="ctrl-btn" title="下一首" aria-label="下一首" @click="nextTrack">⏭</button>
       </div>
 
       <!-- Track List Selector -->
@@ -199,16 +203,17 @@ onBeforeUnmount(() => {
 
       <!-- Volume Bar -->
       <div class="volume-bar">
-        <span>🔈</span>
+        <span aria-hidden="true">🔈</span>
         <input
           type="range"
           min="0"
           max="1"
           step="0.05"
           :value="volume"
+          aria-label="音量"
           @input="updateVolume(parseFloat(($event.target as HTMLInputElement).value))"
         >
-        <span>🔊</span>
+        <span aria-hidden="true">🔊</span>
       </div>
     </div>
   </div>

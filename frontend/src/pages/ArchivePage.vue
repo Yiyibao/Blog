@@ -26,6 +26,8 @@ const dishes = ref<Dish[]>([])
 const notes = ref<AdminNoteSummary[]>([])
 const loading = ref(true)
 const loadError = ref('')
+/** NF-8：三路数据部分失败时的提示条文案（全败走 loadError 整页错误态） */
+const partialError = ref('')
 
 const viewMode = computed(() => {
   const raw = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view
@@ -176,6 +178,11 @@ async function load() {
   notes.value = noteRes.items ?? []
   if (postErr && dishErr && noteErr) {
     loadError.value = '归档数据暂时无法加载，请稍后重试。'
+    partialError.value = ''
+  } else {
+    // NF-8：部分失败不再静默——明示缺了哪些类型，列表可能不完整
+    const failed = [postErr ? '文章' : '', dishErr ? '菜谱' : '', noteErr ? '学习笔记' : ''].filter(Boolean)
+    partialError.value = failed.length ? `部分内容（${failed.join('、')}）加载失败，以下列表可能不完整。` : ''
   }
   loading.value = false
 }
@@ -255,6 +262,11 @@ onMounted(load)
         </nav>
       </div>
 
+      <div v-if="!loading && partialError" class="archive-partial-notice" role="alert">
+        <span>{{ partialError }}</span>
+        <button type="button" @click="load">重试</button>
+      </div>
+
       <div v-if="loading" class="archive-loading" role="status">
         <span>正在加载归档数据…</span>
       </div>
@@ -299,6 +311,31 @@ onMounted(load)
   padding-top: clamp(72px, 9vw, 120px);
   padding-bottom: 110px;
 }
+/* NF-8：部分失败提示条 */
+.archive-partial-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 12px 18px;
+  border: 1px solid color-mix(in srgb, #c47b2c 45%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, #c47b2c 8%, var(--surface));
+  color: var(--ink);
+  font-size: 14px;
+}
+.archive-partial-notice button {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+.archive-partial-notice button:hover { border-color: var(--accent); }
 .archive-head { margin-bottom: 40px; }
 .head-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .view-switch-nav { display: flex; gap: 4px; background: var(--surface); padding: 4px; border-radius: 999px; border: 1px solid var(--line); }

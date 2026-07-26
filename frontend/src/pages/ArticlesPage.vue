@@ -55,6 +55,10 @@ onMounted(() => {
     </div>
     <p class="result-count">{{ content.archiveTotal.toString().padStart(2, '0') }} RESULTS · PAGE {{ Math.min(content.archivePage + 1, content.archiveTotalPages).toString().padStart(2, '0') }}/{{ content.archiveTotalPages.toString().padStart(2, '0') }}</p>
     <div class="archive-list">
+      <!-- NF-4：远端数据在途且暂无可展示内容时的骨架占位 -->
+      <template v-if="content.archiveLoading && !content.archivePosts.length">
+        <div v-for="i in 3" :key="`sk-${i}`" class="archive-skeleton-card" aria-hidden="true" />
+      </template>
       <article v-for="post in content.archivePosts" :key="post.slug" class="project-card article-project-card" :style="{ '--project-color': post.color }">
         <div class="project-number">{{ post.number }}</div>
         <div class="article-project-copy">
@@ -81,3 +85,21 @@ onMounted(() => {
     </nav>
   </section>
 </template>
+
+<style scoped>
+/* NF-4：归档加载骨架 */
+.archive-skeleton-card {
+  height: 168px;
+  border-radius: 24px;
+  background: linear-gradient(100deg, var(--surface) 40%, color-mix(in srgb, var(--ink) 6%, var(--surface)) 50%, var(--surface) 60%);
+  background-size: 200% 100%;
+  animation: archive-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes archive-skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .archive-skeleton-card { animation: none; }
+}
+</style>

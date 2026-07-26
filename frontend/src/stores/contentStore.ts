@@ -30,10 +30,13 @@ function searchHitToSummary(hit: SearchHit): PostSummary {
   }
 }
 
+/** NF-4：内置演示种子仅 dev（或显式开关）可见——生产初始为空、骨架屏顶到首个响应，杜绝假文章生产可见 */
+const seedsAllowed = import.meta.env.DEV || import.meta.env.VITE_ALLOW_BUNDLED_CONTENT === 'true'
+
 export const useContentStore = defineStore('content', () => {
   // ── 首页「最近文章」与内置回退 ────────────────────────────────────────────
-  const posts = ref<PostSummary[]>([...seedPosts])
-  const postTotal = ref(seedPosts.length)
+  const posts = ref<PostSummary[]>(seedsAllowed ? [...seedPosts] : [])
+  const postTotal = ref(seedsAllowed ? seedPosts.length : 0)
   const contentReady = ref(false)
   const contentError = ref(false)
   /** 后端不可用且允许内置内容时为 true：归档退回种子数据的客户端过滤分页 */
@@ -115,7 +118,7 @@ export const useContentStore = defineStore('content', () => {
     remoteFeatured.value ?? posts.value.find((p) => p.featured) ?? posts.value[0] ?? null)
 
   function allowBundledFallback() {
-    return import.meta.env.DEV || import.meta.env.VITE_ALLOW_BUNDLED_CONTENT === 'true'
+    return seedsAllowed
   }
 
   async function loadRemoteContent() {

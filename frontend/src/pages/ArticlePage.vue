@@ -29,6 +29,35 @@ const activeTocId = ref('')
 const lightboxImageUrl = ref<string | null>(null)
 let observer: IntersectionObserver | null = null
 
+// NF-8：灯箱可访问性——Esc 关闭、焦点移入关闭钮并困在对话框内、关闭后还原焦点
+const lightboxCloseBtn = ref<HTMLButtonElement | null>(null)
+let lightboxLastFocused: HTMLElement | null = null
+
+function closeLightbox() {
+  lightboxImageUrl.value = null
+}
+
+function onLightboxKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeLightbox()
+  // 对话框内唯一可聚焦元素是关闭钮，Tab 一律拉回，防焦点逃逸到底层页面
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    lightboxCloseBtn.value?.focus()
+  }
+}
+
+watch(lightboxImageUrl, (url) => {
+  if (url) {
+    lightboxLastFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    window.addEventListener('keydown', onLightboxKeydown)
+    void nextTick(() => lightboxCloseBtn.value?.focus())
+  } else {
+    window.removeEventListener('keydown', onLightboxKeydown)
+    lightboxLastFocused?.focus()
+    lightboxLastFocused = null
+  }
+})
+
 function updateScrollProgress() {
   const totalHeight = document.documentElement.scrollHeight - window.innerHeight
   if (totalHeight > 0) {
@@ -157,6 +186,7 @@ onMounted(() => {
 onUnmounted(() => {
   content.setCurrentSlug('')
   window.removeEventListener('scroll', updateScrollProgress)
+  window.removeEventListener('keydown', onLightboxKeydown)
   if (observer) observer.disconnect()
 })
 </script>
@@ -213,10 +243,43 @@ onUnmounted(() => {
     <div
       v-if="lightboxImageUrl"
       class="image-lightbox-overlay"
-      @click="lightboxImageUrl = null"
-      @keydown.esc="lightboxImageUrl = null"
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片预览"
+      @click="closeLightbox"
     >
+      <button
+        ref="lightboxCloseBtn"
+        type="button"
+        class="image-lightbox-close"
+        aria-label="关闭图片预览"
+        @click.stop="closeLightbox"
+      >×</button>
       <img :src="lightboxImageUrl" alt="大图预览" class="image-lightbox-img">
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+/* NF-8：灯箱关闭钮（新元素，样式随组件走，避免与并行改动的全局样式表交叉） */
+.image-lightbox-close {
+  position: fixed;
+  top: 24px;
+  right: 28px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+.image-lightbox-close:hover,
+.image-lightbox-close:focus-visible {
+  border-color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+}
+</style>

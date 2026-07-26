@@ -81,6 +81,15 @@ onBeforeUnmount(() => {
 
   <div id="home-content" class="home-content">
     <p v-if="content.contentError && !content.posts.length" class="content-unavailable section-wrap" role="alert">内容服务暂时不可用，请稍后刷新重试。</p>
+    <p v-else-if="content.contentReady && !content.posts.length" class="content-unavailable section-wrap">这里还没有发布内容，敬请期待。</p>
+
+    <!-- NF-4：生产环境无内置种子——首个响应到达前用骨架占位，避免布局跳动 -->
+    <section v-if="!content.contentReady && !content.posts.length" class="featured section-wrap" aria-hidden="true">
+      <div class="skeleton-block skeleton-hero" />
+      <div class="skeleton-row">
+        <div v-for="i in 3" :key="i" class="skeleton-block skeleton-card" />
+      </div>
+    </section>
 
     <section v-if="content.featuredPost" id="featured-story" class="featured section-wrap band-featured">
       <div class="section-heading"><p><span>01</span> 本期精选</p><RouterLink to="/articles">浏览全部 ↗</RouterLink></div>
@@ -123,3 +132,26 @@ onBeforeUnmount(() => {
     </section>
   </div>
 </template>
+
+<style scoped>
+/* NF-4：加载骨架（仅生产空态可见，样式随组件走） */
+.skeleton-block {
+  border-radius: 24px;
+  background: linear-gradient(100deg, var(--surface) 40%, color-mix(in srgb, var(--ink) 6%, var(--surface)) 50%, var(--surface) 60%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-hero { height: 320px; margin-bottom: 28px; }
+.skeleton-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.skeleton-card { height: 180px; }
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (max-width: 760px) {
+  .skeleton-row { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block { animation: none; }
+}
+</style>
