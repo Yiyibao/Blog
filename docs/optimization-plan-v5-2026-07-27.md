@@ -189,17 +189,18 @@
 | 规划版本 | 内容 | 归属 |
 | --- | --- | --- |
 | ~~V16~~ | ai_providers 唯一默认部分索引（AI 加固占号，**已执行** 2026-07-27） | 已完成 |
-| V17 | **美食专项（FD）预定**——今日菜单/第二账号等表结构，以专项文档为准 | 并行专项 |
-| V18 | `CREATE EXTENSION pg_trgm` + 三表搜索列 GIN 索引 + (category_slug, status) 复合索引 | 阶段 1（P1-4/NB-1） |
-| V19 | dishes.base_servings（若美食专项未顺带完成 NF-12） | 阶段 2（NF-12） |
-| V20 | posts 加 markdown_content（可空）+ content_format | 阶段 3（3A-1） |
-| V21 | 存量正文迁移后的清理（是否删旧列单独评审） | 阶段 3 末 |
-| V22 | post_revisions / note_revisions | 阶段 4（4C） |
-| V23 | view_daily 按日聚合 | 阶段 4（4D） |
-| V24 | post_tags / learning_note_tags 的 tag 列索引 | 阶段 5（5B） |
-| V25+ | 中文分词（zhparser/pgroonga）对象，以 spike 结论为准 | 阶段 5（5A） |
+| ~~V17~~ | `V17__add_admin_user_roles.sql`——admin_users 加 role/display_name/sessions_valid_from（美食专项 FD-6，**已执行** 2026-07-27） | 已完成 |
+| V18 | **美食专项（FD-10）预定**——kitchen 三表（daily_menus / daily_menu_items / meal_logs） | 并行专项 |
+| V19 | `CREATE EXTENSION pg_trgm` + 三表搜索列 GIN 索引 + (category_slug, status) 复合索引 | 阶段 1（P1-4/NB-1） |
+| V20 | dishes.base_servings（若美食专项未顺带完成 NF-12） | 阶段 2（NF-12） |
+| V21 | posts 加 markdown_content（可空）+ content_format | 阶段 3（3A-1） |
+| V22 | 存量正文迁移后的清理（是否删旧列单独评审） | 阶段 3 末 |
+| V23 | post_revisions / note_revisions | 阶段 4（4C） |
+| V24 | view_daily 按日聚合 | 阶段 4（4D） |
+| V25 | post_tags / learning_note_tags 的 tag 列索引 | 阶段 5（5B） |
+| V26+ | 中文分词（zhparser/pgroonga）对象，以 spike 结论为准 | 阶段 5（5A） |
 
-美食专项若实际使用多个迁移号（V17、V18…），后续条目继续顺延——**执行任何迁移前先 `ls db/migration/` 取实际最高号**，这已是本项目第三次占号顺延（V15 AI 注册表、V16 AI 加固、V17 美食预定）。
+美食专项共占两号：V17（角色模型，已执行）+ V18（kitchen 三表，预定），其余条目自 V19 起顺延一位——**执行任何迁移前先 `ls db/migration/` 取实际最高号**，这已是本项目第四次占号顺延（V15 AI 注册表、V16 AI 加固、V17 角色模型、V18 kitchen 预定）。本次修订同时把正文 3A-1/3A-5/4C/4D/5B 的内联迁移号与本表对齐（此前存在陈旧号）。
 
 配套惯例：含索引/扩展的迁移提交附 EXPLAIN (ANALYZE) 前后对比；series 表（V11）在 4B 实现前先复核结构，缺列以新迁移补。PG 版本策略沿用 v4（本地 18.4 / CI 锁 17，跟踪 Flyway 官方支持公告）。
 
@@ -272,11 +273,11 @@ v4 3.6 的三层设计**已按图实现**（在途）：层 1 PoW 常开（难�
 
 | 子步 | 内容 | 线 | 估时 |
 | --- | --- | --- | --- |
-| 3A-1 | **V18** 迁移：posts 加 markdown_content（可空）+ content_format('HTML'/'MARKDOWN')；实体与 DTO 双字段读写 | 数据库/后端 | 1 天 |
+| 3A-1 | **V21** 迁移：posts 加 markdown_content（可空）+ content_format('HTML'/'MARKDOWN')；实体与 DTO 双字段读写 | 数据库/后端 | 1 天 |
 | 3A-2 | 存量迁移工具：jsoup 辅助 HTML→Markdown 一次性转换（admin 端点或 main 方法），产出人工校对清单（表格/公式/嵌套列表逐篇标记） | 后端 | 1–2 天 |
 | 3A-3 | 管理端编辑器：AdminDashboard 弃 HTML 文本域，复用 TyporaEditor，按决策④补齐工具栏（标题/列表/代码块/引用/表格/图片） | 前端 | 2–3 天 |
 | 3A-4 | 公开渲染统一：详情走「Markdown → 受控渲染」与笔记同管线（Tiptap 只读 + DOMPurify 兜底），前后端双层防线 | 前端/后端 | 1–2 天 |
-| 3A-5 | 收尾：存量校对签收后读路径切 MARKDOWN；旧 HTML 列去留单独评审（**V19**） | 全 | 0.5 天+校对 |
+| 3A-5 | 收尾：存量校对签收后读路径切 MARKDOWN；旧 HTML 列去留单独评审（**V22**） | 全 | 0.5 天+校对 |
 
 - 测试：转换工具高风险片段快照；编辑器保存-重开往返一致；publicNotesXss 模式扩展到文章。
 - 验收：新文章全程 Markdown；存量前后台视觉一致（清单签收）；DOMPurify 退为兜底。
@@ -305,9 +306,9 @@ v4 3.6 的三层设计**已按图实现**（在途）：层 1 PoW 常开（难�
 
 **4B · series 合集（1 周）**：复核 V11 表结构（缺列新迁移补）；SeriesEntity/Service/Controller + admin CRUD + 公开列表/详情；接入 sitemap 与图谱（SERIES 节点）；删除钩子（删文章清关联）；前端管理页（拖拽排序）+ 详情页「本文属于合集 X（n/N）」+ 图谱识别。验收：建合集→挂文章→按序阅读全链路。
 
-**4C · 草稿版本历史（3–4 天）**：**V20** revisions 表（保留 N=10 待确认）；保存异步写版本；admin 列表/查看/恢复（恢复=新建保存不改历史）；前端历史抽屉 + 纯文本 diff。验收：任意历史版本可恢复；乐观锁不受影响。
+**4C · 草稿版本历史（3–4 天）**：**V23** revisions 表（保留 N=10 待确认）；保存异步写版本；admin 列表/查看/恢复（恢复=新建保存不改历史）；前端历史抽屉 + 纯文本 diff。验收：任意历史版本可恢复；乐观锁不受影响。
 
-**4D · 仪表盘趋势与存储占用（3–4 天）**：**V21** view_daily（UPSERT 累加，180 天清理，不存 IP/UA）；stats 扩展：30 天趋势、TOP5、附件总大小、各状态计数、AI 用量卡片（4A-6）；前端纯 SVG 折线。验收：趋势与表数据一致；仪表盘一次请求出全部统计。
+**4D · 仪表盘趋势与存储占用（3–4 天）**：**V24** view_daily（UPSERT 累加，180 天清理，不存 IP/UA）；stats 扩展：30 天趋势、TOP5、附件总大小、各状态计数、AI 用量卡片（4A-6）；前端纯 SVG 折线。验收：趋势与表数据一致；仪表盘一次请求出全部统计。
 
 **4E · 附件管理与孤儿清理（2–3 天）**：admin 附件总览（分页/按笔记聚合/总大小）；孤儿判定（正文不引用 && 超 7 天）；标记→回收站→手动确认删除；前端附件页（网格/筛选/批量确认）。验收：清理后渲染无 404；总大小与 4D 一致。
 
@@ -316,7 +317,7 @@ v4 3.6 的三层设计**已按图实现**（在途）：层 1 PoW 常开（难�
 ### 4.3 阶段 5 · 检索与知识组织（2–3 周）
 
 - **5A 中文全文检索（1–1.5 周，两步走）**：先 spike（0.5–1 天）验证 zhparser/pgroonga 在生产同版本 PG 的可行性；不可行回退 pg_trgm（阶段 1 已建）+ 加权排序。实施：tsvector 生成列 + GIN（**V23+**）；SearchService 向量检索 + ts_rank + ts_headline；LIKE 保留为降级。前端高亮（`<mark>` 消毒后插入）。验收：中文词组召回对比留档；高亮无 XSS。
-- **5B 标签一等公民（3–4 天）**：**V22** tag 索引；/api/v1/tags 与 /tags/{tag} 聚合端点 + sitemap；前端 /tags/:tag 页、详情标签可点、图谱 TAG 节点 url 补链。
+- **5B 标签一等公民（3–4 天）**：**V25** tag 索引；/api/v1/tags 与 /tags/{tag} 聚合端点 + sitemap；前端 /tags/:tag 页、详情标签可点、图谱 TAG 节点 url 补链。
 - **5C 图谱增强（3–4 天）**：局部子图端点（center+depth，默认 2），复用 P1-5 缓存与 NB-5 投影；前端双击展开、类型过滤 URL 同步、>300 节点自动子图模式（首帧 <1s）。
 - **5D 相关推荐（1–2 天）**：详情响应附共享标签 TOP3~5（聚合查询+缓存）；前端底部推荐卡（**同时根治 relatedPosts 客户端窗口局限**——本轮 review 记录的已知取舍）。验收：无共享标签隐藏区块；无 N+1。
 

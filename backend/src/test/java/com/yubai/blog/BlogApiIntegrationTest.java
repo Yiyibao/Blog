@@ -105,6 +105,10 @@ class BlogApiIntegrationTest {
         registry.add("app.jwt.secret", () -> "integration-test-secret-key-32chars!");
         registry.add("app.admin.username", () -> "admin");
         registry.add("app.admin.password", () -> "admin-pass-12345");
+        // FD-6：伴侣账号——FD-7 的 PARTNER 越权用例依赖它
+        registry.add("app.partner.username", () -> "partner");
+        registry.add("app.partner.password", () -> "partner-pass-12345");
+        registry.add("app.partner.display-name", () -> "测试伴侣");
         registry.add("app.cors.allowed-origins", () -> "http://localhost:5173");
         registry.add("app.site-url", () -> "http://localhost:5173");
         // 4A-1：供应商注册表测试需要主密钥；allow-local 放开环回地址以便用字面量 IP 免 DNS 测试

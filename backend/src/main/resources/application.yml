@@ -55,6 +55,12 @@ app:
   admin:
     username: ${APP_ADMIN_USERNAME:}
     password: ${APP_ADMIN_PASSWORD:}
+    display-name: ${APP_ADMIN_DISPLAY_NAME:}
+  # FD-6：伴侣账号（PARTNER 角色）——只建不改，未配置则跳过
+  partner:
+    username: ${APP_PARTNER_USERNAME:}
+    password: ${APP_PARTNER_PASSWORD:}
+    display-name: ${APP_PARTNER_DISPLAY_NAME:}
   ai:
     enabled: ${AI_ENABLED:false}
     base-url: ${AI_BASE_URL:https://api.deepseek.com}

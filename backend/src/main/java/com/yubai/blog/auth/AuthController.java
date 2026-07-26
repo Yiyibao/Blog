@@ -39,15 +39,17 @@ public class AuthController {
     private final RateLimiter rateLimiter;
     private final ChallengeService challengeService;
     private final LoginAttemptTracker attemptTracker;
+    private final AdminUserRepository userRepository;
 
     public AuthController(AuthenticationManager authenticationManager, JwtService jwtService,
                           RateLimiter rateLimiter, ChallengeService challengeService,
-                          LoginAttemptTracker attemptTracker) {
+                          LoginAttemptTracker attemptTracker, AdminUserRepository userRepository) {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.rateLimiter = rateLimiter;
         this.challengeService = challengeService;
         this.attemptTracker = attemptTracker;
+        this.userRepository = userRepository;
     }
 
     /** L-7：登录前必须先取 challenge；按 IP/用户名风险状态自动升级为图形验证码。 */
@@ -81,9 +83,13 @@ public class AuthController {
             throw e;
         }
         attemptTracker.clear(clientIp, request.username());
+        // FD-6：认证已通过，读实体签发含角色/uid/displayName 的 token；
+        // 文案与"账号不存在"保持一致，不泄露用户名存在性
+        var user = userRepository.findByUsername(request.username())
+            .orElseThrow(() -> new BadCredentialsException("用户名或密码错误"));
         // FD-0：登录成功审计——多账号后需要能回答"谁在什么时候从哪登录过"
-        log.info("login success: user={} ip={}", request.username(), clientIp);
-        return ApiResponse.ok(jwtService.issue(request.username()));
+        log.info("login success: user={} role={} ip={}", request.username(), user.getRole(), clientIp);
+        return ApiResponse.ok(jwtService.issue(user));
     }
 
     private void rejectIfCoolingDown(String clientIp, String username) {

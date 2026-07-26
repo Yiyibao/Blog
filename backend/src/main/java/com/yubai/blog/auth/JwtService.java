@@ -22,18 +22,22 @@ public class JwtService {
         this.ttl = ttl;
     }
 
-    public LoginResponse issue(String username) {
+    /** FD-6：roles 不再硬编码 ADMIN，改读账号实体；uid 供 kitchen 署名/限流，name 供前端问候。 */
+    public LoginResponse issue(AdminUserEntity user) {
         var issuedAt = Instant.now();
         var expiresAt = issuedAt.plus(ttl);
         var claims = JwtClaimsSet.builder()
             .issuer("yubai-blog")
             .issuedAt(issuedAt)
             .expiresAt(expiresAt)
-            .subject(username)
-            .claim("roles", List.of("ADMIN"))
+            .subject(user.getUsername())
+            .claim("roles", List.of(user.getRole().name()))
+            .claim("uid", user.getId())
+            .claim("name", user.getDisplayName())
             .build();
         var header = JwsHeader.with(MacAlgorithm.HS256).build();
         var token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
-        return new LoginResponse(token, "Bearer", username, expiresAt);
+        return new LoginResponse(token, "Bearer", user.getUsername(),
+            user.getRole().name(), user.getDisplayName(), expiresAt);
     }
 }

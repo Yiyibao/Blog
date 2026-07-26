@@ -20,7 +20,8 @@ public class AdminUserService implements UserDetailsService {
             .orElseThrow(() -> new UsernameNotFoundException("管理员账号不存在"));
         return User.withUsername(admin.getUsername())
             .password(admin.getPasswordHash())
-            .roles("ADMIN")
+            // FD-6：角色读实体，不再写死 ADMIN
+            .roles(admin.getRole().name())
             .disabled(!admin.isEnabled())
             .build();
     }
