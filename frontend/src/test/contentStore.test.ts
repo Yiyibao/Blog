@@ -180,12 +180,13 @@ describe('NF-5 归档服务端真分页', () => {
     expect(mockFetchPosts).toHaveBeenLastCalledWith(0, 6, { sort: 'asc' })
   })
 
-  it('搜索词经 POST /search 分页覆盖全部文章，命中映射为摘要卡片', async () => {
+  it('搜索词经 POST /search 分页覆盖全部文章，命中带 L-8 元信息映射为摘要卡片', async () => {
     const store = useContentStore()
     mockSearchPosts.mockResolvedValue({
       results: [{
         type: 'POST', id: 9, title: '命中标题', excerpt: '命中摘要', category: '技术',
         url: '/articles/hit-post', color: null, number: null, slug: 'hit-post',
+        date: '2026-06-15', readTime: 8, tags: ['vue', 'vite'],
       }],
       page: 0, size: 6, totalElements: 1, totalPages: 1,
     })
@@ -193,27 +194,52 @@ describe('NF-5 归档服务端真分页', () => {
     store.query = '命中'
     await store.loadArchive()
 
-    expect(mockSearchPosts).toHaveBeenCalledWith('命中', 0, 6)
+    expect(mockSearchPosts).toHaveBeenCalledWith('命中', 0, 6, { sort: 'desc' })
     expect(store.archivePosts[0]?.slug).toBe('hit-post')
     expect(store.archivePosts[0]?.title).toBe('命中标题')
+    // L-8：文章头元信息来自命中本身，不再伪造空值
+    expect(store.archivePosts[0]?.date).toBe('2026-06-15')
+    expect(store.archivePosts[0]?.readTime).toBe(8)
+    expect(store.archivePosts[0]?.tags).toEqual(['vue', 'vite'])
     expect(store.archiveTotal).toBe(1)
   })
 
-  it('搜索模式在客户端应用已选分类过滤（分类+关键词叠加语义）', async () => {
+  it('搜索模式的分类过滤与排序下推服务端（L-8 契约透传，不再客户端补偿）', async () => {
     const store = useContentStore()
+    // 先经 loadRemoteContent 装载分类页签（name→slug 映射来源）
+    mockFetchPosts.mockResolvedValue({ items: [makePost('seed')], page: 0, size: 12, totalElements: 1, totalPages: 1 })
+    mockFetchCategories.mockResolvedValue([{ name: '技术', slug: 'tech', publishedPostCount: 3 }])
+    await store.loadRemoteContent()
+
     const hit = (slug: string, category: string) => ({
       type: 'POST', id: 1, title: slug, excerpt: '', category,
       url: `/articles/${slug}`, color: null, number: null, slug,
     })
     mockSearchPosts.mockResolvedValue({
-      results: [hit('vue-post', '技术'), hit('life-post', '生活')],
+      results: [hit('vue-post', '技术'), hit('vue-post-2', '技术')],
       page: 0, size: 6, totalElements: 2, totalPages: 1,
     })
 
     store.category = '技术'
+    store.sortOrder = 'oldest'
     store.query = '关键词'
     await store.loadArchive()
 
-    expect(store.archivePosts.map((p) => p.slug)).toEqual(['vue-post'])
+    expect(mockSearchPosts).toHaveBeenCalledWith('关键词', 0, 6, { categorySlug: 'tech', sort: 'asc' })
+    // 服务端已过滤，客户端不再二次筛掉命中
+    expect(store.archivePosts.map((p) => p.slug)).toEqual(['vue-post', 'vue-post-2'])
+    expect(store.archiveTotal).toBe(2)
+  })
+
+  it('L-9 精选文章由专用请求提供，出窗（不在最近列表）也能命中', async () => {
+    const store = useContentStore()
+    mockFetchPosts.mockImplementation((page: number, size: number, options?: { featured?: boolean }) =>
+      Promise.resolve(options?.featured
+        ? { items: [makePost('old-featured', { featured: true, date: '2024-01-01' })], page: 0, size: 1, totalElements: 1, totalPages: 1 }
+        : { items: [makePost('recent-a'), makePost('recent-b')], page, size, totalElements: 2, totalPages: 1 }))
+    await store.loadRemoteContent()
+
+    expect(mockFetchPosts).toHaveBeenCalledWith(0, 1, { featured: true })
+    expect(store.featuredPost?.slug).toBe('old-featured')
   })
 })

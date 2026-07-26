@@ -10,6 +10,10 @@ export interface SearchHit {
   color: string | null
   number: string | null
   slug?: string | null
+  // L-8：POST 分页分支实装的文章头元信息（其余类型为 null）
+  date?: string | null
+  readTime?: number | null
+  tags?: string[] | null
 }
 
 export type PostStatus = 'DRAFT' | 'PUBLISHED'

@@ -40,6 +40,8 @@ function asPage<T>(data: PageResult<T> | T[], page = 0, size = 10): PageResult<T
 export interface FetchPostsOptions {
   categorySlug?: string
   sort?: 'asc' | 'desc'
+  /** L-9：只取精选文章（服务端按标记检索，不受首页取窗限制）。 */
+  featured?: boolean
 }
 
 // P1-2：列表返回 PostSummary（不含正文）；categorySlug 过滤分类，sort=asc 最早优先。
@@ -49,6 +51,7 @@ export async function fetchPosts(page = 0, size = 10, options: FetchPostsOptions
       page, size,
       ...(options.categorySlug ? { categorySlug: options.categorySlug } : {}),
       ...(options.sort ? { sort: options.sort } : {}),
+      ...(options.featured ? { featured: true } : {}),
     },
   }))
   return asPage(data, page, size)
@@ -165,9 +168,19 @@ export interface PostSearchPage {
   totalPages: number
 }
 
+export interface SearchPostsOptions {
+  categorySlug?: string
+  sort?: 'asc' | 'desc'
+}
+
 // NF-5：归档搜索走 POST /search 的分页模式（type=POST），覆盖全部已发布文章而非仅当前页。
-export async function searchPosts(q: string, page = 0, size = 6): Promise<PostSearchPage> {
-  const data = await unwrap<PostSearchPage>(api.post('/search', { query: q.trim(), type: 'POST', page, size }))
+// L-8：categorySlug/sort 下推服务端，分页计数与过滤条件一致。
+export async function searchPosts(q: string, page = 0, size = 6, options: SearchPostsOptions = {}): Promise<PostSearchPage> {
+  const data = await unwrap<PostSearchPage>(api.post('/search', {
+    query: q.trim(), type: 'POST', page, size,
+    ...(options.categorySlug ? { categorySlug: options.categorySlug } : {}),
+    ...(options.sort ? { sort: options.sort === 'asc' ? 'DATE_ASC' : 'DATE_DESC' } : {}),
+  }))
   return {
     results: data.results ?? [],
     page: data.page ?? page,

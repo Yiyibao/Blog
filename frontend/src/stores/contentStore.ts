@@ -20,11 +20,11 @@ function searchHitToSummary(hit: SearchHit): PostSummary {
     slug: hit.slug || hit.url.split('/').filter(Boolean).pop() || '',
     title: hit.title,
     excerpt: hit.excerpt,
-    // 搜索命中不携带日期/阅读时长/标签，模板按空值隐藏对应元信息
-    date: '',
-    readTime: 0,
+    // L-8：POST 命中已携带真实 date/readTime/tags，不再伪造空值
+    date: hit.date ?? '',
+    readTime: hit.readTime ?? 0,
     category: hit.category ?? '',
-    tags: [],
+    tags: hit.tags ?? [],
     color: hit.color ?? '#1649d8',
     number: hit.number ?? '',
   }
@@ -109,7 +109,10 @@ export const useContentStore = defineStore('content', () => {
       .map((m) => ({ id: m[1], title: m[2].replace(/<[^>]+>/g, '') }))
   })
 
-  const featuredPost = computed(() => posts.value.find((p) => p.featured) ?? posts.value[0] ?? null)
+  /** L-9：精选文章由专用请求提供（任意日期均可命中），窗口内检索与首篇仅作回退。 */
+  const remoteFeatured = ref<PostSummary | null>(null)
+  const featuredPost = computed(() =>
+    remoteFeatured.value ?? posts.value.find((p) => p.featured) ?? posts.value[0] ?? null)
 
   function allowBundledFallback() {
     return import.meta.env.DEV || import.meta.env.VITE_ALLOW_BUNDLED_CONTENT === 'true'
@@ -118,15 +121,18 @@ export const useContentStore = defineStore('content', () => {
   async function loadRemoteContent() {
     try {
       contentError.value = false
-      const [remotePage, remoteCategories] = await Promise.all([
+      const [remotePage, remoteCategories, featuredPage] = await Promise.all([
         fetchPosts(0, 12),
         fetchCategories().catch(() => null),
+        // L-9：精选出窗（不在最近 12 条内）也能正确展示；失败不阻塞首页
+        fetchPosts(0, 1, { featured: true }).catch(() => null),
       ])
       if (remotePage?.items?.length) {
         posts.value = remotePage.items
         postTotal.value = remotePage.totalElements
         usingFallback.value = false
       }
+      remoteFeatured.value = featuredPage?.items?.[0] ?? null
       if (remoteCategories?.length) {
         categoryTabs.value = [{ name: '全部', slug: '' }, ...remoteCategories.map((c) => ({ name: c.name, slug: c.slug }))]
       }
@@ -213,12 +219,15 @@ export const useContentStore = defineStore('content', () => {
       }
       const q = query.value.trim()
       if (q) {
-        // 搜索模式：POST /search 分页覆盖全部文章；分类与收藏筛选在当前页内应用
-        //（后端 SearchRequest 暂无 categorySlug 字段，服务端过滤列为 L-8 契约扩展）
-        const page = await searchPosts(q, archivePage.value, ARCHIVE_PAGE_SIZE)
+        // L-8：搜索模式的分类过滤与排序下推服务端，分页计数与条件一致；
+        // 收藏筛选仍在当前页内应用（收藏 slug 只存在于本地）
+        const categorySlug = slugForCategory(category.value)
+        const page = await searchPosts(q, archivePage.value, ARCHIVE_PAGE_SIZE, {
+          ...(categorySlug ? { categorySlug } : {}),
+          sort: sortOrder.value === 'oldest' ? 'asc' : 'desc',
+        })
         if (revision !== archiveRevision) return
         let items = page.results.map(searchHitToSummary)
-        if (category.value !== '全部') items = items.filter((p) => p.category === category.value)
         if (showFavoritesOnly.value) items = items.filter((p) => favorites.value.includes(p.slug))
         archivePosts.value = items
         archiveTotal.value = page.totalElements

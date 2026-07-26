@@ -18,6 +18,12 @@ const ui = useUiStore()
 const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
+// L-11：返回链接还原来路页码——归档页码存活在 store 中，跨路由仍在
+const backToArchive = computed(() =>
+  content.archivePage > 0
+    ? { path: '/articles', query: { page: String(content.archivePage + 1) } }
+    : { path: '/articles' })
+
 const scrollProgress = ref(0)
 const activeTocId = ref('')
 const lightboxImageUrl = ref<string | null>(null)
@@ -164,7 +170,7 @@ onUnmounted(() => {
   <template v-if="content.currentPost">
     <article class="article-page">
       <header class="article-header section-wrap">
-        <RouterLink class="back-link" to="/articles">← 返回文章</RouterLink>
+        <RouterLink class="back-link" :to="backToArchive">← 返回文章</RouterLink>
         <!-- 搜索命中映射的摘要缺 date/readTime，空值不渲染对应元信息 -->
         <div class="post-meta"><span>{{ content.currentPost.category }}</span><time v-if="content.currentPost.date">{{ content.currentPost.date }}</time><span v-if="content.currentPost.readTime">{{ content.currentPost.readTime }} MIN READ</span></div>
         <h1>{{ content.currentPost.title }}</h1>
@@ -198,7 +204,7 @@ onUnmounted(() => {
       <p class="eyebrow"><span /> {{ content.contentReady && !content.articleDetailLoading ? 'NOT FOUND' : 'LOADING' }}</p>
       <h1>{{ content.contentReady && !content.articleDetailLoading ? '这篇文章不存在，' : '正在加载文章，' }}<br><em>{{ content.contentReady && !content.articleDetailLoading ? '或者已经被归档。' : '请稍候…' }}</em></h1>
       <p v-if="content.contentReady && !content.articleDetailLoading">链接可能已失效，回到归档继续浏览其他内容。</p>
-      <RouterLink v-if="content.contentReady && !content.articleDetailLoading" class="button primary" to="/articles">返回文章归档 ↗</RouterLink>
+      <RouterLink v-if="content.contentReady && !content.articleDetailLoading" class="button primary" :to="backToArchive">返回文章归档 ↗</RouterLink>
     </section>
   </template>
 
