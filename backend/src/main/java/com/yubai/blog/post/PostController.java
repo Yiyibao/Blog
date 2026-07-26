@@ -19,6 +19,7 @@ import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.RateLimiter;
 import com.yubai.blog.common.TooManyRequestsException;
 import com.yubai.blog.series.SeriesService;
+import com.yubai.blog.stats.ViewDailyService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -36,11 +37,14 @@ public class PostController {
     private final PostService service;
     private final RateLimiter rateLimiter;
     private final SeriesService seriesService;
+    private final ViewDailyService viewDaily;
 
-    public PostController(PostService service, RateLimiter rateLimiter, SeriesService seriesService) {
+    public PostController(PostService service, RateLimiter rateLimiter, SeriesService seriesService,
+                          ViewDailyService viewDaily) {
         this.service = service;
         this.rateLimiter = rateLimiter;
         this.seriesService = seriesService;
+        this.viewDaily = viewDaily;
     }
 
     /**
@@ -65,6 +69,7 @@ public class PostController {
         var clientIp = ClientIps.resolve(request);
         if (rateLimiter.tryAcquire("view:" + clientIp + ":" + slug, 1, VIEW_DEDUP_WINDOW)) {
             service.registerView(slug);
+            viewDaily.bump(); // 4D：全站日趋势同窗累加
         }
         var response = service.findPublishedBySlug(slug);
         // 4B：补挂「本文属于合集 X（n/N）」（不属于任何已发布合集则为 null）

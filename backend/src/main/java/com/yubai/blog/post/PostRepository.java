@@ -174,6 +174,23 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     @Query("SELECT p.id as id, p.slug as slug, p.title as title, p.date as date, p.status as status FROM PostEntity p WHERE p.id IN :ids")
     List<PostRefRow> findRefRows(@Param("ids") java.util.Collection<Long> ids);
 
+    /** 4D：仪表盘状态计数与 TOP5 热文（轻量投影）。 */
+    long countByStatus(PostStatus status);
+
+    interface TopPostRow {
+        String getTitle();
+        String getSlug();
+        int getViewsCount();
+        int getLikeCount();
+    }
+
+    @Query("""
+        SELECT p.title as title, p.slug as slug, p.viewsCount as viewsCount, p.likeCount as likeCount
+        FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+        ORDER BY p.viewsCount DESC, p.likeCount DESC, p.id ASC
+        """)
+    List<TopPostRow> findTopViewed(Pageable pageable);
+
     /** 3D：相邻文章导航——按 (date, id) 元组序取前一篇/后一篇（轻量投影）。 */
     interface PostNeighborRow {
         String getSlug();

@@ -17,6 +17,7 @@ const AdminAiPage = defineAsyncComponent(() => import('../pages/AdminAiPage.vue'
 const AdminAiProvidersPage = defineAsyncComponent(() => import('../pages/AdminAiProvidersPage.vue'))
 const AdminLibraryPage = defineAsyncComponent(() => import('../pages/AdminLibraryPage.vue'))
 const AdminSeriesPage = defineAsyncComponent(() => import('../pages/AdminSeriesPage.vue'))
+const AdminAttachmentsPage = defineAsyncComponent(() => import('../pages/AdminAttachmentsPage.vue'))
 const SeriesPage = defineAsyncComponent(() => import('../pages/SeriesPage.vue'))
 const SeriesDetailPage = defineAsyncComponent(() => import('../pages/SeriesDetailPage.vue'))
 const LoginPage = defineAsyncComponent(() => import('../pages/LoginPage.vue'))
@@ -40,6 +41,7 @@ const router = createRouter({
     { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/admin/library', name: 'admin-library', component: AdminLibraryPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/admin/series', name: 'admin-series', component: AdminSeriesPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+    { path: '/admin/attachments', name: 'admin-attachments', component: AdminAttachmentsPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/series', name: 'series', component: SeriesPage },
     { path: '/series/:slug', name: 'series-detail', component: SeriesDetailPage },
     { path: '/archive', name: 'archive', component: ArchivePage },

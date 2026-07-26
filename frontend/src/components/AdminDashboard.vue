@@ -13,7 +13,8 @@ import AdminSidebar from './AdminSidebar.vue'
 import TyporaEditor from './TyporaEditor.vue'
 import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
 import PostRevisionDrawer from './PostRevisionDrawer.vue'
-import type { AdminPost } from '../api/admin'
+import DashboardTrends from './DashboardTrends.vue'
+import type { AdminPost, AdminStats } from '../api/admin'
 
 const router = useRouter()
 const route = useRoute()
@@ -117,6 +118,9 @@ function applyAiAction(action: AiActionKind, text: string) {
     else postForm.content = `${postForm.content.trimEnd()}\n\n${text}`
   }
 }
+/** 4D：完整统计（趋势/TOP5/容量/AI 用量）。 */
+const adminStats = ref<AdminStats | null>(null)
+
 /** 4C：版本历史抽屉——恢复后回填表单（恢复只回写正文相关字段，meta 保持编辑器现值）。 */
 const revisionDrawerOpen = ref(false)
 
@@ -184,7 +188,11 @@ async function load() {
     loading.value = false
   }
   fetchAdminStats()
-    .then(stats => { postTotal.value = stats.posts; dishTotal.value = stats.dishes; noteTotal.value = stats.notes })
+    .then(stats => {
+      postTotal.value = stats.posts; dishTotal.value = stats.dishes; noteTotal.value = stats.notes
+      // 4D：趋势卡片数据——防御旧响应形状（滚动部署窗口内后端可能还没带扩展字段）
+      if (Array.isArray(stats.viewTrend)) adminStats.value = stats
+    })
     .catch(() => {})
 }
 
@@ -326,6 +334,9 @@ onMounted(load)
       </section>
 
       <section class="admin-stat-grid"><article><span>文章</span><strong>{{ postTotal }}</strong><small>POSTS</small></article><article><span>菜品</span><strong>{{ dishTotal }}</strong><small>DISHES</small></article><article><span>学习笔记</span><strong>{{ noteTotal }}</strong><small>NOTES</small></article></section>
+
+      <!-- 4D：趋势/热文/容量/AI 用量 -->
+      <DashboardTrends v-if="adminStats" :stats="adminStats" />
 
       <section class="admin-content-section">
         <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></header>

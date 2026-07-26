@@ -1288,6 +1288,72 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(58)
+    void dashboardStatsExposeTrendTopPostsAndAttachmentOverview() throws Exception {
+        // 4D：详情读驱动当日趋势计数；stats 扩展字段齐全。4E：附件总览含孤儿标记
+        String token = login();
+        rateLimiter.reset();
+
+        // 详情读一次（去重窗口命中）→ 今日 view_daily 至少 +1
+        mockMvc.perform(get("/api/v1/posts/clarity-by-design")).andExpect(status().isOk());
+
+        var stats = objectMapper.readTree(mockMvc.perform(get("/api/v1/admin/stats")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertEquals(30, stats.path("viewTrend").size(), "趋势固定 30 天窗口（缺日补零）");
+        assertTrue(stats.path("viewTrend").get(29).path("views").asLong() >= 1, "今日详情读应计入趋势");
+        assertTrue(stats.path("publishedPosts").asLong() >= 1, "种子数据应有已发布文章");
+        assertTrue(stats.path("topPosts").isArray() && stats.path("topPosts").size() >= 1, "TOP 热文非空");
+        assertTrue(stats.path("topPosts").get(0).has("viewsCount"));
+        assertTrue(stats.path("aiUsage").has("requests") && stats.path("aiUsage").has("tokens"));
+        assertTrue(stats.path("attachmentCount").isNumber() && stats.path("attachmentBytes").isNumber());
+
+        // 4E：传一个附件 → 总览可见、宽限期内不算孤儿、容量聚合非零
+        String noteBody = objectMapper.writeValueAsString(java.util.Map.of(
+            "title", "attachment-overview-note", "markdownContent", "# 附件总览", "folder", "Stats",
+            "status", "DRAFT", "tags", java.util.List.of("stats"), "version", 0));
+        long noteId = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(noteBody))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
+            .path("data").path("id").asLong();
+        var image = new MockMultipartFile("file", "overview.png", "image/png", PNG_SAMPLE);
+        long attachmentId = objectMapper.readTree(mockMvc.perform(
+                multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                    .file(image).header("Authorization", "Bearer " + token))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
+            .path("data").path("id").asLong();
+
+        var overview = objectMapper.readTree(mockMvc.perform(get("/api/v1/admin/attachments")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertTrue(overview.path("count").asInt() >= 1);
+        assertTrue(overview.path("totalBytes").asLong() >= PNG_SAMPLE.length);
+        boolean found = false;
+        for (var item : overview.path("items")) {
+            if (item.path("id").asLong() == attachmentId) {
+                found = true;
+                assertEquals("attachment-overview-note", item.path("noteTitle").asText());
+                assertFalse(item.path("orphan").asBoolean(), "7 天宽限期内的新附件不算孤儿");
+            }
+        }
+        assertTrue(found, "附件总览应包含刚上传的附件");
+
+        // 游客不可见
+        mockMvc.perform(get("/api/v1/admin/attachments")).andExpect(status().isUnauthorized());
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(53)
     void stage3ViewCountsRssAndNeighborsWork() throws Exception {
         rateLimiter.reset();

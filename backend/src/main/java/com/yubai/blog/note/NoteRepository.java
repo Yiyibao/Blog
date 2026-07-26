@@ -19,6 +19,16 @@ public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
     @Query("SELECT n.id as id, n.updatedAt as updatedAt FROM NoteEntity n WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
     List<NoteSitemapProjection> findPublishedSitemap();
 
+    /** 4E：孤儿附件检测——标题 + 正文引用检查用（管理端一次性全量，量小可承受）。 */
+    interface NoteRefRow {
+        Long getId();
+        String getTitle();
+        String getMarkdownContent();
+    }
+
+    @Query("SELECT n.id as id, n.title as title, n.markdownContent as markdownContent FROM NoteEntity n")
+    List<NoteRefRow> findAllRefRows();
+
     /** 3C：浏览量数据库端原子自增（IP+id 短窗去重在 Controller 层，不落 IP 明文；仅已发布计数）。 */
     @org.springframework.data.jpa.repository.Modifying
     @Query("UPDATE NoteEntity n SET n.viewsCount = n.viewsCount + 1 WHERE n.id = :id AND n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")

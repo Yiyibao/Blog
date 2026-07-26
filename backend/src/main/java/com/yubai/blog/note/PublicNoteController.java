@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
+import com.yubai.blog.stats.ViewDailyService;
 
 @RestController
 @RequestMapping("/api/v1/notes")
@@ -27,10 +28,12 @@ public class PublicNoteController {
 
     private final NoteService service;
     private final RateLimiter rateLimiter;
+    private final ViewDailyService viewDaily;
 
-    public PublicNoteController(NoteService service, RateLimiter rateLimiter) {
+    public PublicNoteController(NoteService service, RateLimiter rateLimiter, ViewDailyService viewDaily) {
         this.service = service;
         this.rateLimiter = rateLimiter;
+        this.viewDaily = viewDaily;
     }
 
     /** P1-2：列表只出摘要（不含正文），正文经 /{id} 详情获取。 */
@@ -46,6 +49,7 @@ public class PublicNoteController {
         var clientIp = ClientIps.resolve(request);
         if (rateLimiter.tryAcquire("view:note:" + clientIp + ":" + id, 1, VIEW_DEDUP_WINDOW)) {
             service.registerView(id);
+            viewDaily.bump(); // 4D：全站日趋势同窗累加
         }
         return ApiResponse.ok(service.findPublishedOne(id));
     }

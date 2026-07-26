@@ -18,6 +18,7 @@ import com.yubai.blog.common.ClientIps;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.RateLimiter;
 import com.yubai.blog.common.TooManyRequestsException;
+import com.yubai.blog.stats.ViewDailyService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -34,10 +35,12 @@ public class DishController {
 
     private final DishService service;
     private final RateLimiter rateLimiter;
+    private final ViewDailyService viewDaily;
 
-    public DishController(DishService service, RateLimiter rateLimiter) {
+    public DishController(DishService service, RateLimiter rateLimiter, ViewDailyService viewDaily) {
         this.service = service;
         this.rateLimiter = rateLimiter;
+        this.viewDaily = viewDaily;
     }
 
     @GetMapping
@@ -54,6 +57,7 @@ public class DishController {
         var clientIp = ClientIps.resolve(request);
         if (rateLimiter.tryAcquire("view:dish:" + clientIp + ":" + slug, 1, VIEW_DEDUP_WINDOW)) {
             service.registerView(slug);
+            viewDaily.bump(); // 4D：全站日趋势同窗累加
         }
         return ApiResponse.ok(service.findPublishedBySlug(slug));
     }

@@ -1,12 +1,40 @@
 package com.yubai.blog.note;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 public interface NoteAttachmentRepository extends JpaRepository<NoteAttachmentEntity, Long> {
     List<NoteAttachmentEntity> findAllByNoteIdOrderByCreatedAtDesc(long noteId);
     Optional<NoteAttachmentEntity> findByPublicId(UUID publicId);
+
+    /** 4D/4E：总览行与容量聚合——绝不 SELECT content 字节列。 */
+    interface AttachmentAdminRow {
+        Long getId();
+        UUID getPublicId();
+        long getNoteId();
+        String getFileName();
+        String getMediaType();
+        long getByteSize();
+        Instant getCreatedAt();
+    }
+
+    @Query("""
+        SELECT a.id as id, a.publicId as publicId, a.noteId as noteId, a.fileName as fileName,
+               a.mediaType as mediaType, a.byteSize as byteSize, a.createdAt as createdAt
+        FROM NoteAttachmentEntity a ORDER BY a.createdAt DESC, a.id DESC
+        """)
+    List<AttachmentAdminRow> findAdminRows();
+
+    interface StorageAggregate {
+        long getCnt();
+        long getBytes();
+    }
+
+    @Query("SELECT COUNT(a) as cnt, COALESCE(SUM(a.byteSize), 0) as bytes FROM NoteAttachmentEntity a")
+    StorageAggregate aggregateStorage();
 }

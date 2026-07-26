@@ -451,14 +451,58 @@ export function deleteNoteAttachment(noteId: number, attachmentId: number) {
   return api.delete(`/admin/notes/${noteId}/attachments/${attachmentId}`, { headers: tokenHeader() })
 }
 
+// 4D：仪表盘统计扩展——30 天趋势 / TOP5 热文 / 状态计数 / 附件容量 / AI 用量卡片
+export interface DayViews {
+  day: string
+  views: number
+}
+
+export interface TopPost {
+  title: string
+  slug: string
+  viewsCount: number
+  likeCount: number
+}
+
 export interface AdminStats {
   posts: number
   dishes: number
   notes: number
+  publishedPosts: number
+  draftPosts: number
+  attachmentCount: number
+  attachmentBytes: number
+  viewTrend: DayViews[]
+  topPosts: TopPost[]
+  aiUsage: { requests: number; tokens: number }
 }
 
 export function fetchAdminStats() {
   return unwrap<AdminStats>(api.get('/admin/stats', { headers: tokenHeader() }))
+}
+
+// 4E：附件总览（孤儿 = 笔记正文不再引用且创建超 7 天）
+export interface AttachmentOverviewItem {
+  id: number
+  noteId: number
+  noteTitle: string
+  fileName: string
+  mediaType: string
+  byteSize: number
+  url: string
+  createdAt: string
+  orphan: boolean
+}
+
+export interface AttachmentOverview {
+  count: number
+  totalBytes: number
+  orphanCount: number
+  items: AttachmentOverviewItem[]
+}
+
+export function fetchAttachmentOverview() {
+  return unwrap<AttachmentOverview>(api.get('/admin/attachments', { headers: tokenHeader() }))
 }
 
 export type AiChatRole = 'user' | 'assistant'

@@ -26,6 +26,7 @@ const activeItem = computed(() => {
   if (path.startsWith('/admin/ai')) return 'ai'
   if (path.startsWith('/admin/library')) return 'library'
   if (path.startsWith('/admin/series')) return 'series'
+  if (path.startsWith('/admin/attachments')) return 'attachments'
   return ''
 })
 
@@ -68,6 +69,9 @@ function logout() {
       </RouterLink>
       <RouterLink :class="{ active: activeItem === 'series' }" to="/admin/series">
         <i>≣</i><span>文章合集</span>
+      </RouterLink>
+      <RouterLink :class="{ active: activeItem === 'attachments' }" to="/admin/attachments">
+        <i>⎘</i><span>附件管理</span>
       </RouterLink>
     </nav>
     <footer>
