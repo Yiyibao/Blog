@@ -13,6 +13,8 @@ public class RobotsService {
         this.siteUrlConfig = siteUrlConfig;
     }
 
+    // FD-13：今日菜单是两人私密数据——?view=menu 视图与登录/账号页一并挡爬虫；
+    // SitemapService 同理绝不可收录 kitchen 内容
     public String buildRobotsTxt() {
         var base = siteUrlConfig.getSiteUrl();
         return """
@@ -20,6 +22,9 @@ public class RobotsService {
             Allow: /
             Disallow: /admin
             Disallow: /admin/
+            Disallow: /login
+            Disallow: /account
+            Disallow: /*?*view=menu
             Sitemap: %s/sitemap.xml
             """.formatted(base);
     }

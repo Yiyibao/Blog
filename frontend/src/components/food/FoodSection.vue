@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchDish, fetchDishes, fetchDishFavorites, favoriteDish, type DishFavoriteItem } from '../../api/content'
 import type { Dish } from '../../data'
@@ -10,8 +10,12 @@ import { useUiStore } from '../../stores/uiStore'
 import { removeLegacyKey } from '../../utils/localStore'
 import { useRequestToken } from '../../composables/useRequestToken'
 import { refreshReveals } from '../../composables/useReveals'
+import { useAuthStore } from '../../stores/auth'
+import { useFoodStore } from '../../stores/foodStore'
 import DishPanel from './DishPanel.vue'
 import DishRoulette from './DishRoulette.vue'
+import TodayMenuCard from './TodayMenuCard.vue'
+import TodayMenuBoard from './TodayMenuBoard.vue'
 const route = useRoute()
 const router = useRouter()
 const dishes = ref<Dish[]>([])
@@ -49,6 +53,31 @@ const showRanking = computed(() => favoriteBoard.value.length > 0 && favoriteBoa
 const championCount = computed(() => Math.max(1, favoriteBoard.value[0]?.favoriteCount ?? 1))
 
 const uiStore = useUiStore()
+const auth = useAuthStore()
+const foodStore = useFoodStore()
+
+// FD-13：今日菜单——?view=menu 打开编辑板（可分享/可回退），?date= 指定日期
+const boardOpen = computed(() => route.query.view === 'menu' && auth.canKitchen)
+function openBoard() {
+  foodStore.clearArrivals()
+  void router.replace({ query: { ...route.query, view: 'menu' } })
+}
+function closeBoard() {
+  const { view: _view, ...rest } = route.query
+  void router.replace({ query: rest })
+}
+function initialMenuDate(): string | undefined {
+  const raw = route.query.date
+  return typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : undefined
+}
+function startMenu() {
+  void foodStore.loadMenu(initialMenuDate())
+  foodStore.startMenuPolling()
+}
+watch(() => auth.canKitchen, (can) => {
+  if (can) startMenu()
+  else foodStore.stopMenuPolling()
+})
 
 // FD-5：今天吃什么·抽卡（纯前端）；抽选池 = 当前筛选结果（想吃辣就先筛辣再抽），空则回退整页
 const rouletteOpen = ref(false)
@@ -216,7 +245,9 @@ onMounted(() => {
   load()
   // NF-9（提前执行）：清掉幽灵收藏死代码写下的遗留键
   removeLegacyKey('yubai_dish_favorites')
+  if (auth.canKitchen) startMenu()
 })
+onBeforeUnmount(() => foodStore.stopMenuPolling())
 </script>
 
 <template>
@@ -228,11 +259,21 @@ onMounted(() => {
           <h1><span>一座持续生长的</span><em>家常菜谱库</em></h1>
           <p>真实食材、清楚步骤，以及值得反复端上餐桌的味道。每一道菜都来自数据库，也保留照片作者与来源。</p>
         </div>
-        <dl class="food-stats" aria-label="菜谱统计">
-          <div><dt>{{ dishTotal.toString().padStart(2, '0') }}</dt><dd>RECIPES</dd></div>
-          <div><dt>{{ seenCategories.size }}</dt><dd>COLLECTIONS</dd></div>
-          <div><dt>{{ seenFeatured.size }}</dt><dd>FEATURED</dd></div>
-        </dl>
+        <div class="food-hero-side">
+          <TodayMenuCard
+            v-if="auth.canKitchen"
+            :menu="foodStore.menu"
+            :loading="foodStore.loading"
+            :can-edit="foodStore.canEdit"
+            :arrivals="foodStore.arrivals"
+            @open="openBoard"
+          />
+          <dl v-else class="food-stats" aria-label="菜谱统计">
+            <div><dt>{{ dishTotal.toString().padStart(2, '0') }}</dt><dd>RECIPES</dd></div>
+            <div><dt>{{ seenCategories.size }}</dt><dd>COLLECTIONS</dd></div>
+            <div><dt>{{ seenFeatured.size }}</dt><dd>FEATURED</dd></div>
+          </dl>
+        </div>
       </header>
 
       <nav class="food-filter" aria-label="菜谱分类">
@@ -346,6 +387,7 @@ onMounted(() => {
     @click="rouletteOpen = true"
   >✦</button>
 
+  <TodayMenuBoard v-if="boardOpen" :dishes="dishes" @close="closeBoard" />
   <DishRoulette v-if="rouletteOpen" :dishes="roulettePool" @close="rouletteOpen = false" @open="onRouletteOpen" />
   <DishPanel :dish="selectedDish" @close="closeDish" @favorite="onFavorite" />
 </template>
@@ -365,6 +407,7 @@ onMounted(() => {
 .food-hero h1 em { position: relative; margin-top: 10px; color: var(--accent); font: 400 clamp(3.5rem, 7vw, 6.8rem)/.96 Georgia, "Songti SC", "STSong", serif; font-style: normal; letter-spacing: -.06em; }
 .food-hero h1 em::after { content: ""; position: absolute; right: -28px; bottom: 8px; width: 18px; aspect-ratio: 1; border: 1px solid var(--accent); border-radius: 50%; opacity: .65; }
 .food-hero-copy > p:last-child { max-width: 590px; margin: 34px 0 0; color: var(--food-muted); font-size: clamp(.98rem, 1.25vw, 1.12rem); line-height: 1.8; }
+.food-hero-side { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
 .food-stats { display: grid; grid-template-columns: repeat(3, 1fr); min-width: 310px; margin: 0; padding: 24px 18px; border: 1px solid var(--food-line); border-radius: 22px; background: color-mix(in srgb, var(--surface) 72%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(16px); opacity: 0; }
 .ready .food-stats { animation: food-fade-in .9s ease .32s forwards; }
 .food-stats div { padding: 0 16px; border-left: 1px solid var(--food-line); }
@@ -492,7 +535,7 @@ onMounted(() => {
 @keyframes skeleton { to { background-position-x: -220%; } }
 @media (max-width: 980px) { .food-hero { grid-template-columns: 1fr; gap: 42px; min-height: 0; } .food-hero::before { display: none; } .food-stats { max-width: 420px; } .dish-card { grid-column: span 6; } .dish-card.featured { grid-column: 1 / -1; grid-template-columns: minmax(0, 1.18fr) minmax(280px, .82fr); grid-template-rows: 400px; } .ranking-board { grid-template-columns: 1fr; } .ranking-champion { min-height: 460px; } .ranking-list { grid-template-columns: repeat(2, minmax(0,1fr)); } .ranking-list button { min-height: 112px; grid-template-columns: 38px 74px minmax(0,1fr) auto; gap: 11px; } .ranking-list img { width: 74px; height: 78px; } .rank-arrow { display: none; } }
 @media (max-width: 760px) { .dish-card.featured { grid-template-columns: 1fr; grid-template-rows: 340px auto; } .dish-card.featured .dish-copy { justify-content: flex-start; padding: 34px 26px 26px; } .dish-card.featured .dish-copy::before { top: 0; left: 26px; } }
-@media (max-width: 640px) { .food-shell { padding-top: 70px; } .food-hero { padding-bottom: 42px; } .food-hero h1 span { font-size: clamp(2.35rem, 11vw, 3.2rem); } .food-hero h1 em { margin-top: 8px; font-size: clamp(3.15rem, 15vw, 4.5rem); letter-spacing: -.07em; } .food-hero h1 em::after { right: -16px; bottom: 5px; width: 12px; } .food-stats { min-width: 0; width: 100%; padding: 20px 8px; } .food-stats div { padding: 0 10px; } .food-filter { position: static; align-items: flex-start; flex-direction: column; gap: 10px; } .roulette-fab { display: grid; } .catalog-aside { align-items: flex-start; } .catalog-aside p { text-align: left; } .food-filter > div { width: 100%; } .food-catalog-head { align-items: flex-start; flex-direction: column; gap: 14px; margin-top: 38px; } .food-catalog-head p { max-width: none; } .dish-grid { display: flex; flex-direction: column; gap: 18px; } .dish-card, .dish-card.featured { display: grid; min-height: 0; grid-template-columns: 1fr; grid-template-rows: auto 1fr; border-radius: 20px 20px 7px 20px; } .dish-media, .dish-card.featured .dish-media { min-height: 280px; } .dish-card.featured .dish-copy { justify-content: flex-start; padding: 28px 20px 20px; } .dish-card.featured .dish-copy::before { top: 0; left: 20px; } .dish-card.featured .dish-copy strong { font-size: 2rem; } .dish-copy > span, .dish-card.featured .dish-copy > span { font-size: .86rem; -webkit-line-clamp: 3; } .food-ranking { margin-top: 64px; padding: 22px 14px; border-radius: 24px 24px 7px 24px; } .ranking-head { align-items: flex-start; flex-direction: column; gap: 13px; margin-bottom: 22px; padding-inline: 5px; } .ranking-head > p { max-width: none; } .ranking-champion { min-height: 410px; } .champion-copy { padding: 25px; } .score-orbit { width: 68px; height: 68px; } .ranking-list { grid-template-columns: 1fr; } .ranking-list button { grid-template-columns: 34px 72px minmax(0,1fr) auto; padding: 10px; } .ranking-list img { width: 72px; height: 74px; } .rank-info strong { font-size: 1rem; } .rank-meter { width: 92%; } }
+@media (max-width: 640px) { .food-hero-side { order: -1; } .food-shell { padding-top: 70px; } .food-hero { padding-bottom: 42px; } .food-hero h1 span { font-size: clamp(2.35rem, 11vw, 3.2rem); } .food-hero h1 em { margin-top: 8px; font-size: clamp(3.15rem, 15vw, 4.5rem); letter-spacing: -.07em; } .food-hero h1 em::after { right: -16px; bottom: 5px; width: 12px; } .food-stats { min-width: 0; width: 100%; padding: 20px 8px; } .food-stats div { padding: 0 10px; } .food-filter { position: static; align-items: flex-start; flex-direction: column; gap: 10px; } .roulette-fab { display: grid; } .catalog-aside { align-items: flex-start; } .catalog-aside p { text-align: left; } .food-filter > div { width: 100%; } .food-catalog-head { align-items: flex-start; flex-direction: column; gap: 14px; margin-top: 38px; } .food-catalog-head p { max-width: none; } .dish-grid { display: flex; flex-direction: column; gap: 18px; } .dish-card, .dish-card.featured { display: grid; min-height: 0; grid-template-columns: 1fr; grid-template-rows: auto 1fr; border-radius: 20px 20px 7px 20px; } .dish-media, .dish-card.featured .dish-media { min-height: 280px; } .dish-card.featured .dish-copy { justify-content: flex-start; padding: 28px 20px 20px; } .dish-card.featured .dish-copy::before { top: 0; left: 20px; } .dish-card.featured .dish-copy strong { font-size: 2rem; } .dish-copy > span, .dish-card.featured .dish-copy > span { font-size: .86rem; -webkit-line-clamp: 3; } .food-ranking { margin-top: 64px; padding: 22px 14px; border-radius: 24px 24px 7px 24px; } .ranking-head { align-items: flex-start; flex-direction: column; gap: 13px; margin-bottom: 22px; padding-inline: 5px; } .ranking-head > p { max-width: none; } .ranking-champion { min-height: 410px; } .champion-copy { padding: 25px; } .score-orbit { width: 68px; height: 68px; } .ranking-list { grid-template-columns: 1fr; } .ranking-list button { grid-template-columns: 34px 72px minmax(0,1fr) auto; padding: 10px; } .ranking-list img { width: 72px; height: 74px; } .rank-info strong { font-size: 1rem; } .rank-meter { width: 92%; } }
 @media (hover: none) { .dish-card:hover { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .food-hero-copy, .food-stats, .dish-card, .ranking-champion, .ranking-list li, .rank-meter i { opacity: 1; transform: none; animation: none !important; } .dish-card img, .dish-copy, .dish-copy > span, .dish-copy u { transition-duration: .01ms !important; } .food-skeleton-grid span, .score-orbit::after { animation: none; } }
 </style>

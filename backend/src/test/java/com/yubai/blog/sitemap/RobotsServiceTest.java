@@ -50,6 +50,15 @@ class RobotsServiceTest {
     }
 
     @Test
+    void privateCoupleViewsAreDisallowed() {
+        // FD-13：今日菜单视图与登录/账号页挡爬虫，菜谱公开页不受影响
+        var body = service.buildRobotsTxt();
+        assertThat(body).contains("Disallow: /*?*view=menu");
+        assertThat(body).contains("Disallow: /login");
+        assertThat(body).contains("Disallow: /account");
+    }
+
+    @Test
     void publicPagesAreNotDisallowed() {
         var body = service.buildRobotsTxt();
         assertThat(body).doesNotContain("Disallow: /articles");

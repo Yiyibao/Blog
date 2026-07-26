@@ -11,6 +11,11 @@ const mockFetchDish = vi.fn()
 const mockFavoriteDish = vi.fn()
 const mockFetchDishFavorites = vi.fn()
 
+vi.mock('../api/kitchen', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/kitchen')>()
+  return { ...actual, fetchDailyMenu: vi.fn().mockResolvedValue({ exists: false, date: '2026-07-27', status: 'DRAFT', note: '', version: null, items: [], updatedBy: null, updatedAt: null }) }
+})
+
 vi.mock('../api/content', () => ({
   fetchDishes: (...args: unknown[]) => mockFetchDishes(...args),
   fetchDish: (...args: unknown[]) => mockFetchDish(...args),

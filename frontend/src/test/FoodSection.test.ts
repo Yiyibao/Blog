@@ -10,6 +10,11 @@ const mockFetchDish = vi.fn()
 const mockFavoriteDish = vi.fn()
 const mockFetchDishFavorites = vi.fn()
 
+vi.mock('../api/kitchen', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/kitchen')>()
+  return { ...actual, fetchDailyMenu: vi.fn().mockResolvedValue({ exists: false, date: '2026-07-27', status: 'DRAFT', note: '', version: null, items: [], updatedBy: null, updatedAt: null }) }
+})
+
 vi.mock('../api/content', () => ({
   fetchDishes: (...args: unknown[]) => mockFetchDishes(...args),
   fetchDish: (...args: unknown[]) => mockFetchDish(...args),
@@ -139,6 +144,7 @@ describe('FoodSection baseline', () => {
   })
 
   it('renders hero stats from global totals and accumulated categories', async () => {
+    sessionStorage.clear() // FD-13：登录态英雄区换菜单卡，统计盒是匿名视角
     const wrapper = await mountSection()
     const stats = wrapper.find('.food-stats')
     expect(stats.text()).toContain('03')
@@ -146,6 +152,7 @@ describe('FoodSection baseline', () => {
   })
 
   it('keeps hero stats monotonic across pagination instead of shrinking', async () => {
+    sessionStorage.clear() // FD-13：统计盒是匿名视角
     mockFetchDishes.mockResolvedValueOnce(pageOf([
       makeDish({ name: '红烧肉', category: '硬菜', featured: true }),
       makeDish({ name: '拍黄瓜', category: '凉菜' }),
