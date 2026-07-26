@@ -3,6 +3,17 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import KnowledgeGraph, { type GraphNode, type GraphEdge } from '../components/KnowledgeGraph.vue'
 
+// NF-7：组件改走统一 api 层，失败态测试 mock api 模块而非全局 fetch
+const mockFetchGraphNodes = vi.fn()
+
+vi.mock('../api/content', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/content')>()
+  return {
+    ...actual,
+    fetchGraphNodes: (...args: unknown[]) => mockFetchGraphNodes(...args),
+  }
+})
+
 const sampleNodes: GraphNode[] = [
   { id: 'p1', label: 'Vue 架构', type: 'POST', url: '/articles/vue-arch' },
   { id: 'p2', label: 'TS 类型', type: 'POST', url: '/articles/ts-type' },
@@ -118,7 +129,7 @@ describe('KnowledgeGraph Component', () => {
   })
 
   it('handles API failure by displaying error state without fake demo fallback data', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
+    mockFetchGraphNodes.mockRejectedValue(new Error('Network error'))
 
     const router = createRouter({
       history: createMemoryHistory(),

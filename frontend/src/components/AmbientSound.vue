@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
+import { fetchMusicTracks } from '../api/content'
 
 interface Track {
-  id: string
+  id: string | number
   title: string
   artist: string
   duration?: number
@@ -43,14 +44,12 @@ let audioEl: HTMLAudioElement | null = null
 
 const currentTrack = computed(() => tracks.value[currentTrackIndex.value] || fallbackTracks[0])
 
+// NF-7：改走统一 api 层（错误处理与 baseURL 一致化），不再组件内裸 fetch
 async function fetchRemoteTracks() {
   try {
-    const res = await fetch('/api/v1/music/tracks')
-    if (res.ok) {
-      const json = await res.json()
-      if (json.code === 200 && Array.isArray(json.data) && json.data.length > 0) {
-        tracks.value = json.data
-      }
+    const data = await fetchMusicTracks()
+    if (Array.isArray(data) && data.length > 0) {
+      tracks.value = data
     }
   } catch {
     // Keep fallback tracks on error

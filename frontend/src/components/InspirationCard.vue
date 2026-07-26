@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { fetchDailyQuotes } from '../api/content'
 import { useUiStore } from '../stores/uiStore'
 
 interface Quote {
-  id: string
+  id: string | number
   content: string
   author: string
   category: string
@@ -37,18 +38,14 @@ const todayDate = computed(() => {
   }
 })
 
+// NF-7：改走统一 api 层，不再组件内裸 fetch
 async function fetchDailyQuote() {
   try {
-    const res = await fetch('/api/v1/quotes/daily')
-    if (res.ok) {
-      const json = await res.json()
-      if (json.code === 200 && json.data) {
-        if (Array.isArray(json.data) && json.data.length > 0) {
-          quotes.value = json.data
-        } else if (json.data.content) {
-          quotes.value = [json.data, ...fallbackQuotes]
-        }
-      }
+    const data = await fetchDailyQuotes()
+    if (Array.isArray(data) && data.length > 0) {
+      quotes.value = data
+    } else if (data && !Array.isArray(data) && data.content) {
+      quotes.value = [data, ...fallbackQuotes]
     }
   } catch {
     // fallback

@@ -108,6 +108,48 @@ export function favoriteDish(slug: string) {
   return unwrap<DishFavoriteResult>(api.post(`/dishes/${encodeURIComponent(slug)}/favorite`))
 }
 
+// NF-7：以下三组接口原先在组件内裸 fetch，统一收编到 api 层（错误处理与 baseURL 一致化）
+
+export interface GraphApiNode {
+  id: string
+  label: string
+  type: 'POST' | 'DISH' | 'NOTE' | 'TAG'
+  url: string | null
+}
+
+export interface GraphApiEdge {
+  source: string
+  target: string
+}
+
+export function fetchGraphNodes() {
+  return unwrap<{ nodes: GraphApiNode[]; edges: GraphApiEdge[] }>(api.get('/graph/nodes'))
+}
+
+export interface RemoteMusicTrack {
+  id: number | string
+  title: string
+  artist: string
+  duration?: number
+  audioUrl: string
+  coverUrl?: string
+}
+
+export function fetchMusicTracks() {
+  return unwrap<RemoteMusicTrack[]>(api.get('/music/tracks'))
+}
+
+export interface RemoteQuote {
+  id: number | string
+  content: string
+  author: string
+  category: string
+}
+
+export function fetchDailyQuotes() {
+  return unwrap<RemoteQuote[] | RemoteQuote>(api.get('/quotes/daily'))
+}
+
 export interface SearchGroup {
   articles: SearchHit[]
   notes: SearchHit[]

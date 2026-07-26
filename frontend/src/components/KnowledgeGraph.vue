@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import axios from 'axios'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { fetchGraphNodes } from '../api/content'
 
 export interface GraphNode {
   id: string
@@ -62,19 +64,14 @@ async function loadGraphData() {
   loading.value = true
   loadError.value = ''
   try {
-    const res = await fetch('/api/v1/graph/nodes')
-    if (res.ok) {
-      const json = await res.json()
-      if (json.code === 200 && json.data) {
-        nodes.value = json.data.nodes || []
-        edges.value = json.data.edges || []
-        loading.value = false
-        return
-      }
-    }
-    loadError.value = '关联图谱数据加载失败'
-  } catch {
-    loadError.value = '无法连接网络，图谱数据加载失败'
+    // NF-7：改走统一 api 层，不再组件内裸 fetch
+    const data = await fetchGraphNodes()
+    nodes.value = data.nodes || []
+    edges.value = data.edges || []
+  } catch (cause) {
+    loadError.value = axios.isAxiosError(cause) && cause.response
+      ? '关联图谱数据加载失败'
+      : '无法连接网络，图谱数据加载失败'
   } finally {
     loading.value = false
   }
