@@ -5,6 +5,7 @@ import SiteFooter from './components/SiteFooter.vue'
 import GlobalSearch from './components/GlobalSearch.vue'
 import AmbientSound from './components/AmbientSound.vue'
 import EntryGate from './components/EntryGate.vue'
+import AdminAiSidebar from './components/AdminAiSidebar.vue'
 import { useUiStore } from './stores/uiStore'
 import { useAuthStore } from './stores/auth'
 import { usePageMeta } from './composables/usePageMeta'
@@ -238,6 +239,8 @@ onBeforeUnmount(() => {
     <AmbientSound v-if="!isAdminRoute" />
     <!-- L-16/D-18：入口大屏（组件内部判定：仅根路径 + 无既往选择 + 未登录） -->
     <EntryGate />
+    <!-- 4A-4：AI 助手停靠栏——全 /admin 路由可用（组件内部排除 /admin/ai 全屏页） -->
+    <AdminAiSidebar v-if="isAdminRoute && auth.isAdmin" />
     <div class="toast" :class="{ visible: !!ui.toast }" role="status" aria-live="polite">{{ ui.toast }}</div>
   </div>
 </template>

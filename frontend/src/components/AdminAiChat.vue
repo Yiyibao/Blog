@@ -7,6 +7,21 @@ import {
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
 
+/**
+ * 4A-4：compact=true 时去掉页面级 chrome（侧导航/顶栏），只渲染对话核心——供 AdminAiSidebar 停靠复用；
+ * providerId/model 由宿主（侧边栏顶部切换器）注入，全屏页缺省走默认供应商。
+ * 会话存于 sessionStorage 同一键，停靠与全屏两形态天然共享上下文。
+ */
+const props = withDefaults(defineProps<{
+  compact?: boolean
+  providerId?: number | null
+  model?: string | null
+}>(), {
+  compact: false,
+  providerId: null,
+  model: null,
+})
+
 const STORAGE_KEY = 'yubai-admin-ai-messages'
 
 const router = useRouter()
@@ -124,7 +139,11 @@ async function sendMessage() {
         live.content += text
         void scrollToBottom()
       },
-    }, { signal: controller.signal })
+    }, {
+      signal: controller.signal,
+      ...(props.providerId != null ? { providerId: props.providerId } : {}),
+      ...(props.model ? { model: props.model } : {}),
+    })
     if (!live.content.trim()) {
       throw new AiStreamHttpError(502, 'empty response')
     }
@@ -163,11 +182,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-console ai-chat-console">
-    <AdminSidebar />
+  <section :class="props.compact ? 'ai-chat-compact-root' : 'admin-console ai-chat-console'">
+    <AdminSidebar v-if="!props.compact" />
 
-    <main class="admin-main ai-chat-main">
-      <header class="admin-topbar">
+    <main :class="props.compact ? 'ai-chat-compact-main' : 'admin-main ai-chat-main'">
+      <header v-if="!props.compact" class="admin-topbar">
         <div>
           <span class="admin-breadcrumb">后台管理 / AI 助手</span>
           <h1>AI 助手对话</h1>
@@ -178,6 +197,9 @@ onMounted(() => {
           <button @click="logout">退出登录</button>
         </div>
       </header>
+      <div v-else-if="messages.length" class="compact-toolbar">
+        <button class="clear-btn" type="button" @click="clearConversation">清空对话</button>
+      </div>
 
       <div class="ai-chat-container">
         <div ref="chatBoxRef" class="chat-messages" role="log" aria-live="polite">
@@ -266,6 +288,29 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 4A-4：停靠形态——铺满宿主容器，无页面级 chrome */
+.ai-chat-compact-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ai-chat-compact-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.ai-chat-compact-main .ai-chat-container {
+  flex: 1;
+  min-height: 0;
+}
+.compact-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
+}
+
 .ai-chat-console {
   min-height: 100vh;
 }
