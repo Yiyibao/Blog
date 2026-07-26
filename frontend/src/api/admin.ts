@@ -118,8 +118,29 @@ async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T>
   return (await request).data.data
 }
 
-export function login(username: string, password: string) {
-  return unwrap<LoginResult>(api.post('/auth/login', { username, password }))
+/** L-7：登录人机验证 challenge；type 为 IMAGE 时需展示 captchaImage 并提交答案。 */
+export interface LoginChallenge {
+  challengeId: string
+  type: 'POW' | 'IMAGE'
+  salt: string
+  difficulty: number
+  captchaImage: string | null
+}
+
+export interface LoginVerification {
+  challengeId: string
+  nonce: string
+  captchaAnswer?: string
+}
+
+export function fetchLoginChallenge(username?: string) {
+  return unwrap<LoginChallenge>(
+    api.get('/auth/challenge', { params: username ? { username } : undefined }),
+  )
+}
+
+export function login(username: string, password: string, verification: LoginVerification) {
+  return unwrap<LoginResult>(api.post('/auth/login', { username, password, ...verification }))
 }
 
 function asPage<T>(data: PageResult<T> | T[], page = 0, size = 20): PageResult<T> {
@@ -286,12 +307,6 @@ export interface AiChatResult {
   } | null
 }
 
-export function sendAiChat(messages: AiChatMessage[]) {
-  return unwrap<AiChatResult>(
-    api.post('/admin/ai/chat', { messages }, { timeout: 120000, headers: tokenHeader() }),
-  )
-}
-
 export class AiStreamHttpError extends Error {
   status: number
 
@@ -371,6 +386,11 @@ export async function streamAiChat(
 
   const handleLine = (rawLine: string) => {
     const line = rawLine.replace(/\r$/, '')
+    if (line === '') {
+      // SSE 事件边界：事件类型复位，避免粘滞到下一个事件
+      currentEvent = ''
+      return
+    }
     if (line.startsWith('event:')) {
       currentEvent = line.slice(6).trim()
       return
@@ -386,28 +406,35 @@ export async function streamAiChat(
     }
     if (!parsed || typeof parsed !== 'object') return
     const record = parsed as { content?: unknown; status?: unknown; message?: unknown }
-    if (currentEvent === 'delta' && typeof record.content === 'string') {
+    const eventType = currentEvent
+    currentEvent = ''
+    if (eventType === 'delta' && typeof record.content === 'string') {
       callbacks.onDelta(record.content)
-    } else if (currentEvent === 'done') {
+    } else if (eventType === 'done') {
       callbacks.onDone?.(parsed as AiStreamDone)
-    } else if (currentEvent === 'error') {
+    } else if (eventType === 'error') {
       const status = typeof record.status === 'number' ? record.status : 502
       const detail = typeof record.message === 'string' ? record.message : 'AI 响应失败'
       throw new AiStreamHttpError(status, detail)
     }
   }
 
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let newlineIndex = buffer.indexOf('\n')
-    while (newlineIndex >= 0) {
-      const line = buffer.slice(0, newlineIndex)
-      buffer = buffer.slice(newlineIndex + 1)
-      handleLine(line)
-      newlineIndex = buffer.indexOf('\n')
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let newlineIndex = buffer.indexOf('\n')
+      while (newlineIndex >= 0) {
+        const line = buffer.slice(0, newlineIndex)
+        buffer = buffer.slice(newlineIndex + 1)
+        handleLine(line)
+        newlineIndex = buffer.indexOf('\n')
+      }
     }
+    if (buffer) handleLine(buffer)
+  } finally {
+    // error 事件抛出或调用方中止时释放底层连接，避免 reader 悬挂
+    reader.cancel().catch(() => {})
   }
-  if (buffer) handleLine(buffer)
 }
