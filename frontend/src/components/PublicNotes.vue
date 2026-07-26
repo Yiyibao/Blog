@@ -8,7 +8,10 @@ import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { TableKit } from '@tiptap/extension-table'
 import Image from '@tiptap/extension-image'
 import { Mathematics } from '@tiptap/extension-mathematics'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { lowlight } from '../utils/codeHighlight'
 import 'katex/dist/katex.min.css'
+import '../styles/code-highlight.css'
 import { fetchPublishedNote, fetchPublishedNotes } from '../api/content'
 import type { AdminNoteSummary } from '../api/admin'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
@@ -91,7 +94,9 @@ const editor = useEditor({
   content: '',
   contentType: 'markdown',
   extensions: [
-    StarterKit,
+    // L-14：与编辑器同一条 lowlight 管线——围栏语言标记在只读渲染同样生效
+    StarterKit.configure({ codeBlock: false }),
+    CodeBlockLowlight.configure({ lowlight }),
     Markdown, TaskList, TaskItem.configure({ nested: true }), TableKit, Image,
     Mathematics.configure({ katexOptions: { throwOnError: false } }),
   ],

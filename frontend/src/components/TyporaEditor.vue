@@ -10,7 +10,10 @@ import { TableKit } from '@tiptap/extension-table'
 import Image from '@tiptap/extension-image'
 import FileHandler from '@tiptap/extension-file-handler'
 import { Mathematics } from '@tiptap/extension-mathematics'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { CODE_LANGUAGES, lowlight } from '../utils/codeHighlight'
 import 'katex/dist/katex.min.css'
+import '../styles/code-highlight.css'
 
 const props = defineProps<{ modelValue: string; uploadImage: (file: File) => Promise<string> }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string]; 'upload-error': [message: string] }>()
@@ -49,7 +52,9 @@ const editor = useEditor({
   content: props.modelValue,
   contentType: 'markdown',
   extensions: [
-    StarterKit,
+    // L-14：代码块换 lowlight 高亮版（语言标记落 markdown 围栏，作者经工具栏选择器指定）
+    StarterKit.configure({ codeBlock: false }),
+    CodeBlockLowlight.configure({ lowlight }),
     Markdown,
     Placeholder.configure({ placeholder: '开始写作，输入 Markdown 也会自然排版…' }),
     TaskList,
@@ -134,6 +139,16 @@ function runSlash(command: 'text' | 'h1' | 'h2' | 'task' | 'quote' | 'code' | 't
   slashOpen.value = false
 }
 
+/** L-14：光标在代码块内时工具栏出现语言选择器——语言即 markdown 围栏标记，随导出/保存往返。 */
+const activeCodeLanguage = computed(() => {
+  if (!editor.value?.isActive('codeBlock')) return null
+  return String(editor.value.getAttributes('codeBlock').language ?? '')
+})
+
+function setCodeLanguage(language: string) {
+  editor.value?.chain().focus().updateAttributes('codeBlock', { language: language || null }).run()
+}
+
 function chooseImages(event: Event) {
   const input = event.target as HTMLInputElement
   if (input.files && editor.value) void insertFiles(editor.value, [...input.files])
@@ -185,7 +200,17 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
         <button title="有序列表" @click="editor?.chain().focus().toggleOrderedList().run()">1. 列表</button>
         <button title="任务列表" @click="editor?.chain().focus().toggleTaskList().run()">☑ 任务</button>
         <button title="引用" @click="editor?.chain().focus().toggleBlockquote().run()">❝</button>
-        <button title="代码块" @click="editor?.chain().focus().toggleCodeBlock().run()">{ }</button>
+        <button :class="{ active: editor?.isActive('codeBlock') }" title="代码块" @click="editor?.chain().focus().toggleCodeBlock().run()">{ }</button>
+        <select
+          v-if="activeCodeLanguage !== null"
+          class="code-lang-select"
+          :value="activeCodeLanguage"
+          aria-label="代码块语言"
+          title="标明代码语言以启用语法高亮"
+          @change="setCodeLanguage(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="lang in CODE_LANGUAGES" :key="lang.value" :value="lang.value">{{ lang.label }}</option>
+        </select>
       </div>
       <div class="tool-group">
         <button title="链接" @click="setLink">↗ 链接</button>
@@ -228,3 +253,46 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
     </div>
   </div>
 </template>
+
+<style scoped>
+/* L-14：工具栏清晰化——H1/H2 等按钮字形加重加大、对比与层级贴近 Typora（scoped 覆盖全局基线） */
+.typora-toolbar button {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  min-height: 34px;
+  padding-inline: 10px;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.typora-toolbar button:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.typora-toolbar button.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.typora-toolbar .tool-group {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+/* L-14：代码块语言选择器 */
+.code-lang-select {
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-solid);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+.code-lang-select:focus-visible {
+  outline: 2px solid var(--accent);
+}
+</style>

@@ -1,0 +1,99 @@
+/* L-14：代码块语法高亮 token 配色——随站点明暗主题走（.dark 由根元素切换）。
+   仅被 TyporaEditor 与 PublicNotes（懒加载 chunk）引入，公开首屏零负担。 */
+
+.hljs-comment,
+.hljs-quote {
+  color: #8a8378;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag {
+  color: #a3564f;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: #5b7d4e;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-meta {
+  color: #9a6a2f;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: #4f6b9a;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-built_in {
+  color: #7a5f9a;
+}
+
+.hljs-deletion {
+  color: #b4452c;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.dark .hljs-comment,
+.dark .hljs-quote {
+  color: #8f9788;
+}
+
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal,
+.dark .hljs-doctag {
+  color: #e8927c;
+}
+
+.dark .hljs-string,
+.dark .hljs-regexp,
+.dark .hljs-addition {
+  color: #a9c98a;
+}
+
+.dark .hljs-number,
+.dark .hljs-symbol,
+.dark .hljs-bullet,
+.dark .hljs-meta {
+  color: #dbb06b;
+}
+
+.dark .hljs-title,
+.dark .hljs-section,
+.dark .hljs-name,
+.dark .hljs-selector-id,
+.dark .hljs-selector-class {
+  color: #8fb3e8;
+}
+
+.dark .hljs-attr,
+.dark .hljs-attribute,
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-type,
+.dark .hljs-built_in {
+  color: #c1a3e8;
+}
