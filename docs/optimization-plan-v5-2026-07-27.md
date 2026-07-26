@@ -190,8 +190,8 @@
 | --- | --- | --- |
 | ~~V16~~ | ai_providers 唯一默认部分索引（AI 加固占号，**已执行** 2026-07-27） | 已完成 |
 | ~~V17~~ | `V17__add_admin_user_roles.sql`——admin_users 加 role/display_name/sessions_valid_from（美食专项 FD-6，**已执行** 2026-07-27） | 已完成 |
-| V18 | **美食专项（FD-10）预定**——kitchen 三表（daily_menus / daily_menu_items / meal_logs） | 并行专项 |
-| V19 | `CREATE EXTENSION pg_trgm` + 三表搜索列 GIN 索引 + (category_slug, status) 复合索引 | 阶段 1（P1-4/NB-1） |
+| ~~V18~~ | pg_trgm 三表搜索列 GIN 索引 + (category_slug, status) 复合索引（P1-4/NB-1，**已执行** 2026-07-27，commit 1ec23c7——先于 FD-10 落盘占号） | 已完成 |
+| V19 | **美食专项（FD-10）预定**——kitchen 三表（daily_menus / daily_menu_items / meal_logs） | 并行专项 |
 | V20 | dishes.base_servings（若美食专项未顺带完成 NF-12） | 阶段 2（NF-12） |
 | V21 | posts 加 markdown_content（可空）+ content_format | 阶段 3（3A-1） |
 | V22 | 存量正文迁移后的清理（是否删旧列单独评审） | 阶段 3 末 |
@@ -200,7 +200,7 @@
 | V25 | post_tags / learning_note_tags 的 tag 列索引 | 阶段 5（5B） |
 | V26+ | 中文分词（zhparser/pgroonga）对象，以 spike 结论为准 | 阶段 5（5A） |
 
-美食专项共占两号：V17（角色模型，已执行）+ V18（kitchen 三表，预定），其余条目自 V19 起顺延一位——**执行任何迁移前先 `ls db/migration/` 取实际最高号**，这已是本项目第四次占号顺延（V15 AI 注册表、V16 AI 加固、V17 角色模型、V18 kitchen 预定）。本次修订同时把正文 3A-1/3A-5/4C/4D/5B 的内联迁移号与本表对齐（此前存在陈旧号）。
+占号实况（2026-07-27 末次核对）：V17 = FD 角色模型（已执行）；**V18 = pg_trgm（本计划阶段 1，已执行——两会话同刻抢号，pg_trgm 文件先落盘胜出，FD kitchen 顺延至 V19 预定）**；V20 起为本表后续条目。**执行任何迁移前先 `ls db/migration/` 取实际最高号**——迁移目录里的文件（含未提交）是唯一权威，计划文本只是规划示意；这已是第四次占号变动（V15 AI 注册表、V16 AI 加固、V17 角色模型、V18 抢号事件）。正文 3A-1/3A-5/4C/4D/5B 的内联迁移号以本表为准（V21 markdown 双字段起依旧有效）。
 
 配套惯例：含索引/扩展的迁移提交附 EXPLAIN (ANALYZE) 前后对比；series 表（V11）在 4B 实现前先复核结构，缺列以新迁移补。PG 版本策略沿用 v4（本地 18.4 / CI 锁 17，跟踪 Flyway 官方支持公告）。
 
