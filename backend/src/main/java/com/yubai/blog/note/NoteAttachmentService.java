@@ -28,6 +28,7 @@ public class NoteAttachmentService {
     private static final long MAX_BYTES = 8L * 1024 * 1024;
     private static final Set<String> SAFE_IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
     private static final int MAX_WIDTH = 1920;
+    private static final int MAX_PIXEL_DIMENSION = 8000;
     private static final float JPEG_QUALITY = 0.85f;
     private final NoteAttachmentRepository attachments;
     private final NoteRepository notes;
@@ -74,6 +75,8 @@ public class NoteAttachmentService {
         if (!matchesMagicBytes(data, type)) {
             throw new InvalidNoteFileException("图片内容与声明的类型不符");
         }
+        // NB-4：解码炸弹预检——8MB 的高压缩比图可膨胀成 GB 级像素，先读头部宽高再允许解码
+        assertDimensionsWithinLimit(data);
         return NoteAttachmentResponse.from(attachments.saveAndFlush(
             NoteAttachmentEntity.create(noteId, safeName.isBlank() ? "image" : safeName, type, optimizeImage(data, type))));
     }
@@ -90,6 +93,27 @@ public class NoteAttachmentService {
                 && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P';
             default -> false;
         };
+    }
+
+    /** NB-4：只解析图片头取宽高（不解码像素），超过 8000×8000 直接拒绝。 */
+    static void assertDimensionsWithinLimit(byte[] data) {
+        try (var input = ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(data))) {
+            Iterator<javax.imageio.ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new InvalidNoteFileException("无法识别的图片内容");
+            var reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width > MAX_PIXEL_DIMENSION || height > MAX_PIXEL_DIMENSION) {
+                    throw new InvalidNoteFileException("图片尺寸不能超过 " + MAX_PIXEL_DIMENSION + "×" + MAX_PIXEL_DIMENSION + " 像素");
+                }
+            } finally {
+                reader.dispose();
+            }
+        } catch (IOException exception) {
+            throw new InvalidNoteFileException("无法读取图片文件");
+        }
     }
 
     private static boolean startsWith(byte[] data, int[] prefix) {

@@ -50,4 +50,38 @@ class QuoteServiceTest {
         var result = service.findAll();
         assertThat(result).isEmpty();
     }
+
+    // NB-6：按日轮转——同日稳定、次日前移一位、年内取模回卷
+
+    private static List<QuoteResponse> quotes(int count) {
+        return java.util.stream.IntStream.rangeClosed(1, count)
+            .mapToObj(i -> new QuoteResponse("q-" + i, "内容" + i, "作者" + i, "分类"))
+            .toList();
+    }
+
+    @Test
+    void rotateForDayPutsTheDaysQuoteFirstAndAdvancesDaily() {
+        var all = quotes(3);
+        // 1 月 1 日 dayOfYear=1 → 偏移 0；1 月 2 日 → 偏移 1；1 月 4 日 → 取模回卷到 0
+        assertThat(QuoteService.rotateForDay(all, java.time.LocalDate.of(2026, 1, 1)))
+            .extracting(QuoteResponse::id).containsExactly("q-1", "q-2", "q-3");
+        assertThat(QuoteService.rotateForDay(all, java.time.LocalDate.of(2026, 1, 2)))
+            .extracting(QuoteResponse::id).containsExactly("q-2", "q-3", "q-1");
+        assertThat(QuoteService.rotateForDay(all, java.time.LocalDate.of(2026, 1, 4)))
+            .extracting(QuoteResponse::id).containsExactly("q-1", "q-2", "q-3");
+    }
+
+    @Test
+    void rotateForDayIsDeterministicWithinTheSameDay() {
+        var all = quotes(5);
+        var day = java.time.LocalDate.of(2026, 7, 27);
+        assertThat(QuoteService.rotateForDay(all, day)).isEqualTo(QuoteService.rotateForDay(all, day));
+    }
+
+    @Test
+    void rotateForDayLeavesTinyListsUntouched() {
+        assertThat(QuoteService.rotateForDay(List.of(), java.time.LocalDate.of(2026, 3, 15))).isEmpty();
+        var single = quotes(1);
+        assertThat(QuoteService.rotateForDay(single, java.time.LocalDate.of(2026, 3, 15))).isSameAs(single);
+    }
 }

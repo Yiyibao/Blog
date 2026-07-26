@@ -53,8 +53,19 @@ import com.yubai.blog.post.PostService;
 class BlogApiIntegrationTest {
     private static final String TEST_DB = "yubai_blog_it";
     private static final Properties ENV = loadEnv();
-    /** 带真实 PNG 文件头的最小样本（P0-6 magic-byte 校验用）。 */
-    private static final byte[] PNG_SAMPLE = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4};
+    /** 可完整解码的最小真 PNG（P0-6 magic-byte + NB-4 尺寸预检双关卡都要过）。 */
+    private static final byte[] PNG_SAMPLE = buildTinyPng(2, 2);
+
+    private static byte[] buildTinyPng(int width, int height) {
+        try {
+            var image = new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            var out = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(image, "png", out);
+            return out.toByteArray();
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
     /** L-7：集成测试固定图形码答案，绕过图片 OCR；真实生成逻辑由 CaptchaImageGeneratorTest 覆盖。 */
     private static final String FIXED_CAPTCHA_TEXT = "AB3CD";
 
@@ -890,6 +901,27 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(42)
+    void requestIdIsIssuedEchoedAndApiDocsStaysDisabledByDefault() throws Exception {
+        // P2-9：每个响应都带 X-Request-Id；合法上游 ID 透传，非法字符则重新生成
+        mockMvc.perform(get("/api/v1/posts"))
+            .andExpect(status().isOk())
+            .andExpect(header().exists("X-Request-Id"));
+        mockMvc.perform(get("/api/v1/posts").header("X-Request-Id", "nginx-abc.123"))
+            .andExpect(header().string("X-Request-Id", "nginx-abc.123"));
+        mockMvc.perform(get("/api/v1/posts").header("X-Request-Id", "bad id<script>"))
+            .andExpect(result -> {
+                String issued = result.getResponse().getHeader("X-Request-Id");
+                if (issued == null || issued.contains(" ") || issued.contains("<")) {
+                    throw new AssertionError("unsafe upstream request id must be regenerated, got: " + issued);
+                }
+            });
+        // P2-3：springdoc 默认关闭——文档路径在安全层放行但功能未启用，如实 404
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/swagger-ui.html")).andExpect(status().isNotFound());
+    }
+
+    @Test
     @Order(14)
     void postSearchWithTypeReturnsFilteredResults() throws Exception {
         String postSearchBody = """
@@ -1007,12 +1039,15 @@ class BlogApiIntegrationTest {
     @Test
     @Order(18)
     void quotesDailyArePublicAndReturnsSeedData() throws Exception {
+        // NB-6：daily 按 day-of-year 轮转（Asia/Shanghai），当日语录固定排首位——按同一公式推期望值
+        var ids = jdbcTemplate.queryForList("select id from sys_quote order by display_order asc, id asc", Long.class);
+        int offset = (java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).getDayOfYear() - 1) % ids.size();
         mockMvc.perform(get("/api/v1/quotes/daily"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(200))
             .andExpect(jsonPath("$.data").isArray())
-            .andExpect(jsonPath("$.data.length()").value(6))
-            .andExpect(jsonPath("$.data[0].id").value("q-1"))
+            .andExpect(jsonPath("$.data.length()").value(ids.size()))
+            .andExpect(jsonPath("$.data[0].id").value("q-" + ids.get(offset)))
             .andExpect(jsonPath("$.data[0].content").isString())
             .andExpect(jsonPath("$.data[0].author").isString())
             .andExpect(jsonPath("$.data[0].category").isString());
@@ -1523,6 +1558,25 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(52)
+    void kitchenResponsesAreNeverStoredWhilePublicCachePolicyHolds() throws Exception {
+        // FD-11：kitchen 私有数据 no-store；收藏榜 no-cache（NB-7）；普通菜谱列表仍 5 分钟公共缓存
+        String adminToken = login();
+        mockMvc.perform(get("/api/v1/kitchen/menus").param("date", "2026-08-01")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                .string("Cache-Control", "no-store"));
+        mockMvc.perform(get("/api/v1/dishes/favorites"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                .string("Cache-Control", "no-cache"));
+        mockMvc.perform(get("/api/v1/dishes"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                .string("Cache-Control", "max-age=300, public"));
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(21)
     void publicCountersAreRateLimitedPerIpAndSlug() throws Exception {
         // P0-2：点赞按 IP+slug 限流，第 11 次 429；其他 slug 不受影响
@@ -1585,6 +1639,13 @@ class BlogApiIntegrationTest {
         mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
                 .file(forgedHtml).header("Authorization", "Bearer " + token))
             .andExpect(status().isBadRequest());
+
+        // NB-4：真 PNG 但尺寸超 8000 上限——解码前预检拒绝
+        var oversized = new MockMultipartFile("file", "wide.png", "image/png", buildTinyPng(8001, 1));
+        mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                .file(oversized).header("Authorization", "Bearer " + token))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("8000")));
 
         mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
                 .header("Authorization", "Bearer " + token))
