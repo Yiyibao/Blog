@@ -20,6 +20,7 @@ import com.yubai.blog.config.CacheConfig;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
+import com.yubai.blog.series.SeriesService;
 
 /**
  * Builds the read-only knowledge graph exposed by {@code GET /api/v1/graph/nodes}.
@@ -44,9 +45,10 @@ public class GraphService {
     private static final String TYPE_NOTE = "NOTE";
     private static final String TYPE_DISH = "DISH";
     private static final String TYPE_TAG = "TAG";
+    private static final String TYPE_SERIES = "SERIES";
 
     /** TAG nodes are emitted first so they survive any frontend node cap and stay layout hubs. */
-    private static final List<String> TYPE_ORDER = List.of(TYPE_TAG, TYPE_POST, TYPE_NOTE, TYPE_DISH);
+    private static final List<String> TYPE_ORDER = List.of(TYPE_TAG, TYPE_SERIES, TYPE_POST, TYPE_NOTE, TYPE_DISH);
 
     private static final Comparator<GraphNode> NODE_ORDER =
         Comparator.<GraphNode>comparingInt(node -> TYPE_ORDER.indexOf(node.type()))
@@ -58,11 +60,14 @@ public class GraphService {
     private final PostRepository postRepository;
     private final NoteRepository noteRepository;
     private final DishRepository dishRepository;
+    private final SeriesService seriesService;
 
-    public GraphService(PostRepository postRepository, NoteRepository noteRepository, DishRepository dishRepository) {
+    public GraphService(PostRepository postRepository, NoteRepository noteRepository, DishRepository dishRepository,
+                        SeriesService seriesService) {
         this.postRepository = postRepository;
         this.noteRepository = noteRepository;
         this.dishRepository = dishRepository;
+        this.seriesService = seriesService;
     }
 
     /**
@@ -100,6 +105,15 @@ public class GraphService {
                 linkTag(nodeId, note.getFolder(), tagLabels, edges);
             }
         }
+
+        // 4B：SERIES 节点——已发布合集连向其已发布成员文章
+        seriesService.publishedGraphMembers().forEach((series, memberPostIds) -> {
+            String nodeId = "s-" + series.getId();
+            contentNodes.add(new GraphNode(nodeId, series.getName(), TYPE_SERIES, "/series/" + series.getSlug()));
+            for (var postId : memberPostIds) {
+                edges.add(new GraphEdge(nodeId, "p-" + postId));
+            }
+        });
 
         for (var dish : dishRepository.findAllPublishedForGraph()) {
             if (dish == null || dish.getId() == null) {

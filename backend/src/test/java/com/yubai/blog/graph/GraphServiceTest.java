@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
+import com.yubai.blog.series.SeriesService;
 
 /** NB-5 之后图谱由轻量投影行 + 标签边行构建，测试数据以行形式 stub（不再构造整实体）。 */
 @ExtendWith(MockitoExtension.class)
@@ -30,6 +31,10 @@ class GraphServiceTest {
 
     @Mock
     DishRepository dishRepository;
+
+    // 4B：未打桩默认空 Map——既有用例不出 SERIES 节点
+    @Mock
+    SeriesService seriesService;
 
     @InjectMocks
     GraphService service;

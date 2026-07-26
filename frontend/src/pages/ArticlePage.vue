@@ -20,6 +20,9 @@ const { apply } = usePageMeta()
 const { apply: applyLD } = useStructuredData()
 
 // 3D：相邻文章导航（来自公开详情响应，按 (date,id) 序）
+// 4B：「本文属于合集 X（n/N）」
+const seriesRef = computed(() => content.articleDetail?.series ?? null)
+
 const neighbors = computed(() => ({
   previous: content.articleDetail?.previous ?? null,
   next: content.articleDetail?.next ?? null,
@@ -215,6 +218,12 @@ onUnmounted(() => {
         <div class="article-header-actions"><div class="tag-row"><span v-for="tag in content.currentPost.tags" :key="tag"># {{ tag }}</span></div><button class="button secondary" type="button" @click="content.toggleFavorite(content.currentPost.slug); ui.showToast(content.favorites.includes(content.currentPost.slug) ? '已收藏' : '已取消收藏')">{{ content.favorites.includes(content.currentPost.slug) ? '★ 已收藏' : '☆ 收藏' }}</button></div>
       </header>
       <div class="article-cover section-wrap" :style="{ '--post-color': content.currentPost.color }"><b>{{ content.currentPost.number }}</b><span>YUBAI / FIELD NOTE</span><i /></div>
+      <!-- 4B：合集归属条 -->
+      <RouterLink v-if="seriesRef" class="article-series-bar section-wrap" :to="`/series/${seriesRef.slug}`">
+        <span class="series-icon" aria-hidden="true">≣</span>
+        <span>本文属于合集 <strong>{{ seriesRef.name }}</strong>（{{ seriesRef.position }}/{{ seriesRef.total }}）</span>
+        <span class="series-go">查看全部 ↗</span>
+      </RouterLink>
       <div class="article-layout section-wrap">
         <aside class="article-aside">
           <div v-if="content.articleOutline.length" class="article-toc">
@@ -287,6 +296,24 @@ onUnmounted(() => {
 
 <style scoped>
 /* 3D：相邻文章导航 */
+.article-series-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: color-mix(in srgb, #ec4899 6%, var(--surface-solid));
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+.article-series-bar:hover { border-color: #ec4899; }
+.article-series-bar .series-icon { color: #ec4899; font-size: 16px; }
+.article-series-bar strong { color: var(--ink); }
+.article-series-bar .series-go { margin-left: auto; color: var(--muted); font-size: 12px; }
+
 .article-neighbors {
   display: grid;
   grid-template-columns: 1fr 1fr;

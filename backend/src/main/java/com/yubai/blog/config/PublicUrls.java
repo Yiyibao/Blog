@@ -28,4 +28,7 @@ public class PublicUrls {
     public String note(long noteId) { return base + "/notes?note=" + noteId; }
 
     public String category(String slug) { return base + "/categories/" + slug; }
+
+    /** 4B：合集详情页。 */
+    public String series(String slug) { return base + "/series/" + slug; }
 }

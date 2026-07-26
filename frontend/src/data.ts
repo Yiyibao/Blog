@@ -42,6 +42,14 @@ export interface PostNeighbor {
   title: string
 }
 
+/** 4B：「本文属于合集 X（n/N）」（仅公开详情响应携带）。 */
+export interface PostSeriesRef {
+  slug: string
+  name: string
+  position: number
+  total: number
+}
+
 export interface Post extends PostSummary {
   content: string
   // 3A：Markdown 化双字段——MARKDOWN 篇走受控渲染管线，HTML 为存量默认
@@ -50,6 +58,7 @@ export interface Post extends PostSummary {
   // 3D：相邻文章导航（仅公开详情响应携带）
   previous?: PostNeighbor | null
   next?: PostNeighbor | null
+  series?: PostSeriesRef | null
 }
 
 export interface CategorySummary {

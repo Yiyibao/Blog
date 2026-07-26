@@ -162,6 +162,18 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     /** L-9：精选文章不再受首页取窗限制，直接按标记检索。 */
     Page<PostListRow> findByFeaturedTrueAndStatusOrderByDateDesc(PostStatus status, Pageable pageable);
 
+    /** 4B：合集成员补齐用的轻量引用行（不读正文列）。 */
+    interface PostRefRow {
+        Long getId();
+        String getSlug();
+        String getTitle();
+        LocalDate getDate();
+        PostStatus getStatus();
+    }
+
+    @Query("SELECT p.id as id, p.slug as slug, p.title as title, p.date as date, p.status as status FROM PostEntity p WHERE p.id IN :ids")
+    List<PostRefRow> findRefRows(@Param("ids") java.util.Collection<Long> ids);
+
     /** 3D：相邻文章导航——按 (date, id) 元组序取前一篇/后一篇（轻量投影）。 */
     interface PostNeighborRow {
         String getSlug();

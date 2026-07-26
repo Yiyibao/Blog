@@ -23,6 +23,7 @@ import com.yubai.blog.post.PostRepository;
 import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostService;
 import com.yubai.blog.post.PostStatus;
+import com.yubai.blog.series.SeriesService;
 
 /**
  * P1-5：缓存行为回归——只读热点二次调用命中缓存（仓库只查一次）；
@@ -43,6 +44,10 @@ class CacheBehaviorTest {
 
     @MockitoBean
     PostContentSanitizer sanitizer;
+
+    // 4B：GraphService 新增依赖——未打桩默认空 Map，构图不出 SERIES 节点
+    @MockitoBean
+    SeriesService seriesService;
 
     @Autowired
     GraphService graphService;

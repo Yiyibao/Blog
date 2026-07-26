@@ -7,7 +7,7 @@ import { fetchGraphNodes } from '../api/content'
 export interface GraphNode {
   id: string
   label: string
-  type: 'POST' | 'NOTE' | 'DISH' | 'TAG'
+  type: 'POST' | 'NOTE' | 'DISH' | 'TAG' | 'SERIES'
   url?: string | null
   category?: string
   summary?: string
@@ -166,7 +166,7 @@ function hashJitter(id: string, salt: number): number {
 
 const positionedNodes = computed(() => {
   const list = [...filteredNodes.value].sort((a, b) => {
-    const typeOrder: Record<string, number> = { TAG: 1, POST: 2, NOTE: 3, DISH: 4 }
+    const typeOrder: Record<string, number> = { TAG: 1, SERIES: 2, POST: 3, NOTE: 4, DISH: 5 }
     const diff = (typeOrder[a.type] || 9) - (typeOrder[b.type] || 9)
     if (diff !== 0) return diff
     return a.id.localeCompare(b.id)
@@ -232,6 +232,7 @@ function getNodeColor(type: GraphNode['type']): string {
     case 'NOTE': return '#10b981'
     case 'DISH': return '#f59e0b'
     case 'TAG': return '#8b5cf6'
+    case 'SERIES': return '#ec4899'
   }
 }
 
@@ -411,7 +412,7 @@ watch(filteredNodes, (visibleNodes) => {
       <div v-if="selectedNode" class="graph-selection-panel">
         <div class="panel-content">
           <span class="panel-type" :style="{ background: getNodeColor(selectedNode.type) }">
-            {{ selectedNode.type === 'POST' ? '文章' : selectedNode.type === 'NOTE' ? '笔记' : selectedNode.type === 'DISH' ? '菜谱' : '标签' }}
+            {{ selectedNode.type === 'POST' ? '文章' : selectedNode.type === 'NOTE' ? '笔记' : selectedNode.type === 'DISH' ? '菜谱' : selectedNode.type === 'SERIES' ? '合集' : '标签' }}
           </span>
           <strong class="panel-title">{{ selectedNode.label }}</strong>
           <span v-if="selectedNode.category" class="panel-category">{{ selectedNode.category }}</span>
@@ -435,6 +436,7 @@ watch(filteredNodes, (visibleNodes) => {
         <span><i style="background: #3b82f6;" /> 文章</span>
         <span><i style="background: #10b981;" /> 学习笔记</span>
         <span><i style="background: #f59e0b;" /> 美食菜谱</span>
+        <span><i style="background: #ec4899;" /> 合集</span>
         <span><i style="background: #8b5cf6;" /> 标签</span>
       </div>
     </div>

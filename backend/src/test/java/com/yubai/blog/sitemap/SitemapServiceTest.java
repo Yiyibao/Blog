@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.yubai.blog.config.SiteUrlConfig;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.post.PostRepository;
+import com.yubai.blog.series.SeriesRepository;
 
 @ExtendWith(MockitoExtension.class)
 class SitemapServiceTest {
@@ -28,13 +29,17 @@ class SitemapServiceTest {
     @Mock
     DishRepository dishRepository;
 
+    @Mock
+    SeriesRepository seriesRepository;
+
     SiteUrlConfig siteUrlConfig;
     SitemapService service;
 
     @BeforeEach
     void setUp() {
         siteUrlConfig = new SiteUrlConfig("https://example.test");
-        service = new SitemapService(new com.yubai.blog.config.PublicUrls(siteUrlConfig), postRepository, dishRepository);
+        service = new SitemapService(new com.yubai.blog.config.PublicUrls(siteUrlConfig), postRepository, dishRepository,
+            seriesRepository);
     }
 
     @Test

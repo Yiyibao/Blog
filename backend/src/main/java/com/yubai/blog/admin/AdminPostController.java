@@ -24,6 +24,7 @@ import com.yubai.blog.post.PostResponse;
 import com.yubai.blog.post.PostService;
 import com.yubai.blog.post.PostStatus;
 import com.yubai.blog.post.PostSummary;
+import com.yubai.blog.series.SeriesService;
 
 import jakarta.validation.Valid;
 
@@ -33,10 +34,13 @@ import jakarta.validation.Valid;
 public class AdminPostController {
     private final PostService service;
     private final PostMarkdownConversionService conversionService;
+    private final SeriesService seriesService;
 
-    public AdminPostController(PostService service, PostMarkdownConversionService conversionService) {
+    public AdminPostController(PostService service, PostMarkdownConversionService conversionService,
+                               SeriesService seriesService) {
         this.service = service;
         this.conversionService = conversionService;
+        this.seriesService = seriesService;
     }
 
     /**
@@ -79,6 +83,8 @@ public class AdminPostController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable long id) {
+        // 4B：文章删除后清掉合集成员引用（编排在 Controller 层，避免 post→series 循环依赖）
         service.delete(id);
+        seriesService.removeEntriesForPost(id);
     }
 }

@@ -251,6 +251,71 @@ export function deleteAdminQuote(id: number) {
   return api.delete(`/admin/library/quotes/${id}`, { headers: tokenHeader() })
 }
 
+// 4B：合集管理——成员整表排序提交，乐观锁 version 随行（冲突 409）
+export interface AdminSeriesEntry {
+  postId: number
+  slug: string
+  title: string
+  date: string
+  chapterTitle: string | null
+  position: number
+}
+
+export interface AdminSeries {
+  id: number
+  name: string
+  slug: string
+  description: string
+  coverImage: string | null
+  status: 'DRAFT' | 'PUBLISHED'
+  version: number
+  entryCount: number
+  createdAt: string
+  updatedAt: string
+  publishedAt: string | null
+  entries: AdminSeriesEntry[]
+}
+
+export interface SeriesPayload {
+  name: string
+  slug: string
+  description: string
+  coverImage: string | null
+  status: 'DRAFT' | 'PUBLISHED'
+}
+
+export interface SeriesEntryInput {
+  postId: number
+  chapterTitle?: string | null
+}
+
+export function fetchAdminSeriesList() {
+  return unwrap<AdminSeries[]>(api.get('/admin/series', { headers: tokenHeader() }))
+}
+
+export function fetchAdminSeries(id: number) {
+  return unwrap<AdminSeries>(api.get(`/admin/series/${id}`, { headers: tokenHeader() }))
+}
+
+export function createSeries(payload: SeriesPayload) {
+  return unwrap<AdminSeries>(api.post('/admin/series', payload, { headers: tokenHeader() }))
+}
+
+export function updateSeries(id: number, version: number, payload: SeriesPayload) {
+  return unwrap<AdminSeries>(api.put(`/admin/series/${id}`, payload, {
+    headers: tokenHeader(),
+    params: { version },
+  }))
+}
+
+export function setSeriesEntries(id: number, version: number, entries: SeriesEntryInput[]) {
+  return unwrap<AdminSeries>(api.put(`/admin/series/${id}/entries`, { entries, version }, { headers: tokenHeader() }))
+}
+
+export function deleteSeries(id: number) {
+  return api.delete(`/admin/series/${id}`, { headers: tokenHeader() })
+}
+
 // 3A-2：存量 HTML→Markdown 一次性转换（响应即人工校对清单）
 export interface MarkdownConversionReport {
   id: number

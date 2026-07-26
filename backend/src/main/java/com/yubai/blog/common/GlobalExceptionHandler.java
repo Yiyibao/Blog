@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.validation.ConstraintViolationException;
@@ -27,6 +28,7 @@ import com.yubai.blog.auth.ChallengeVerificationException;
 import com.yubai.blog.auth.LoginCooldownException;
 import com.yubai.blog.note.InvalidNoteFileException;
 import com.yubai.blog.note.NoteVersionConflictException;
+import com.yubai.blog.series.SeriesVersionConflictException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -56,6 +58,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNoResource(NoResourceFoundException exception) {
         return error(HttpStatus.NOT_FOUND, "资源不存在");
+    }
+
+    /** 4B：显式抛出的 ResponseStatusException 按其自带状态码回包（否则会被下方 500 兜底吃掉）。 */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException exception) {
+        var status = HttpStatus.valueOf(exception.getStatusCode().value());
+        return error(status, exception.getReason() == null ? "请求不合法" : exception.getReason());
     }
 
     /** 最终兜底：未知异常统一 500，仅记日志不外泄内部细节。 */
@@ -117,6 +126,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(NoteVersionConflictException.class)
     public ResponseEntity<Map<String, Object>> handleNoteConflict(NoteVersionConflictException exception) {
+        return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    /** 4B：合集乐观锁冲突同笔记语义，统一 409。 */
+    @ExceptionHandler(SeriesVersionConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleSeriesConflict(SeriesVersionConflictException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
     }
 

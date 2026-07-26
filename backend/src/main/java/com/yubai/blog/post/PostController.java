@@ -18,6 +18,7 @@ import com.yubai.blog.common.ClientIps;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.RateLimiter;
 import com.yubai.blog.common.TooManyRequestsException;
+import com.yubai.blog.series.SeriesService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -34,10 +35,12 @@ public class PostController {
 
     private final PostService service;
     private final RateLimiter rateLimiter;
+    private final SeriesService seriesService;
 
-    public PostController(PostService service, RateLimiter rateLimiter) {
+    public PostController(PostService service, RateLimiter rateLimiter, SeriesService seriesService) {
         this.service = service;
         this.rateLimiter = rateLimiter;
+        this.seriesService = seriesService;
     }
 
     /**
@@ -63,7 +66,14 @@ public class PostController {
         if (rateLimiter.tryAcquire("view:" + clientIp + ":" + slug, 1, VIEW_DEDUP_WINDOW)) {
             service.registerView(slug);
         }
-        return ApiResponse.ok(service.findPublishedBySlug(slug));
+        var response = service.findPublishedBySlug(slug);
+        // 4B：补挂「本文属于合集 X（n/N）」（不属于任何已发布合集则为 null）
+        var ref = seriesService.seriesRefForPost(response.id());
+        if (ref != null) {
+            response = response.withSeries(
+                new PostResponse.PostSeriesRef(ref.slug(), ref.name(), ref.position(), ref.total()));
+        }
+        return ApiResponse.ok(response);
     }
 
     @PostMapping({"/posts/{slug}/like"})

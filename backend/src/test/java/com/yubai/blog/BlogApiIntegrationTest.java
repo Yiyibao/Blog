@@ -1081,6 +1081,133 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(56)
+    void seriesLifecycleCoversAdminPublicAndDeletionHooks() throws Exception {
+        // 4B：建合集→挂文章→公开按序读（剔除未发布）→版本冲突 409→文章合集条→sitemap/图谱→删文章清引用
+        String token = login();
+        rateLimiter.reset();
+
+        String postTemplate = """
+            {"slug":"%s","title":"%s","excerpt":"4B 验证",
+             "date":"2026-07-27","readTime":3,"category":"工程实践","tags":["series"],
+             "color":"#112233","number":"S%d","featured":false,"status":"%s",
+             "contentFormat":"MARKDOWN","markdownContent":"# 合集成员"}
+            """;
+        long postA = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(postTemplate.formatted("series-post-a", "合集成员A", 1, "PUBLISHED")))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+        long postB = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(postTemplate.formatted("series-post-b", "合集成员B", 2, "DRAFT")))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+
+        // 建合集（草稿）→ 公开列表不可见
+        long seriesId = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/series")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"IT 合集\",\"slug\":\"it-series\",\"description\":\"全链路\",\"status\":\"DRAFT\"}"))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+        mockMvc.perform(get("/api/v1/series"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("it-series"))));
+
+        // 挂成员：B 在前 A 在后（含章节标题），整表提交
+        String entriesBody = "{\"entries\":[{\"postId\":" + postB + "},{\"postId\":" + postA
+            + ",\"chapterTitle\":\"终章\"}],\"version\":0}";
+        long versionAfterEntries = objectMapper.readTree(mockMvc.perform(put("/api/v1/admin/series/" + seriesId + "/entries")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(entriesBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.entries.length()").value(2))
+            .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("version").asLong();
+        assertTrue(versionAfterEntries > 0, "成员变更必须推进乐观锁版本");
+
+        // 版本冲突：旧 version 重放 → 409；重复成员 → 400
+        mockMvc.perform(put("/api/v1/admin/series/" + seriesId + "/entries")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(entriesBody))
+            .andExpect(status().isConflict());
+        mockMvc.perform(put("/api/v1/admin/series/" + seriesId + "/entries")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"entries\":[{\"postId\":" + postA + "},{\"postId\":" + postA + "}],\"version\":"
+                    + versionAfterEntries + "}"))
+            .andExpect(status().isBadRequest());
+
+        // 发布合集（带当前版本）
+        mockMvc.perform(put("/api/v1/admin/series/" + seriesId)
+                .header("Authorization", "Bearer " + token)
+                .param("version", String.valueOf(versionAfterEntries))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"IT 合集\",\"slug\":\"it-series\",\"description\":\"全链路\",\"status\":\"PUBLISHED\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
+
+        // 公开详情：草稿成员 B 被剔除，A 重新连续编号为 1/1，章节标题保留
+        mockMvc.perform(get("/api/v1/series/it-series"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.entries.length()").value(1))
+            .andExpect(jsonPath("$.data.entries[0].slug").value("series-post-a"))
+            .andExpect(jsonPath("$.data.entries[0].position").value(1))
+            .andExpect(jsonPath("$.data.entries[0].chapterTitle").value("终章"));
+
+        // 文章详情带「本文属于合集 X（n/N）」
+        rateLimiter.reset();
+        mockMvc.perform(get("/api/v1/posts/series-post-a"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.series.slug").value("it-series"))
+            .andExpect(jsonPath("$.data.series.position").value(1))
+            .andExpect(jsonPath("$.data.series.total").value(1));
+
+        // sitemap 与图谱（写操作已 evict 对应缓存）
+        mockMvc.perform(get("/sitemap.xml"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/series/it-series")));
+        var graphNodes = objectMapper.readTree(mockMvc.perform(get("/api/v1/graph/nodes"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("nodes");
+        boolean sawSeriesNode = false;
+        for (var node : graphNodes) {
+            if ("SERIES".equals(node.path("type").asText())
+                && "/series/it-series".equals(node.path("url").asText())) {
+                sawSeriesNode = true;
+            }
+        }
+        assertTrue(sawSeriesNode, "图谱应含 SERIES 节点且链接到合集页");
+
+        // 删文章 A → 合集引用清掉（管理端仅剩 B），公开成员为空
+        mockMvc.perform(delete("/api/v1/admin/posts/" + postA)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/admin/series/" + seriesId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.entries.length()").value(1))
+            .andExpect(jsonPath("$.data.entries[0].postId").value(postB));
+        mockMvc.perform(get("/api/v1/series/it-series"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.entries.length()").value(0));
+
+        // 清场：删合集与草稿 B；公开详情 404
+        mockMvc.perform(delete("/api/v1/admin/series/" + seriesId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/series/it-series"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/admin/posts/" + postB)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(53)
     void stage3ViewCountsRssAndNeighborsWork() throws Exception {
         rateLimiter.reset();

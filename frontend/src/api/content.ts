@@ -116,7 +116,7 @@ export function favoriteDish(slug: string) {
 export interface GraphApiNode {
   id: string
   label: string
-  type: 'POST' | 'DISH' | 'NOTE' | 'TAG'
+  type: 'POST' | 'DISH' | 'NOTE' | 'TAG' | 'SERIES'
   url: string | null
 }
 
@@ -151,6 +151,42 @@ export interface RemoteQuote {
 
 export function fetchDailyQuotes() {
   return unwrap<RemoteQuote[] | RemoteQuote>(api.get('/quotes/daily'))
+}
+
+// 4B：合集公开读
+export interface SeriesEntryItem {
+  postId: number
+  slug: string
+  title: string
+  date: string
+  chapterTitle: string | null
+  position: number
+}
+
+export interface SeriesSummary {
+  slug: string
+  name: string
+  description: string
+  coverImage: string | null
+  entryCount: number
+  publishedAt: string | null
+}
+
+export interface SeriesDetail {
+  slug: string
+  name: string
+  description: string
+  coverImage: string | null
+  publishedAt: string | null
+  entries: SeriesEntryItem[]
+}
+
+export function fetchSeriesList() {
+  return unwrap<SeriesSummary[]>(api.get('/series'))
+}
+
+export function fetchSeriesDetail(slug: string) {
+  return unwrap<SeriesDetail>(api.get(`/series/${encodeURIComponent(slug)}`))
 }
 
 export interface SearchGroup {
