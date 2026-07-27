@@ -39,13 +39,14 @@ public class AdminNoteAttachmentController {
 
     @GetMapping("/{attachmentId}/content")
     public ResponseEntity<byte[]> read(@PathVariable long noteId, @PathVariable long attachmentId) {
+        var data = service.readContent(noteId, attachmentId);
         var attachment = service.findForNote(noteId, attachmentId);
-        // P1-6：管理端预览允许浏览器短时私有缓存，减少工作台反复读 bytea
+        // P1-6：管理端预览允许浏览器短时私有缓存，减少工作台反复读
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(attachment.getMediaType()))
             .cacheControl(CacheControl.maxAge(java.time.Duration.ofHours(1)).cachePrivate())
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(attachment.getFileName()).build().toString())
-            .body(attachment.getContent());
+            .body(data);
     }
 
     @DeleteMapping("/{attachmentId}") @ResponseStatus(HttpStatus.NO_CONTENT)

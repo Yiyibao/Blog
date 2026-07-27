@@ -12,4 +12,10 @@ public record NoteAttachmentResponse(
             attachment.getFileName(), attachment.getMediaType(), attachment.getByteSize(),
             "/api/v1/note-assets/" + attachment.getPublicId(), attachment.getCreatedAt());
     }
+
+    static NoteAttachmentResponse from(NoteAttachmentRepository.AttachmentListRow row) {
+        return new NoteAttachmentResponse(row.getId(), row.getPublicId(), row.getNoteId(),
+            row.getFileName(), row.getMediaType(), row.getByteSize(),
+            "/api/v1/note-assets/" + row.getPublicId(), row.getCreatedAt());
+    }
 }

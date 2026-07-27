@@ -16,10 +16,14 @@ import javax.imageio.stream.ImageOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.yubai.blog.common.NotFoundException;
+import com.yubai.blog.storage.StorageException;
+import com.yubai.blog.storage.StorageService;
 
 @Service
 @Transactional(readOnly = true)
@@ -32,15 +36,17 @@ public class NoteAttachmentService {
     private static final float JPEG_QUALITY = 0.85f;
     private final NoteAttachmentRepository attachments;
     private final NoteRepository notes;
+    private final StorageService storageService;
 
-    public NoteAttachmentService(NoteAttachmentRepository attachments, NoteRepository notes) {
+    public NoteAttachmentService(NoteAttachmentRepository attachments, NoteRepository notes, StorageService storageService) {
         this.attachments = attachments;
         this.notes = notes;
+        this.storageService = storageService;
     }
 
     public List<NoteAttachmentResponse> findForNote(long noteId) {
         requireNote(noteId);
-        return attachments.findAllByNoteIdOrderByCreatedAtDesc(noteId).stream().map(NoteAttachmentResponse::from).toList();
+        return attachments.findListRowsByNoteId(noteId).stream().map(NoteAttachmentResponse::from).toList();
     }
 
     public NoteAttachmentEntity findForNote(long noteId, long attachmentId) {
@@ -57,6 +63,51 @@ public class NoteAttachmentService {
         return attachment;
     }
 
+    /** 6B：以读写事务获取附件内容——storage_key 优先，bytea 回退并惰性迁移。 */
+    @Transactional
+    public byte[] readContent(long noteId, long attachmentId) {
+        var attachment = findForNote(noteId, attachmentId);
+        return resolveContent(attachment);
+    }
+
+    @Transactional
+    public byte[] readPublicContent(UUID publicId) {
+        var attachment = findPublic(publicId);
+        return resolveContent(attachment);
+    }
+
+    private byte[] resolveContent(NoteAttachmentEntity attachment) {
+        if (attachment.getStorageKey() != null) {
+            return storageService.read(attachment.getStorageKey());
+        }
+        if (attachment.getContent() != null) {
+            lazyMigrate(attachment);
+            return attachment.getContent();
+        }
+        throw new StorageException("Corrupt attachment data: both storage_key and content are null for id=" + attachment.getId());
+    }
+
+    private void lazyMigrate(NoteAttachmentEntity attachment) {
+        var key = attachment.getPublicId() + "/legacy-" + UUID.randomUUID();
+        try {
+            storageService.store(key, attachment.getContent());
+        } catch (Exception e) {
+            log.warn("Lazy migration store failed for attachment {}, keeping bytea: {}", attachment.getId(), e.toString());
+            return;
+        }
+        var rollbackCleanupRegistered = registerRollbackCleanup(key);
+        try {
+            if (attachments.claimStorageKey(attachment.getId(), key) == 1) {
+                log.info("Lazy-migrated attachment {} to storage key {}", attachment.getId(), key);
+            } else {
+                deleteQuietly(key);
+            }
+        } catch (Exception e) {
+            if (!rollbackCleanupRegistered) deleteQuietly(key);
+            throw e;
+        }
+    }
+
     @Transactional
     public NoteAttachmentResponse upload(long noteId, MultipartFile file) {
         requireNote(noteId);
@@ -71,17 +122,28 @@ public class NoteAttachmentService {
         } catch (IOException exception) {
             throw new InvalidNoteFileException("无法读取图片文件");
         }
-        // P0-6：不信任客户端 Content-Type，按文件头 magic bytes 校验实际格式
         if (!matchesMagicBytes(data, type)) {
             throw new InvalidNoteFileException("图片内容与声明的类型不符");
         }
-        // NB-4：解码炸弹预检——8MB 的高压缩比图可膨胀成 GB 级像素，先读头部宽高再允许解码
         assertDimensionsWithinLimit(data);
-        return NoteAttachmentResponse.from(attachments.saveAndFlush(
-            NoteAttachmentEntity.create(noteId, safeName.isBlank() ? "image" : safeName, type, optimizeImage(data, type))));
+        data = optimizeImage(data, type);
+
+        var name = safeName.isBlank() ? "image" : safeName;
+        var entity = NoteAttachmentEntity.createWithStorage(noteId, name, type, data.length, null);
+        var ext = switch (type) { case "image/jpeg" -> ".jpg"; case "image/png" -> ".png"; case "image/webp" -> ".webp"; case "image/gif" -> ".gif"; default -> ""; };
+        var key = entity.getPublicId() + "/image" + ext;
+        storageService.store(key, data);
+        entity.setStorageKey(key);
+        var rollbackCleanupRegistered = registerRollbackCleanup(key);
+        try {
+            entity = attachments.saveAndFlush(entity);
+        } catch (Exception e) {
+            if (!rollbackCleanupRegistered) deleteQuietly(key);
+            throw e;
+        }
+        return NoteAttachmentResponse.from(entity);
     }
 
-    /** P0-6：PNG/JPEG/WebP/GIF 文件头嗅探。 */
     static boolean matchesMagicBytes(byte[] data, String mimeType) {
         return switch (mimeType) {
             case "image/png" -> startsWith(data, new int[]{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
@@ -95,7 +157,6 @@ public class NoteAttachmentService {
         };
     }
 
-    /** NB-4：只解析图片头取宽高（不解码像素），超过 8000×8000 直接拒绝。 */
     static void assertDimensionsWithinLimit(byte[] data) {
         try (var input = ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(data))) {
             Iterator<javax.imageio.ImageReader> readers = ImageIO.getImageReaders(input);
@@ -160,7 +221,42 @@ public class NoteAttachmentService {
 
     @Transactional
     public void delete(long noteId, long attachmentId) {
-        attachments.delete(findForNote(noteId, attachmentId));
+        var attachment = findForNote(noteId, attachmentId);
+        var storageKey = attachment.getStorageKey();
+        attachments.delete(attachment);
+        if (storageKey != null && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        storageService.delete(storageKey);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete storage file {} (DB record already removed): {}", storageKey, e.toString());
+                    }
+                }
+            });
+        } else if (storageKey != null) {
+            storageService.delete(storageKey);
+        }
+    }
+
+    private boolean registerRollbackCleanup(String storageKey) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) return false;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) deleteQuietly(storageKey);
+            }
+        });
+        return true;
+    }
+
+    private void deleteQuietly(String storageKey) {
+        try {
+            storageService.delete(storageKey);
+        } catch (Exception e) {
+            log.warn("Failed to clean up storage file {}: {}", storageKey, e.toString());
+        }
     }
 
     private void requireNote(long noteId) {

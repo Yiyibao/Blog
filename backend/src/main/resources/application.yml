@@ -81,6 +81,10 @@ app:
     username: ${APP_PARTNER_USERNAME:}
     password: ${APP_PARTNER_PASSWORD:}
     display-name: ${APP_PARTNER_DISPLAY_NAME:}
+  attachment:
+    storage:
+      dir: ${APP_ATTACHMENT_STORAGE_DIR:./data/attachments}
+
   ai:
     enabled: ${AI_ENABLED:false}
     base-url: ${AI_BASE_URL:https://api.deepseek.com}

@@ -32,8 +32,11 @@ public class NoteAttachmentEntity {
     @Column(name = "byte_size", nullable = false)
     private long byteSize;
 
-    @Column(nullable = false, columnDefinition = "bytea")
+    @Column(columnDefinition = "bytea")
     private byte[] content;
+
+    @Column(name = "storage_key", length = 512)
+    private String storageKey;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -51,6 +54,17 @@ public class NoteAttachmentEntity {
         return attachment;
     }
 
+    static NoteAttachmentEntity createWithStorage(long noteId, String fileName, String mediaType, long byteSize, String storageKey) {
+        var attachment = new NoteAttachmentEntity();
+        attachment.publicId = UUID.randomUUID();
+        attachment.noteId = noteId;
+        attachment.fileName = fileName;
+        attachment.mediaType = mediaType;
+        attachment.byteSize = byteSize;
+        attachment.storageKey = storageKey;
+        return attachment;
+    }
+
     @PrePersist void created() { createdAt = Instant.now(); }
 
     public Long getId() { return id; }
@@ -60,5 +74,8 @@ public class NoteAttachmentEntity {
     public String getMediaType() { return mediaType; }
     public long getByteSize() { return byteSize; }
     public byte[] getContent() { return content; }
+    public String getStorageKey() { return storageKey; }
+    void setStorageKey(String storageKey) { this.storageKey = storageKey; }
+    void setContent(byte[] content) { this.content = content; }
     public Instant getCreatedAt() { return createdAt; }
 }
