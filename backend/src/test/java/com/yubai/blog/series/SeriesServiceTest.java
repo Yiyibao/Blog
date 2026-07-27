@@ -121,6 +121,7 @@ class SeriesServiceTest {
             new SeriesEntriesRequest.EntryInput(7L, null)), 0L));
 
         verify(entryRepository).deleteAllBySeriesId(1L);
+        verify(seriesRepository).flush();
         assertThat(response.entries()).hasSize(2);
         assertThat(response.entries().get(0).postId()).isEqualTo(8L);
         assertThat(response.entries().get(0).chapterTitle()).isEqualTo("上篇");

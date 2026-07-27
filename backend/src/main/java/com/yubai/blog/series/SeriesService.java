@@ -118,6 +118,7 @@ public class SeriesService {
         }
         entryRepository.saveAll(rows);
         series.touch(); // 成员变化也是一次合集编辑：推进乐观锁版本
+        seriesRepository.flush(); // @Version 在 flush 时递增，响应必须返回可供下一次编辑使用的新版本
         return toAdmin(series, rows, postRefs(rows));
     }
 
