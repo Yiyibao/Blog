@@ -78,20 +78,6 @@ describe('NF-3 currentPost 响应式', () => {
     expect(mockFetchPost).toHaveBeenCalledWith('post-hidden')
     expect(store.currentPost?.slug).toBe('post-hidden')
   })
-
-  it('relatedPosts 随 currentSlug 联动', () => {
-    const store = useContentStore()
-    store.posts = [
-      makePost('post-a', { tags: ['vue'] }),
-      makePost('post-b', { tags: ['vue'] }),
-      makePost('post-c', { tags: ['java'] }),
-    ]
-    store.setCurrentSlug('post-a')
-    expect(store.relatedPosts.map((p) => p.slug)).toEqual(['post-b'])
-
-    store.setCurrentSlug('post-c')
-    expect(store.relatedPosts).toEqual([])
-  })
 })
 
 describe('P1-2 摘要契约：正文只来自详情接口', () => {

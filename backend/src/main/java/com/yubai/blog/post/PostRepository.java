@@ -232,6 +232,30 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         """)
     List<TopPostRow> findTopViewed(Pageable pageable);
 
+    /** 5D：共享标签最多 TOP N，排除自身（按共享标签数降序，用于相关推荐）。 */
+    @Query("""
+        SELECT p.id FROM PostEntity p JOIN p.tags t
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND p.id <> :postId
+          AND t IN :tags
+        GROUP BY p.id
+        ORDER BY COUNT(t) DESC
+        """)
+    List<Long> findRelatedPostIdsByTagMatch(@Param("postId") Long postId, @Param("tags") java.util.Collection<String> tags, Pageable pageable);
+
+    /** 5D：同分类最新 N 篇（排除自身，无共享标签时的退路）。 */
+    Page<PostListRow> findByCategorySlugAndStatusAndIdNotOrderByDateDesc(String categorySlug, PostStatus status, Long id, Pageable pageable);
+
+    /** 5D：按 ID 批量取轻量投影行（用于相关推荐组装，在外层按 ID 序重排）。 */
+    @Query("""
+        SELECT p.id as id, p.slug as slug, p.title as title, p.excerpt as excerpt,
+               p.date as date, p.readTime as readTime, p.category as category, p.categorySlug as categorySlug,
+               p.color as color, p.number as number, p.featured as featured, p.status as status,
+               p.likeCount as likeCount, p.viewsCount as viewsCount
+        FROM PostEntity p WHERE p.id IN :ids
+        """)
+    List<PostListRow> findRowsByIds(@Param("ids") java.util.Collection<Long> ids);
+
     /** 3D：相邻文章导航——按 (date, id) 元组序取前一篇/后一篇（轻量投影）。 */
     interface PostNeighborRow {
         String getSlug();

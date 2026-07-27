@@ -32,9 +32,12 @@ public class CacheConfig {
     /** 3D：RSS feed XML——仅文章集合，文章写操作 evict + TTL 兜底。 */
     public static final String RSS = "rss";
 
+    /** 5D：相关推荐——文章详情携带的推荐列表，key 为源文章 id，TTL 5 分钟。 */
+    public static final String RELATED_POSTS = "relatedPosts";
+
     @Bean
     public CacheManager cacheManager() {
-        var manager = new CaffeineCacheManager(GRAPH, SITEMAP, QUOTES, MUSIC, RSS);
+        var manager = new CaffeineCacheManager(GRAPH, SITEMAP, QUOTES, MUSIC, RSS, RELATED_POSTS);
         manager.setCaffeine(Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5))
             .maximumSize(50));

@@ -78,6 +78,9 @@ public class PostController {
             response = response.withSeries(
                 new PostResponse.PostSeriesRef(ref.slug(), ref.name(), ref.position(), ref.total()));
         }
+        // 5D：相关推荐（服务端基于共享标签 TOP N → 同分类 → 空列表，Caffeine 缓存 5 分钟）
+        response = response.withRelatedPosts(
+            service.findRelatedPosts(response.id(), response.tags(), response.category(), 4));
         return ApiResponse.ok(response);
     }
 

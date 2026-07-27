@@ -23,6 +23,9 @@ const { apply: applyLD } = useStructuredData()
 // 4B：「本文属于合集 X（n/N）」
 const seriesRef = computed(() => content.articleDetail?.series ?? null)
 
+// 5D：相关推荐（来自服务端详情响应，覆盖全部已发布文章），移除对客户端 knownPosts 窗口的依赖。
+const relatedPosts = computed(() => content.articleDetail?.relatedPosts ?? [])
+
 const neighbors = computed(() => ({
   previous: content.articleDetail?.previous ?? null,
   next: content.articleDetail?.next ?? null,
@@ -259,7 +262,7 @@ onUnmounted(() => {
         </RouterLink>
       </nav>
 
-      <section v-if="content.relatedPosts.length" class="related section-wrap"><div class="section-heading"><p><span>+</span> 继续阅读</p></div><div class="related-grid"><RouterLink v-for="post in content.relatedPosts" :key="post.slug" :to="`/articles/${post.slug}`"><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong><span>阅读全文 ↗</span></RouterLink></div></section>
+      <section v-if="relatedPosts.length" class="related section-wrap"><div class="section-heading"><p><span>+</span> 继续阅读</p></div><div class="related-grid"><RouterLink v-for="post in relatedPosts" :key="post.slug" :to="`/articles/${post.slug}`"><small>{{ post.category }} · {{ post.readTime }} 分钟</small><strong>{{ post.title }}</strong><span>阅读全文 ↗</span></RouterLink></div></section>
     </article>
   </template>
   <template v-else>

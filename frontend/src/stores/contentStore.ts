@@ -108,14 +108,6 @@ export const useContentStore = defineStore('content', () => {
   })
   const currentIsMarkdown = computed(() => currentMarkdown.value.length > 0)
 
-  const relatedPosts = computed(() => {
-    const current = currentPost.value
-    if (!current) return []
-    return knownPosts.value
-      .filter((p) => p.slug !== current.slug && p.tags.some((tag) => current.tags.includes(tag)))
-      .slice(0, 2)
-  })
-
   const articleOutline = computed(() => {
     // 3B：MARKDOWN 篇目录取自源文（AST 级提取），HTML 存量篇沿用 id 正则直至退役
     if (currentIsMarkdown.value) return extractMarkdownOutline(currentMarkdown.value)
@@ -362,7 +354,7 @@ export const useContentStore = defineStore('content', () => {
     currentMarkdown, currentIsMarkdown,
     archivePage, archivePosts, archiveTotal, archiveTotalPages, archiveLoading,
     archivePageSize: ARCHIVE_PAGE_SIZE,
-    relatedPosts, articleOutline,
+    articleOutline,
     loadRemoteContent, loadArchive, ensureArticleDetail, toggleFavorite, initFavorites,
   }
 })

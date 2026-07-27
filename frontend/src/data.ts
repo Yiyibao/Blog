@@ -59,6 +59,8 @@ export interface Post extends PostSummary {
   previous?: PostNeighbor | null
   next?: PostNeighbor | null
   series?: PostSeriesRef | null
+  // 5D：相关推荐（服务端基于共享标签 TOP N → 同分类最新 → 空数组）
+  relatedPosts?: PostSummary[]
 }
 
 export interface CategorySummary {

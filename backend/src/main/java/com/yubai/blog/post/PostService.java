@@ -1,10 +1,13 @@
 package com.yubai.blog.post;
 
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -88,6 +91,43 @@ public class PostService {
         return PostResponse.from(post, previous, next);
     }
 
+    /** 5D：相关推荐——共享标签最多 TOP 4 → 同分类最新 4 篇 → 空列表。结果经 Caffeine 缓存（TTL 5 分钟）。 */
+    @Cacheable(cacheNames = CacheConfig.RELATED_POSTS, key = "#postId")
+    public List<PostSummary> findRelatedPosts(Long postId, List<String> postTags, String postCategory, int limit) {
+        var pageable = PageRequest.of(0, limit);
+        List<Long> ids = null;
+
+        if (postTags != null && !postTags.isEmpty()) {
+            ids = repository.findRelatedPostIdsByTagMatch(postId, postTags, pageable);
+        }
+
+        if (ids == null || ids.isEmpty()) {
+            if (postCategory == null || postCategory.isBlank()) return List.of();
+            var slug = CategorySlug.fromName(postCategory);
+            var page = repository.findByCategorySlugAndStatusAndIdNotOrderByDateDesc(slug, PostStatus.PUBLISHED, postId, pageable);
+            var rows = page.getContent();
+            if (rows.isEmpty()) return List.of();
+            return toRelatedSummary(rows);
+        }
+
+        var rows = new java.util.ArrayList<>(repository.findRowsByIds(ids));
+        var order = new HashMap<Long, Integer>();
+        for (int i = 0; i < ids.size(); i++) order.put(ids.get(i), i);
+        rows.sort(Comparator.comparing(r -> order.getOrDefault(r.getId(), Integer.MAX_VALUE)));
+        return toRelatedSummary(rows);
+    }
+
+    /** 5D：轻量投影行 + 一次 IN 批量补标签，列表路径全程不读正文列。 */
+    private List<PostSummary> toRelatedSummary(List<PostRepository.PostListRow> rows) {
+        var ids = rows.stream().map(PostRepository.PostListRow::getId).toList();
+        Map<Long, List<String>> tags = ids.isEmpty() ? Map.of() : repository.findTagRows(ids).stream()
+            .collect(Collectors.groupingBy(row -> (Long) row[0],
+                Collectors.mapping(row -> (String) row[1], Collectors.toList())));
+        return rows.stream()
+            .map(row -> PostSummary.of(row, tags.getOrDefault(row.getId(), List.of())))
+            .toList();
+    }
+
     private static PostResponse.PostNeighbor firstNeighbor(List<PostRepository.PostNeighborRow> rows) {
         if (rows == null || rows.isEmpty()) return null;
         var row = rows.get(0);
@@ -161,14 +201,14 @@ public class PostService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS}, allEntries = true)
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
     public PostResponse create(PostRequest request) {
         requireUniqueSlug(request.slug(), null);
         return PostResponse.from(repository.save(PostEntity.create(request, sanitizer)));
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS}, allEntries = true)
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
     public PostResponse update(long id, PostRequest request) {
         var post = entity(id);
         requireUniqueSlug(request.slug(), id);
@@ -177,7 +217,7 @@ public class PostService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS}, allEntries = true)
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
     public void delete(long id) {
         if (!repository.existsById(id)) {
             throw new NotFoundException("文章不存在：" + id);

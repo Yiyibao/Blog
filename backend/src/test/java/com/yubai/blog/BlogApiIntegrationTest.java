@@ -2620,6 +2620,40 @@ class BlogApiIntegrationTest {
             .andExpect(header().string("Vary", org.hamcrest.Matchers.containsString("Authorization")));
     }
 
+    @Test
+    @Order(63)
+    void relatedPostsReturnedOnPostDetail() throws Exception {
+        // 5D：全链路——详情响应携带 relatedPosts 数组（服务端推荐，覆盖全部已发布文章）
+
+        // 种子数据中 vue-composable-notes（标签: Vue,TypeScript / 工程实践）与
+        // type-safe-content（标签: TypeScript,内容系统 / 工程实践）共享 TypeScript 标签
+        mockMvc.perform(get("/api/v1/posts/vue-composable-notes"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.relatedPosts").isArray())
+            .andExpect(jsonPath("$.data.relatedPosts.length()").value(1))
+            .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("type-safe-content"))
+            .andExpect(jsonPath("$.data.relatedPosts[0].title").isNotEmpty())
+            .andExpect(jsonPath("$.data.relatedPosts[0].content").doesNotExist());
+
+        // clarity-by-design（标签: 产品设计,信息架构 / 设计札记）是设计札记分类唯一文章，
+        // 无共享标签也无同分类文章 → 返回空数组
+        mockMvc.perform(get("/api/v1/posts/clarity-by-design"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.relatedPosts").isArray())
+            .andExpect(jsonPath("$.data.relatedPosts.length()").value(0));
+
+        // 推荐不含自身：type-safe-content 的推荐是 vue-composable-notes，非自身
+        mockMvc.perform(get("/api/v1/posts/type-safe-content"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.relatedPosts").isArray())
+            .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("vue-composable-notes"));
+
+        // 缓存生效（第二次请求相同 postId 应命中缓存）
+        mockMvc.perform(get("/api/v1/posts/vue-composable-notes"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("type-safe-content"));
+    }
+
     private String login() throws Exception {
         return loginAs("admin", "admin-pass-12345");
     }

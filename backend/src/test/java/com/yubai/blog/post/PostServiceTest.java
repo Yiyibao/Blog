@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -258,6 +259,55 @@ class PostServiceTest {
     void likePostThrowsWhenNotFound() {
         when(repository.incrementLikeCount("missing")).thenReturn(0);
         assertThatThrownBy(() -> service.likePost("missing")).isInstanceOf(NotFoundException.class);
+    }
+
+    private PostRepository.PostListRow sampleRow2() {
+        return new PostRepository.PostListRow() {
+            @Override public Long getId() { return 2L; }
+            @Override public String getSlug() { return "related-post"; }
+            @Override public String getTitle() { return "Related Post"; }
+            @Override public String getExcerpt() { return "Related excerpt"; }
+            @Override public LocalDate getDate() { return LocalDate.of(2026, 2, 1); }
+            @Override public int getReadTime() { return 3; }
+            @Override public String getCategory() { return "工程实践"; }
+            @Override public String getCategorySlug() { return "工程实践"; }
+            @Override public String getColor() { return "#ff0000"; }
+            @Override public String getNumber() { return "02"; }
+            @Override public boolean getFeatured() { return false; }
+            @Override public PostStatus getStatus() { return PostStatus.PUBLISHED; }
+            @Override public int getLikeCount() { return 0; }
+            @Override public int getViewsCount() { return 0; }
+        };
+    }
+
+    @Test
+    void findRelatedPostsReturnsTopNBySharedTags() {
+        when(repository.findRelatedPostIdsByTagMatch(1L, List.of("tag1", "tag2"), PageRequests.of(0, 4)))
+            .thenReturn(List.of(2L));
+        when(repository.findRowsByIds(List.of(2L))).thenReturn(new ArrayList<>(List.of(sampleRow2())));
+        when(repository.findTagRows(List.of(2L)))
+            .thenReturn(List.<Object[]>of(new Object[]{2L, "tag1"}, new Object[]{2L, "tag2"}));
+
+        var result = service.findRelatedPosts(1L, List.of("tag1", "tag2"), "工程实践", 4);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).slug()).isEqualTo("related-post");
+        assertThat(result.get(0).tags()).containsExactly("tag1", "tag2");
+    }
+
+    @Test
+    void findRelatedPostsFallsBackToSameCategoryWhenNoSharedTags() {
+        when(repository.findRelatedPostIdsByTagMatch(1L, List.of("unique-tag"), PageRequests.of(0, 4)))
+            .thenReturn(List.of());
+        when(repository.findByCategorySlugAndStatusAndIdNotOrderByDateDesc("工程实践", PostStatus.PUBLISHED, 1L, PageRequests.of(0, 4)))
+            .thenReturn(new PageImpl<>(List.of(sampleRow2())));
+        when(repository.findTagRows(List.of(2L)))
+            .thenReturn(List.<Object[]>of(new Object[]{2L, "tag-a"}, new Object[]{2L, "tag-b"}));
+
+        var result = service.findRelatedPosts(1L, List.of("unique-tag"), "工程实践", 4);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).category()).isEqualTo("工程实践");
     }
 
     @Test
