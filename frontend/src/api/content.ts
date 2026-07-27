@@ -153,6 +153,22 @@ export function fetchDailyQuotes() {
   return unwrap<RemoteQuote[] | RemoteQuote>(api.get('/quotes/daily'))
 }
 
+// 5B：标签一等公民
+export interface TagSummary {
+  tag: string
+  count: number
+}
+
+export function fetchTags() {
+  return unwrap<TagSummary[]>(api.get('/tags'))
+}
+
+export async function fetchTagPosts(tag: string, page = 0, size = 10) {
+  const data = await unwrap<PageResult<PostSummary> | PostSummary[]>(
+    api.get(`/tags/${encodeURIComponent(tag)}`, { params: { page, size } }))
+  return asPage(data, page, size)
+}
+
 // 4B：合集公开读
 export interface SeriesEntryItem {
   postId: number

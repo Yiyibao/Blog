@@ -31,4 +31,11 @@ public class PublicUrls {
 
     /** 4B：合集详情页。 */
     public String series(String slug) { return base + "/series/" + slug; }
+
+    /** 5B：标签页——标签可为中文，路径段按 RFC 3986 转义。 */
+    public String tag(String tag) {
+        var encoded = java.net.URLEncoder.encode(tag, java.nio.charset.StandardCharsets.UTF_8)
+            .replace("+", "%20");
+        return base + "/tags/" + encoded;
+    }
 }

@@ -20,6 +20,7 @@ const AdminSeriesPage = defineAsyncComponent(() => import('../pages/AdminSeriesP
 const AdminAttachmentsPage = defineAsyncComponent(() => import('../pages/AdminAttachmentsPage.vue'))
 const SeriesPage = defineAsyncComponent(() => import('../pages/SeriesPage.vue'))
 const SeriesDetailPage = defineAsyncComponent(() => import('../pages/SeriesDetailPage.vue'))
+const TagPage = defineAsyncComponent(() => import('../pages/TagPage.vue'))
 const LoginPage = defineAsyncComponent(() => import('../pages/LoginPage.vue'))
 const AccountPage = defineAsyncComponent(() => import('../pages/AccountPage.vue'))
 
@@ -44,6 +45,7 @@ const router = createRouter({
     { path: '/admin/attachments', name: 'admin-attachments', component: AdminAttachmentsPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
     { path: '/series', name: 'series', component: SeriesPage },
     { path: '/series/:slug', name: 'series-detail', component: SeriesDetailPage },
+    { path: '/tags/:tag', name: 'tag', component: TagPage },
     { path: '/archive', name: 'archive', component: ArchivePage },
     { path: '/recipes', name: 'recipes', component: RecipesPage },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },

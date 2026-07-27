@@ -152,7 +152,8 @@ class GraphServiceTest {
     }
 
     @Test
-    void tagNodesHaveNullUrlBecausePublicCategoryPagesWereRemoved() {
+    void tagNodesLinkToPublicTagPages() {
+        // 5B：TAG 节点补链 /tags/{label}（旧契约 url=null 废止；/categories 死链不复现）
         stubAll(
             List.of(new P(1L, "设计系统与透明度", "clarity-by-design", "设计札记", List.of("产品设计"))),
             List.of(new N(1L, "Canvas 性能优化", "前端", List.of("前端架构"))),
@@ -163,7 +164,8 @@ class GraphServiceTest {
 
         var tagNodes = result.nodes().stream().filter(n -> n.type().equals("TAG")).toList();
         assertThat(tagNodes).isNotEmpty();
-        assertThat(tagNodes).allSatisfy(node -> assertThat(node.url()).isNull());
+        assertThat(tagNodes).allSatisfy(node ->
+            assertThat(node.url()).isEqualTo("/tags/" + node.label()));
         assertThat(result.nodes()).noneMatch(n -> "/categories".equals(n.url()));
     }
 

@@ -1006,8 +1006,9 @@ class BlogApiIntegrationTest {
             var url = node.path("url");
             if ("TAG".equals(node.path("type").asText())) {
                 sawTag = true;
-                // Public category pages were removed: TAG nodes are filter hubs with no URL.
-                assertTrue(url.isNull(), "TAG node url must be null but was " + url);
+                // 5B：TAG 节点补链公开标签页（本地过滤交互不变）
+                assertTrue(url.isTextual() && url.asText().startsWith("/tags/"),
+                    "TAG node must link to its tag page but was " + url);
             } else {
                 sawContent = true;
                 assertTrue(url.isTextual() && !url.asText().isBlank(), "content node must keep a real url");
@@ -1406,6 +1407,38 @@ class BlogApiIntegrationTest {
         mockMvc.perform(delete("/api/v1/admin/posts/" + postB)
                 .header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
         rateLimiter.reset();
+    }
+
+    @Test
+    @Order(60)
+    void tagEndpointsAggregateAndPaginatePublishedPosts() throws Exception {
+        // 5B：标签聚合公开可读→按标签分页→未知标签 404→sitemap 带标签页
+        var tags = objectMapper.readTree(mockMvc.perform(get("/api/v1/tags"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertTrue(tags.isArray() && tags.size() > 0, "种子数据应有已发布标签");
+        assertTrue(tags.get(0).has("tag") && tags.get(0).path("count").asLong() >= 1);
+
+        String firstTag = tags.get(0).path("tag").asText();
+        var page = objectMapper.readTree(mockMvc.perform(
+                get("/api/v1/tags/" + java.net.URLEncoder.encode(firstTag, StandardCharsets.UTF_8)))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertTrue(page.path("items").size() >= 1, "标签下应有文章");
+        for (var item : page.path("items")) {
+            boolean hasTag = false;
+            for (var tag : item.path("tags")) {
+                if (tag.asText().equalsIgnoreCase(firstTag)) hasTag = true;
+            }
+            assertTrue(hasTag, "分页命中的每篇都应带该标签");
+        }
+
+        mockMvc.perform(get("/api/v1/tags/ghost-tag-never-exists"))
+            .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/sitemap.xml"))
+            .andExpect(status().isOk())
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("/tags/")));
     }
 
     @Test

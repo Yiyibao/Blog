@@ -418,13 +418,14 @@ watch(filteredNodes, (visibleNodes) => {
           <span v-if="selectedNode.category" class="panel-category">{{ selectedNode.category }}</span>
         </div>
         <div class="panel-actions">
+          <!-- 5B：TAG 节点补链标签页——「打开」对 TAG 同样可用（点击节点仍是本地过滤） -->
           <button
-            v-if="selectedNode.type !== 'TAG' && selectedNode.url"
+            v-if="selectedNode.url"
             type="button"
             class="open-content-btn"
             @click="handleOpenContent"
           >
-            打开内容 ↗
+            {{ selectedNode.type === 'TAG' ? '打开标签页 ↗' : '打开内容 ↗' }}
           </button>
           <button type="button" class="close-panel-btn" @click="clearSelection">
             关闭

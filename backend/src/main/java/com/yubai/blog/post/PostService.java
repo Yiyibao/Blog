@@ -132,6 +132,24 @@ public class PostService {
             .toList();
     }
 
+    /** 5B：标签聚合（已发布文章，按数量降序）。 */
+    public List<TagSummary> findPublishedTags() {
+        return repository.findPublishedTagCounts().stream()
+            .map(row -> new TagSummary(row.getTag(), row.getCnt()))
+            .toList();
+    }
+
+    /** 5B：按标签分页（lower 等值匹配，V25 函数索引）；标签下无文章按 404 语义处理。 */
+    public PageResponse<PostSummary> findPublishedByTag(String tag, int page, int size) {
+        var result = repository.findPublishedByTag(tag, pageRequest(page, size));
+        if (result.getTotalElements() == 0) {
+            throw new NotFoundException("标签不存在：" + tag);
+        }
+        return toSummaryPage(result);
+    }
+
+    public record TagSummary(String tag, long count) {}
+
     public CategoryDetail findCategoryBySlug(String slug, int page, int size) {
         var pageable = pageRequest(page, size);
         var postsPage = repository.findByCategorySlugAndStatusOrderByDateDesc(slug, PostStatus.PUBLISHED, pageable);

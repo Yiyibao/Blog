@@ -184,6 +184,37 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     @Query("SELECT p.id as id, p.slug as slug, p.title as title, p.date as date, p.status as status FROM PostEntity p WHERE p.id IN :ids")
     List<PostRefRow> findRefRows(@Param("ids") java.util.Collection<Long> ids);
 
+    /** 5B：标签一等公民——已发布文章的标签聚合与按标签分页（lower 等值匹配走 V25 函数索引）。 */
+    interface TagCountRow {
+        String getTag();
+        long getCnt();
+    }
+
+    @Query("""
+        SELECT t as tag, COUNT(p) as cnt FROM PostEntity p JOIN p.tags t
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+        GROUP BY t ORDER BY COUNT(p) DESC, t ASC
+        """)
+    List<TagCountRow> findPublishedTagCounts();
+
+    @Query(value = """
+        SELECT p.id as id, p.slug as slug, p.title as title, p.excerpt as excerpt, p.date as date,
+               p.readTime as readTime, p.category as category, p.categorySlug as categorySlug,
+               p.color as color, p.number as number, p.featured as featured, p.status as status,
+               p.likeCount as likeCount, p.viewsCount as viewsCount
+        FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND EXISTS (SELECT 1 FROM PostEntity p2 JOIN p2.tags t
+                      WHERE p2.id = p.id AND LOWER(t) = LOWER(:tag))
+        ORDER BY p.date DESC, p.id DESC
+        """, countQuery = """
+        SELECT COUNT(p) FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND EXISTS (SELECT 1 FROM PostEntity p2 JOIN p2.tags t
+                      WHERE p2.id = p.id AND LOWER(t) = LOWER(:tag))
+        """)
+    Page<PostListRow> findPublishedByTag(@Param("tag") String tag, Pageable pageable);
+
     /** 4D：仪表盘状态计数与 TOP5 热文（轻量投影）。 */
     long countByStatus(PostStatus status);
 

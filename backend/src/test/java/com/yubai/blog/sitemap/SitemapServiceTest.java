@@ -122,6 +122,24 @@ class SitemapServiceTest {
     }
 
     @Test
+    void publishedTagsAreIncludedWithEncodedPathSegment() {
+        // 5B：标签页进 sitemap，中文标签路径段 RFC 3986 转义
+        when(postRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedCategoriesWithCount()).thenReturn(List.of());
+        when(dishRepository.findPublishedSitemap()).thenReturn(List.of());
+        when(postRepository.findPublishedTagCounts()).thenReturn(List.of(
+            new PostRepository.TagCountRow() {
+                public String getTag() { return "前端架构"; }
+                public long getCnt() { return 3; }
+            }));
+
+        var entries = service.collectEntries();
+
+        assertThat(entries).anyMatch(e -> e.loc().equals(
+            "https://example.test/tags/%E5%89%8D%E7%AB%AF%E6%9E%B6%E6%9E%84"));
+    }
+
+    @Test
     void lastmodUsesEntityTimestamps() {
         var postDate = LocalDate.of(2026, 6, 15);
         var dishTime = Instant.parse("2026-07-10T14:00:00Z");

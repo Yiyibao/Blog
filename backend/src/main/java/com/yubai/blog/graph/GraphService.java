@@ -27,8 +27,8 @@ import com.yubai.blog.series.SeriesService;
  *
  * <p>Design contract:
  * <ul>
- *   <li>TAG nodes are relation/filter hubs only. Public category pages no longer exist, so a TAG
- *       node never carries a URL ({@code url == null}); the frontend uses them to filter locally.</li>
+ *   <li>TAG nodes are relation/filter hubs; since 5B they also carry the public tag page URL
+ *       ({@code /tags/{label}}) while the frontend keeps the local-filter interaction.</li>
  *   <li>POST / NOTE / DISH nodes keep their real content URLs.</li>
  *   <li>Tag identity is derived from a hash of the normalised label, so ids stay stable regardless
  *       of repository result order and are safe for non-ASCII (e.g. Chinese) labels.</li>
@@ -125,7 +125,8 @@ public class GraphService {
         }
 
         List<GraphNode> nodes = new ArrayList<>(tagLabels.size() + contentNodes.size());
-        tagLabels.forEach((key, label) -> nodes.add(new GraphNode(tagId(key), label, TYPE_TAG, null)));
+        // 5B：TAG 节点补链公开标签页（前端本地过滤交互不变，另供「打开内容」跳转）
+        tagLabels.forEach((key, label) -> nodes.add(new GraphNode(tagId(key), label, TYPE_TAG, "/tags/" + label)));
         nodes.addAll(contentNodes);
         nodes.sort(NODE_ORDER);
 

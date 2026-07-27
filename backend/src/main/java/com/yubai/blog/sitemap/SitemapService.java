@@ -74,6 +74,11 @@ public class SitemapService {
                 null));
         }
 
+        // 5B：标签页（已发布文章的标签聚合）
+        for (var tag : postRepository.findPublishedTagCounts()) {
+            entries.add(new SitemapEntry(urls.tag(tag.getTag()), null));
+        }
+
         return entries;
     }
 
