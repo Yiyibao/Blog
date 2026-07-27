@@ -367,6 +367,92 @@ responses from slow API calls do not override newer route meta.
 cleanup, canonical generation, OG/Twitter tag lifecycle, route-switch
 cleanup, async ordering, and 404 handling.
 
+## Build-time SEO prerendering (6D)
+
+The project uses **build-time metadata HTML snapshots** as a lightweight SEO
+layer. Rather than a full `vite-ssg` rewrite, `scripts/prerender-seo.mjs` runs
+after `vite build` and generates route-specific `index.html` files under
+`dist/client/`. These are served by nginx `try_files $uri $uri/ /index.html`
+without any server-side rendering.
+
+### Markers
+
+The source `frontend/index.html` contains replaceable comment markers:
+
+```html
+<!--SEO:start-->
+  <title>...</title>
+  <meta name="description" ... />
+  <meta property="og:*" ... />
+  <meta name="twitter:*" ... />
+<!--SEO:end-->
+```
+
+The script reads the built `dist/client/index.html`, locates the markers, and
+replaces the content between them with route-specific title, description,
+canonical, Open Graph, Twitter Card, and JSON-LD tags. Everything outside the
+markers (asset links, SPA `<div id="app">`, PWA manifest, favicon) is
+preserved verbatim, keeping each route a functional SPA entry point.
+
+### Static routes
+
+The following routes always receive prerendered snapshots:
+
+| Route | Title | Description |
+|-------|-------|-------------|
+| `/` | `{site_name}` | Site description |
+| `/articles` | 文章 \| {site_name} | 阅读所有技术文章与日常随笔 |
+| `/series` | 系列 \| {site_name} | 按系列浏览文章，追踪完整的知识脉络 |
+| `/archive` | 内容归档 \| {site_name} | 按时间浏览所有公开的文章与菜谱 |
+| `/recipes` | 美食 \| {site_name} | 家常菜谱与美食记录 |
+| `/about` | 关于 \| {site_name} | 关于作者和这个博客 |
+
+The home page also receives a `WebSite` JSON-LD script. Noindex shells are
+generated for `/login` and `/admin/login` with `robots: noindex, nofollow`.
+
+### Dynamic routes (optional)
+
+When `PRERENDER_API_BASE_URL` is set, the script fetches public API data and
+generates snapshots for every published:
+
+- `/articles/:slug` — using the posts list endpoint (`GET /posts`). JSON-LD
+  is `BlogPosting`. Only `PUBLISHED` status posts are included. The detail
+  endpoint is never called to avoid incrementing view counts.
+- `/series/:slug` — using the series list endpoint (`GET /series`). JSON-LD
+  is `CollectionPage`.
+- `/tags/:tag` — using the tags list endpoint (`GET /tags`).
+
+Pagination is handled up to a defensive cap of 1000 items. Route segments are
+validated for path traversal characters (`..`, null byte, `/`, `\`). The
+build fails on HTTP errors or unexpected API response shapes rather than
+silently publishing stale snapshots.
+
+### Security
+
+- **HTML escaping**: All user-supplied metadata values pass through
+  `escapeHtml()` which encodes `&`, `<`, `>`, `"`, `'`.
+- **JSON-LD script safety**: `safeJsonLd()` escapes every `<` as `\u003c` in
+  serialized JSON to prevent premature `</script>` tag parsing.
+- **Path traversal prevention**: `safeOutputDir()` rejects segments
+  containing `..`, null bytes, or path separators, and verifies the
+  resolved path is within the output directory.
+- **Private content**: Admin routes (`/admin/*`) and login pages receive
+  only noindex shells. Dynamic routes skip `DRAFT` posts. Notes require
+  authentication at the Vue router level and are not prerendered.
+
+### Dependencies
+
+The script reads `VITE_SITE_URL`, `VITE_SITE_NAME`, `VITE_SITE_DESCRIPTION`,
+`VITE_AUTHOR_NAME`, and `VITE_SOCIAL_IMAGE` from the process environment and
+Vite's production env files (`.env.production*`, then `.env*`). The
+optional `PRERENDER_API_BASE_URL` controls dynamic API fetching. No
+third-party rendering services or browser dependencies are used.
+
+**Tests:** `src/test/prerender-seo.test.ts` covers static output correctness,
+HTML escaping and script safety, path traversal rejection, dynamic API
+pagination and data mapping, and SPA asset tag preservation. Integration
+tests use a temporary directory and mock `fetch`.
+
 ## Article Categories
 
 **本轮分类公开浏览仅覆盖文章分类，不包含菜品分类。**

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vue-tsc --noEmit && node scripts/clean-build.mjs && vite build && node scripts/prepare-sites-build.mjs",
+    "build": "vue-tsc --noEmit && node scripts/clean-build.mjs && vite build && node scripts/prerender-seo.mjs && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,6 +34,7 @@
     "vue-router": "4.5.1"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "@vitejs/plugin-vue": "6.0.8",
     "@vue/test-utils": "^2.4.11",
     "jsdom": "^29.1.1",

@@ -28,6 +28,7 @@
 | 6C-1 refresh token | ✅ 已完成 | V28 + hash-only 单次轮换/family 重放撤销 + HttpOnly cookie + 前端 single-flight |
 | 6C-2 权限模型 | ✅ 已完成 | 后端签发 capabilities/JWT authorities；API 与前端路由按具体能力授权 |
 | 6C-3 TOTP 两步验证 | ✅ 已完成 | V29 + AES-GCM 密钥 + RFC 6238 + 单次登录挑战 + 账号页启停 |
+| 6D SEO 预渲染 | ✅ 已完成 | 构建期 HTML head 快照；静态公开页常驻，文章/合集/标签可选 API 批量生成 |
 
 ## 二、总路线图
 
