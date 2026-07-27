@@ -279,7 +279,7 @@ describe('Route Authentication & Guard', () => {
     const aiRoute = router.getRoutes().find(r => r.path === '/admin/ai')
     expect(aiRoute).toBeDefined()
     expect(aiRoute?.meta?.requiresAuth).toBe(true)
-    expect(aiRoute?.meta?.requiresRole).toBe('ADMIN')
+    expect(aiRoute?.meta?.capability).toBe('ai:usage')
   })
 
   it('redirects unauthenticated user navigating to /admin/ai to /admin/login', async () => {

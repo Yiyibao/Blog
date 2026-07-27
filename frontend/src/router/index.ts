@@ -4,6 +4,7 @@ import AdminLoginPage from '../pages/AdminLoginPage.vue'
 import NotFoundPage from '../pages/NotFoundPage.vue'
 import { useAuthStore } from '../stores/auth'
 import { refreshSession } from '../api/admin'
+import { Capabilities, type Capability } from '../utils/capabilities'
 
 const HomePage = defineAsyncComponent(() => import('../pages/HomePage.vue'))
 const ArticlesPage = defineAsyncComponent(() => import('../pages/ArticlesPage.vue'))
@@ -33,17 +34,17 @@ const router = createRouter({
     { path: '/articles/:slug', name: 'article', component: ArticlePage },
     { path: '/about', name: 'about', component: AboutPage },
     // L-16/D-17：学习笔记对游客真隐藏——需登录（任意角色），深链未登录会被送去 /login?next= 接续
-    { path: '/notes', name: 'notes', component: NotesPage, meta: { requiresAuth: true } },
+    { path: '/notes', name: 'notes', component: NotesPage, meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
     { path: '/login', name: 'login', component: LoginPage },
-    { path: '/account', name: 'account', component: AccountPage, meta: { requiresAuth: true } },
+    { path: '/account', name: 'account', component: AccountPage, meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
     { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
-    { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
-    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
-    { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
-    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
-    { path: '/admin/library', name: 'admin-library', component: AdminLibraryPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
-    { path: '/admin/series', name: 'admin-series', component: AdminSeriesPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
-    { path: '/admin/attachments', name: 'admin-attachments', component: AdminAttachmentsPage, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+    { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
+    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
+    { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAuth: true, capability: Capabilities.AI_USAGE } },
+    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAuth: true, capability: Capabilities.AI_MANAGE } },
+    { path: '/admin/library', name: 'admin-library', component: AdminLibraryPage, meta: { requiresAuth: true, capability: Capabilities.LIBRARY_MANAGE } },
+    { path: '/admin/series', name: 'admin-series', component: AdminSeriesPage, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
+    { path: '/admin/attachments', name: 'admin-attachments', component: AdminAttachmentsPage, meta: { requiresAuth: true, capability: Capabilities.ATTACHMENTS_MANAGE } },
     { path: '/series', name: 'series', component: SeriesPage },
     { path: '/series/:slug', name: 'series-detail', component: SeriesDetailPage },
     { path: '/tags/:tag', name: 'tag', component: TagPage },
@@ -55,8 +56,8 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, _from, next) => {
-  // FD-8：requiresAdmin 拆为 requiresAuth + requiresRole——
-  // 未登录去登录页；已登录但角色不符（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
+  // FD-8：requiresAuth + capability——
+  // 未登录去登录页；已登录但缺少所需 capability（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
   // 免得"已登录还被要求登录"的死循环体验
   if (!to.meta.requiresAuth) {
     next()
@@ -71,7 +72,8 @@ router.beforeEach(async (to, _from, next) => {
       return
     }
   }
-  if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
+  const required = to.meta.capability as Capability | undefined
+  if (required && !auth.can(required)) {
     next({ path: '/recipes' })
     return
   }

@@ -34,18 +34,20 @@ public class JwtService {
     public LoginResponse issue(AdminUserEntity user, boolean remember) {
         var issuedAt = Instant.now();
         var expiresAt = issuedAt.plus(remember ? rememberTtl : ttl);
+        var permissions = RolePermissions.forRole(user.getRole());
         var claims = JwtClaimsSet.builder()
             .issuer("yubai-blog")
             .issuedAt(issuedAt)
             .expiresAt(expiresAt)
             .subject(user.getUsername())
             .claim("roles", List.of(user.getRole().name()))
+            .claim("authorities", permissions.stream().sorted().toList())
             .claim("uid", user.getId())
             .claim("name", user.getDisplayName())
             .build();
         var header = JwsHeader.with(MacAlgorithm.HS256).build();
         var token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
         return new LoginResponse(token, "Bearer", user.getUsername(),
-            user.getRole().name(), user.getDisplayName(), expiresAt);
+            user.getRole().name(), user.getDisplayName(), expiresAt, permissions);
     }
 }

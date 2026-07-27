@@ -370,7 +370,7 @@ describe('Route Registration & Guard', () => {
     const providerRoute = router.getRoutes().find((r) => r.path === '/admin/ai/providers')
     expect(providerRoute).toBeDefined()
     expect(providerRoute?.meta?.requiresAuth).toBe(true)
-    expect(providerRoute?.meta?.requiresRole).toBe('ADMIN')
+    expect(providerRoute?.meta?.capability).toBe('ai:manage')
   })
 
   it('redirects unauthenticated visitors to /admin/login', async () => {

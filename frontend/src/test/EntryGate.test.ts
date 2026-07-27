@@ -90,6 +90,6 @@ describe('L-16 角色化路由 meta', () => {
   it('/notes 需登录（游客深链会被守卫送去 /login 接续）', () => {
     const notesRoute = router.getRoutes().find((r) => r.path === '/notes')
     expect(notesRoute?.meta?.requiresAuth).toBe(true)
-    expect(notesRoute?.meta?.requiresRole).toBeUndefined()
+    expect(notesRoute?.meta?.capability).toBe('account:access')
   })
 })

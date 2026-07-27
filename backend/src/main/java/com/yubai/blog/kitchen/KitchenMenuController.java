@@ -157,7 +157,7 @@ public class KitchenMenuController {
             Long uid = jwt.getClaim("uid");
             var name = jwt.getClaimAsString("name");
             if (uid != null) {
-                var admin = jwtAuth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                var admin = jwtAuth.getAuthorities().contains(new SimpleGrantedAuthority(com.yubai.blog.auth.Permissions.KITCHEN_DELETE_ANY));
                 return new DailyMenuService.Actor(uid, name == null ? jwt.getSubject() : name, admin);
             }
         }

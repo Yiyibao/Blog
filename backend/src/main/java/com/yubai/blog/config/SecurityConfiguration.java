@@ -22,14 +22,17 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.OctetSequenceKey;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.yubai.blog.auth.AdminUserRole;
+import com.yubai.blog.auth.Permissions;
+import com.yubai.blog.auth.RolePermissions;
 
 @Configuration
 public class SecurityConfiguration {
@@ -44,18 +47,24 @@ public class SecurityConfiguration {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // 6A：Prometheus 指标仅 ADMIN 可读，置于 permitAll 规则之前——顺序敏感
-                .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
+                .requestMatchers("/actuator/prometheus").hasAuthority(Permissions.METRICS_VIEW)
                 .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/api/v1/auth/challenge", "/api/v1/auth/refresh", "/api/v1/auth/logout", "/sitemap.xml", "/rss.xml", "/robots.txt", "/error").permitAll()
                 // P2-3：文档路径放行但功能默认关闭（SPRINGDOC_ENABLED=false 时如实 404），生产不暴露内容
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // L-16/D-17：/notes 与 /note-assets 移出公开白名单——学习笔记对游客真隐藏（落入下方 /api/** authenticated）
                 .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dishes/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**", "/api/v1/series/**", "/api/v1/tags/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/dishes/*/favorite", "/api/v1/posts/*/like", "/api/v1/search").permitAll()
-                // FD-7：kitchen（今日菜单/打卡）为两人私有空间——必须登录，ADMIN 与 PARTNER 皆可；
+                // FD-7：kitchen（今日菜单/打卡）为两人私有空间——必须 kitchen:access 权限；
                 // 规则须在 /api/** 通配之前，顺序敏感
-                .requestMatchers("/api/v1/kitchen/**").hasAnyRole("ADMIN", "PARTNER")
-                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/**").authenticated()
+                .requestMatchers("/api/v1/kitchen/**").hasAuthority(Permissions.KITCHEN_ACCESS)
+                .requestMatchers("/api/v1/admin/ai/providers/**").hasAuthority(Permissions.AI_MANAGE)
+                .requestMatchers("/api/v1/admin/ai/**").hasAuthority(Permissions.AI_USAGE)
+                .requestMatchers("/api/v1/admin/stats").hasAuthority(Permissions.DASHBOARD_VIEW)
+                .requestMatchers("/api/v1/admin/attachments/**", "/api/v1/admin/notes/*/attachments/**")
+                    .hasAuthority(Permissions.ATTACHMENTS_MANAGE)
+                .requestMatchers("/api/v1/admin/library/**").hasAuthority(Permissions.LIBRARY_MANAGE)
+                .requestMatchers("/api/v1/admin/**").hasAuthority(Permissions.CONTENT_MANAGE)
+                .requestMatchers("/api/**").hasAuthority(Permissions.ACCOUNT_ACCESS)
                 // P0-1：兜底 denyAll——新增路由必须显式加入白名单，避免默认公开
                 .anyRequest().denyAll()
             )
@@ -121,11 +130,30 @@ public class SecurityConfiguration {
 
     @Bean
     JwtAuthenticationConverter jwtAuthenticationConverter() {
-        var authorities = new JwtGrantedAuthoritiesConverter();
-        authorities.setAuthoritiesClaimName("roles");
-        authorities.setAuthorityPrefix("ROLE_");
         var converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authorities);
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            var authorityClaim = jwt.getClaimAsStringList("authorities");
+            if (authorityClaim != null) {
+                return authorityClaim.stream()
+                    .filter(Permissions.ALL::contains)
+                    .distinct()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(java.util.stream.Collectors.toList());
+            }
+            // Rolling-deploy compatibility for access tokens issued before 6C-2.
+            var roleClaim = jwt.getClaimAsStringList("roles");
+            if (roleClaim == null || roleClaim.isEmpty()) return java.util.List.of();
+            return roleClaim.stream().flatMap(roleName -> {
+                try {
+                    return RolePermissions.forRole(AdminUserRole.valueOf(roleName)).stream();
+                } catch (IllegalArgumentException e) {
+                    return java.util.stream.Stream.<String>empty();
+                }
+            })
+                .distinct()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(java.util.stream.Collectors.toList());
+        });
         return converter;
     }
 }

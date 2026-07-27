@@ -4,6 +4,7 @@ import type { Dish } from '../../data'
 import type { MealSlot } from '../../api/kitchen'
 import { useFoodStore } from '../../stores/foodStore'
 import { useAuthStore } from '../../stores/auth'
+import { Capabilities } from '../../utils/capabilities'
 import { useUiStore } from '../../stores/uiStore'
 import { useFocusTrap } from '../../composables/useFocusTrap'
 
@@ -38,7 +39,7 @@ const confirmed = computed(() => store.menu?.status === 'CONFIRMED')
 const myName = computed(() => auth.displayName ?? auth.username ?? '')
 
 function canRemove(authorId: number, authorName: string) {
-  return auth.isAdmin || authorName === myName.value || authorId < 0
+  return auth.can(Capabilities.KITCHEN_DELETE_ANY) || authorName === myName.value || authorId < 0
 }
 
 function pickDish(slug: string) {

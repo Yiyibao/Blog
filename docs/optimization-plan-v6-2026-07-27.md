@@ -26,6 +26,7 @@
 | 6B 应用侧对象存储 | ✅ 已完成 | V27 + 安全本地存储边界 + bytea 惰性迁移；后端 408/408 |
 | 6B 部署侧对象存储 | ⏭ 已跳过 | nginx/S3、生产文件搬迁与凭据需服务器操作 |
 | 6C-1 refresh token | ✅ 已完成 | V28 + hash-only 单次轮换/family 重放撤销 + HttpOnly cookie + 前端 single-flight |
+| 6C-2 权限模型 | ✅ 已完成 | 后端签发 capabilities/JWT authorities；API 与前端路由按具体能力授权 |
 
 ## 二、总路线图
 

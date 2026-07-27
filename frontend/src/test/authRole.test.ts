@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore, type LoginResult } from '../stores/auth'
+import { Capabilities, type Capability } from '../utils/capabilities'
 
 function freshStore() {
   setActivePinia(createPinia())
@@ -28,7 +29,7 @@ function guardedRouter(): Router {
       { path: '/', component: { template: '<div />' } },
       { path: '/login', name: 'login', component: { template: '<div />' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div />' } },
-      { path: '/admin', name: 'admin', component: { template: '<div />' }, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+      { path: '/admin', name: 'admin', component: { template: '<div />' }, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
       { path: '/recipes', name: 'recipes', component: { template: '<div />' } },
     ],
   })
@@ -36,7 +37,8 @@ function guardedRouter(): Router {
     if (!to.meta.requiresAuth) { next(); return }
     const auth = useAuthStore()
     if (!auth.isAuthenticated) { next({ name: 'login', query: { next: to.fullPath } }); return }
-    if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) { next({ path: '/recipes' }); return }
+    const required = to.meta.capability as Capability | undefined
+    if (required && !auth.can(required)) { next({ path: '/recipes' }); return }
     next()
   })
   return r
@@ -62,6 +64,25 @@ describe('FD-8 authStore 角色感知', () => {
     expect(auth.isAdmin).toBe(false)
     expect(auth.isPartner).toBe(true)
     expect(auth.canKitchen).toBe(true)
+  })
+
+  it('服务端 capabilities 是能力判定事实源', () => {
+    sessionStorage.clear()
+    const auth = freshStore()
+    auth.saveSession(result({ capabilities: [Capabilities.ACCOUNT_ACCESS] }))
+    expect(auth.isAdmin).toBe(true)
+    expect(auth.can(Capabilities.ACCOUNT_ACCESS)).toBe(true)
+    expect(auth.can(Capabilities.CONTENT_MANAGE)).toBe(false)
+  })
+
+  it('过期 token 即使保留角色也不具有能力', () => {
+    sessionStorage.clear()
+    const auth = freshStore()
+    auth.saveSession(result({
+      expiresAt: '2000-01-01T00:00:00Z',
+      capabilities: [Capabilities.CONTENT_MANAGE],
+    }))
+    expect(auth.can(Capabilities.CONTENT_MANAGE)).toBe(false)
   })
 
   it('无角色的登录结果 fail-closed：已登录但无任何角色能力', () => {

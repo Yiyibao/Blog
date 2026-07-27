@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import AdminLogin from '../components/AdminLogin.vue'
 import { clearAdminSession, getAdminSessionName, hasValidAdminSession, saveAdminSession } from '../api/admin'
 import { useAuthStore } from '../stores/auth'
+import { Capabilities, type Capability } from '../utils/capabilities'
 
 const mockLogin = vi.fn()
 const mockFetchChallenge = vi.fn()
@@ -43,7 +44,7 @@ const LOGIN_RESULT = {
   displayName: '站长',
 }
 
-/** 复刻 src/router/index.ts 的守卫逻辑（守卫读 useAuthStore；FD-8 起 requiresAuth+requiresRole；6C-1 加 refreshSession）。 */
+/** 复刻 src/router/index.ts 的守卫逻辑（守卫读 useAuthStore；FD-8 起 requiresAuth+capability；6C-1 加 refreshSession）。 */
 function createGuardedRouter(): Router {
   const r = createRouter({
     history: createMemoryHistory(),
@@ -51,7 +52,7 @@ function createGuardedRouter(): Router {
       { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
       { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div>AdminLogin</div>' } },
-      { path: '/admin', name: 'admin', component: { template: '<div>Dashboard</div>' }, meta: { requiresAuth: true, requiresRole: 'ADMIN' } },
+      { path: '/admin', name: 'admin', component: { template: '<div>Dashboard</div>' }, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
       { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
     ],
   })
@@ -68,7 +69,8 @@ function createGuardedRouter(): Router {
         return
       }
     }
-    if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
+    const required = to.meta.capability as Capability | undefined
+    if (required && !auth.can(required)) {
       next({ path: '/recipes' })
       return
     }
