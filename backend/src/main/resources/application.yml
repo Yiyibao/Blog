@@ -37,11 +37,22 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+      # 6A：探针仅需 UP/DOWN，不泄露数据库、磁盘等详情
+      show-details: never
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 app:
   site-url: ${APP_SITE_URL:http://localhost:5173}

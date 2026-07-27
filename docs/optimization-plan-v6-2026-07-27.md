@@ -16,11 +16,13 @@
 | 5A 中文检索 | ✅ 已完成 | 8eb31c4 + docs/spike-5a |
 | 5B 标签一等公民 | ✅ 已完成 | 2dbb91e |
 | 5C 图谱增强 | ✅ 已完成 | 后端子图端点+缓存/Vary 头；前端双击/展开/去重/竞态/自动局部模式 |
-| 5D 相关推荐 | ◐ 未开工 | 移至 v6 第一阶段 |
-| P2-7 .gitattributes + renormalize | ◐ 未开工 | 需显式一次提交 |
-| NF-10 styles.css 拆分 | ◐ 未开工 | 与 P2-7 协调执行 |
-| NB-9 演示数据分离 | ◐ 待决策 | 用户 flyway repair |
-| NF-12 base_servings | ◐ 待确认 | 若美食专项未完成则本计划实现 |
+| 5D 相关推荐 | ✅ 已完成 | 60d8767 |
+| P2-7 .gitattributes + renormalize | ✅ 已完成 | 5ac96d8 |
+| NF-10 styles.css 拆分 | ✅ 已完成 | 4035fdf |
+| NB-9 演示数据分离 | ⏭ 已跳过 | 需用户在存量库执行 flyway repair |
+| NF-12 base_servings | ✅ 已完成 | b9931e9 |
+| 6A 应用侧监控 | ✅ 已完成 | Prometheus 端点仅 ADMIN 可读；后端 386/386 |
+| 6A 部署侧监控 | ⏭ 已跳过 | 内网暴露与 PostgreSQL 慢查询配置需服务器操作 |
 
 ## 二、总路线图
 
