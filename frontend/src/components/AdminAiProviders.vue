@@ -3,7 +3,7 @@ import axios from 'axios'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  clearAdminSession, createAiProvider, deleteAiProvider, fetchAiProviders,
+  logout as apiLogout, createAiProvider, deleteAiProvider, fetchAiProviders,
   hasValidAdminSession, setDefaultAiProvider, testAiProvider, updateAiProvider,
   type AiProvider, type AiProviderPayload, type AiProviderTestResult,
 } from '../api/admin'
@@ -52,7 +52,7 @@ function apiErrorMessage(cause: unknown, fallback: string) {
 }
 
 function logout() {
-  clearAdminSession()
+  apiLogout()
   void router.replace('/admin/login')
 }
 

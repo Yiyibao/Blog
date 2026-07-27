@@ -14,7 +14,7 @@ const mockUpdateAiProvider = vi.fn()
 const mockDeleteAiProvider = vi.fn()
 const mockSetDefaultAiProvider = vi.fn()
 const mockTestAiProvider = vi.fn()
-const mockClearAdminSession = vi.fn()
+const mockLogout = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof adminApi>()
@@ -26,7 +26,7 @@ vi.mock('../api/admin', async (importOriginal) => {
     deleteAiProvider: (...args: unknown[]) => mockDeleteAiProvider(...args),
     setDefaultAiProvider: (...args: unknown[]) => mockSetDefaultAiProvider(...args),
     testAiProvider: (...args: unknown[]) => mockTestAiProvider(...args),
-    clearAdminSession: (...args: unknown[]) => mockClearAdminSession(...args),
+    logout: (...args: unknown[]) => mockLogout(...args),
   }
 })
 
@@ -121,7 +121,7 @@ beforeEach(() => {
   mockDeleteAiProvider.mockReset().mockResolvedValue(undefined)
   mockSetDefaultAiProvider.mockReset().mockResolvedValue(deepseekProvider)
   mockTestAiProvider.mockReset()
-  mockClearAdminSession.mockReset()
+  mockLogout.mockReset()
   window.sessionStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
   window.sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
@@ -336,7 +336,7 @@ describe('AdminAiProviders Component', () => {
     const testRouter = createTestRouter()
     await mountComponent(testRouter)
 
-    expect(mockClearAdminSession).toHaveBeenCalled()
+    expect(mockLogout).toHaveBeenCalled()
     expect(testRouter.currentRoute.value.path).toBe('/admin/login')
   })
 
@@ -351,7 +351,7 @@ describe('AdminAiProviders Component', () => {
       .trigger('click')
     await flushPromises()
 
-    expect(mockClearAdminSession).toHaveBeenCalled()
+    expect(mockLogout).toHaveBeenCalled()
     expect(testRouter.currentRoute.value.path).toBe('/admin/login')
     // 令牌失效不应被当作普通测试失败展示
     expect(wrapper.find('.provider-test').exists()).toBe(false)

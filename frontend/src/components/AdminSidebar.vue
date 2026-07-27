@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { clearAdminSession, getAdminSessionName } from '../api/admin'
+import { logout as apiLogout, getAdminSessionName } from '../api/admin'
 
 defineProps<{
   postTotal?: number
@@ -31,7 +31,7 @@ const activeItem = computed(() => {
 })
 
 function logout() {
-  clearAdminSession()
+  apiLogout()
   void router.replace('/admin/login')
 }
 </script>

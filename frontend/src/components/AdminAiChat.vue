@@ -2,7 +2,7 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AiStreamHttpError, clearAdminSession, getAdminSessionName, streamAiChat,
+  AiStreamHttpError, logout as apiLogout, getAdminSessionName, streamAiChat,
   type AiChatMessage,
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
@@ -86,7 +86,7 @@ async function scrollToBottom() {
 }
 
 function logout() {
-  clearAdminSession()
+  apiLogout()
   void router.replace('/admin/login')
 }
 
@@ -157,7 +157,7 @@ async function sendMessage() {
         messages.value = messages.value.filter((msg) => msg !== live)
       }
     } else if (cause instanceof AiStreamHttpError && cause.status === 401) {
-      clearAdminSession()
+      apiLogout()
       void router.replace('/admin/login')
       return
     } else {

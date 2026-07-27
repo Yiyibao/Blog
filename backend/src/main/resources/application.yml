@@ -63,6 +63,10 @@ app:
     ttl: ${APP_JWT_TTL:PT2H}
     # FD-9："保持登录"勾选时的 TTL；刻意不给 7 天——踢下线靠 sessions_valid_from
     remember-ttl: ${APP_JWT_REMEMBER_TTL:PT24H}
+    # 6C-1：refresh token 过期时间（短短期 access token + 长寿命 HttpOnly cookie 配合）
+    refresh-ttl: ${APP_JWT_REFRESH_TTL:P7D}
+    refresh-remember-ttl: ${APP_JWT_REFRESH_REMEMBER_TTL:P30D}
+    cookie-secure: ${APP_JWT_COOKIE_SECURE:true}
   auth:
     challenge:
       # L-7：登录人机验证三层参数；难度每 +1 前端 PoW 平均计算量 ×16

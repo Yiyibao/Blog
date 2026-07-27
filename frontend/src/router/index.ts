@@ -3,6 +3,7 @@ import { defineAsyncComponent } from 'vue'
 import AdminLoginPage from '../pages/AdminLoginPage.vue'
 import NotFoundPage from '../pages/NotFoundPage.vue'
 import { useAuthStore } from '../stores/auth'
+import { refreshSession } from '../api/admin'
 
 const HomePage = defineAsyncComponent(() => import('../pages/HomePage.vue'))
 const ArticlesPage = defineAsyncComponent(() => import('../pages/ArticlesPage.vue'))
@@ -53,7 +54,7 @@ const router = createRouter({
   scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { top: 0 },
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // FD-8：requiresAdmin 拆为 requiresAuth + requiresRole——
   // 未登录去登录页；已登录但角色不符（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
   // 免得"已登录还被要求登录"的死循环体验
@@ -62,10 +63,13 @@ router.beforeEach((to, _from, next) => {
     return
   }
   const auth = useAuthStore()
+  // 6C-1：本地 access 无效时先尝试 cookie 恢复，再决定跳登录
   if (!auth.isAuthenticated) {
-    // FD-9：统一走 /login，带上来路以便登录后原地接续（FD-14 的 intent 也在 next 里）
-    next({ name: 'login', query: { next: to.fullPath } })
-    return
+    const ok = await refreshSession()
+    if (!ok) {
+      next({ name: 'login', query: { next: to.fullPath } })
+      return
+    }
   }
   if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
     next({ path: '/recipes' })

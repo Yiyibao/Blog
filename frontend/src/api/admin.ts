@@ -63,22 +63,45 @@ export interface NoteAttachment {
   createdAt: string
 }
 
+// 6C-1：refresh token 仅通过 HttpOnly cookie 传输，axios 必须携带凭证
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 8000,
   headers: { Accept: 'application/json' },
+  withCredentials: true,
 })
 
 // 管理端登录态的单一事实源是 Pinia useAuthStore（NF-1）。
 // 本模块不再直接读写 sessionStorage，全部委托给 store，
 // 保证路由守卫、登录页与 API 拦截器看到的是同一份状态。
 
+// 6C-1：单航班刷新——同时多个 401 只发一次 refresh，其余排队等结果
+let refreshPromise: Promise<LoginResult | null> | null = null
+
+function requestRefresh() {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const base = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+        const res = await axios.post<ApiEnvelope<LoginResult>>(
+          `${base}/auth/refresh`, null, { withCredentials: true, timeout: 8000 },
+        )
+        const result = res.data.data
+        useAuthStore().saveSession(result)
+        return result
+      } catch {
+        useAuthStore().clearSession()
+        return null
+      } finally {
+        refreshPromise = null
+      }
+    })()
+  }
+  return refreshPromise
+}
+
 api.interceptors.request.use((config) => {
   const auth = useAuthStore()
-  if (auth.token && auth.expiresAt && Date.parse(auth.expiresAt) <= Date.now()) {
-    auth.clearSession()
-    return Promise.reject(new axios.Cancel('登录已过期'))
-  }
   if (auth.token) {
     config.headers = config.headers ?? {}
     config.headers.Authorization = `Bearer ${auth.token}`
@@ -88,13 +111,46 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401) useAuthStore().clearSession()
-    return Promise.reject(error)
+  async (error) => {
+    if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+      return Promise.reject(error)
+    }
+    const url = error.config?.url ?? ''
+    // 6C-1：auth 端点不触发 refresh——login 本意是认证、refresh 失败会递归
+    if (url.includes('/auth/login') || url.includes('/auth/challenge') ||
+        url.includes('/auth/refresh') || url.includes('/auth/logout')) {
+      return Promise.reject(error)
+    }
+    // 防无限递归：_retry 标记表明已刷新过仍 401
+    const cfg = error.config as Record<string, unknown> | undefined
+    if (cfg?._retry) {
+      useAuthStore().clearSession()
+      return Promise.reject(error)
+    }
+    try {
+      const result = await requestRefresh()
+      if (!result) return Promise.reject(error)
+      cfg!._retry = true
+      return api.request(error.config!)
+    } catch {
+      return Promise.reject(error)
+    }
   },
 )
 
+/** 6C-1：单航班刷新，供路由守卫在本地 access 无效时先尝试 cookie 恢复。 */
+export async function refreshSession(): Promise<boolean> {
+  return (await requestRefresh()) !== null
+}
+
 export function clearAdminSession() {
+  useAuthStore().clearSession()
+}
+
+export function logout() {
+  // 发登出请求撤销 refresh token，不等待（页面即将跳转）
+  axios.post(`${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/auth/logout`, null, { withCredentials: true })
+    .catch(() => {})
   useAuthStore().clearSession()
 }
 

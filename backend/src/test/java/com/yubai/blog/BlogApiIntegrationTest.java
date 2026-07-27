@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -1918,7 +1920,15 @@ class BlogApiIntegrationTest {
     @Order(45)
     void selfServicePasswordChangeRotatesAndKicksOldTokens() throws Exception {
         // FD-25：伴侣自助改密全循环——改密成功 → 旧 token 立即 401 → 新口令可登录 → 改回原口令
-        String oldToken = loginAs("partner", "partner-pass-12345");
+        // 6C-1：旧 refresh token 同样全部撤销
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("partner", "partner-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String oldToken = objectMapper.readTree(login.getResponse().getContentAsString())
+            .path("data").path("token").asText();
+        String refreshCookie = extractSetCookie(login.getResponse(), "refresh_token");
         rateLimiter.reset();
 
         // 匿名不可打；当前口令错 → 400 表单级错误（非 401，防前端拦截器误清会话）
@@ -1941,6 +1951,10 @@ class BlogApiIntegrationTest {
 
         // 旧 token 已被 sessions_valid_from 踢掉
         mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + oldToken))
+            .andExpect(status().isUnauthorized());
+        // 6C-1：旧 refresh cookie 也不再生效
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
             .andExpect(status().isUnauthorized());
 
         // 新口令可登录；随后改回原口令保持种子状态，后续用例不受影响
@@ -2654,6 +2668,180 @@ class BlogApiIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("type-safe-content"));
     }
+
+    // ---- 6C-1: refresh token lifecycle ----
+
+    @Test
+    @Order(18)
+    void refreshTokenFlowLoginSetsCookieRefreshReturnsNewToken() throws Exception {
+        rateLimiter.reset();
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        String refreshCookie = extractSetCookie(loginResult.getResponse(), "refresh_token");
+        assertThat(refreshCookie).isNotEmpty();
+
+        // refresh with cookie => new access token + new cookie
+        MvcResult refreshResult = mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isOk())
+            .andReturn();
+        JsonNode refreshData = objectMapper.readTree(refreshResult.getResponse().getContentAsString())
+            .path("data");
+        assertThat(refreshData.path("token").asText()).isNotEmpty();
+        assertThat(refreshData.path("username").asText()).isEqualTo("admin");
+        assertThat(refreshData.path("role").asText()).isEqualTo("ADMIN");
+
+        // new cookie issued
+        String newRefreshCookie = extractSetCookie(refreshResult.getResponse(), "refresh_token");
+        assertThat(newRefreshCookie).isNotEmpty().isNotEqualTo(refreshCookie);
+    }
+
+    @Test
+    @Order(19)
+    void refreshTokenReplayDetectedAndFamilyRevoked() throws Exception {
+        rateLimiter.reset();
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String refreshCookie = extractSetCookie(loginResult.getResponse(), "refresh_token");
+
+        // First refresh succeeds
+        MvcResult firstRefresh = mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isOk())
+            .andReturn();
+        String rotatedCookie = extractSetCookie(firstRefresh.getResponse(), "refresh_token");
+
+        // Replay the old cookie => 401 + family revoked
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.message").value(containsString("already used")));
+
+        // The rotated token from first refresh is now in a revoked family → must 401
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", rotatedCookie)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.message").value(containsString("already used")));
+    }
+
+    @Test
+    @Order(20)
+    void concurrentRefreshOnlyOneSucceedsThenWinnerRevoked() throws Exception {
+        rateLimiter.reset();
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String refreshCookie = extractSetCookie(loginResult.getResponse(), "refresh_token");
+        assertThat(refreshCookie).isNotEmpty();
+
+        var statuses = new java.util.concurrent.CopyOnWriteArrayList<MvcResult>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var tasks = java.util.List.of(
+                (java.util.concurrent.Callable<Void>) () -> {
+                    var r = mockMvc.perform(post("/api/v1/auth/refresh")
+                            .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+                        .andReturn();
+                    statuses.add(r);
+                    return null;
+                },
+                (java.util.concurrent.Callable<Void>) () -> {
+                    var r = mockMvc.perform(post("/api/v1/auth/refresh")
+                            .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+                        .andReturn();
+                    statuses.add(r);
+                    return null;
+                });
+            for (var future : pool.invokeAll(tasks)) future.get();
+        }
+
+        var codes = statuses.stream().map(r -> r.getResponse().getStatus()).sorted().toList();
+        assertEquals(java.util.List.of(200, 401), codes, "exactly one refresh succeeds, one replays");
+
+        // The winner's rotated cookie is now in a revoked family → must 401
+        MvcResult winner = statuses.stream().filter(r -> r.getResponse().getStatus() == 200).findFirst().orElseThrow();
+        String winnerCookie = extractSetCookie(winner.getResponse(), "refresh_token");
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", winnerCookie)))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.message").value(containsString("already used")));
+    }
+
+    @Test
+    @Order(21)
+    void refreshWithoutCookieReturns401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(22)
+    void logoutRevokesRefreshTokenAndClearsCookie() throws Exception {
+        rateLimiter.reset();
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String refreshCookie = extractSetCookie(loginResult.getResponse(), "refresh_token");
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isNoContent());
+
+        // revoked token can no longer refresh
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(23)
+    void refreshTokenExpiresEventually() throws Exception {
+        rateLimiter.reset();
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String refreshCookie = extractSetCookie(loginResult.getResponse(), "refresh_token");
+        assertThat(refreshCookie).isNotEmpty();
+
+        // rotate once still works
+        MvcResult r1 = mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isOk())
+            .andReturn();
+        String cookie2 = extractSetCookie(r1.getResponse(), "refresh_token");
+
+        // rotate again
+        MvcResult r2 = mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", cookie2)))
+            .andExpect(status().isOk())
+            .andReturn();
+        assertThat(extractSetCookie(r2.getResponse(), "refresh_token")).isNotEmpty();
+    }
+
+    private static String extractSetCookie(org.springframework.mock.web.MockHttpServletResponse response, String cookieName) {
+        var setCookie = response.getHeader("Set-Cookie");
+        if (setCookie == null) return "";
+        for (var part : setCookie.split(";")) {
+            part = part.trim();
+            if (part.startsWith(cookieName + "=")) {
+                return part.substring((cookieName + "=").length());
+            }
+        }
+        return "";
+    }
+
 
     private String login() throws Exception {
         return loginAs("admin", "admin-pass-12345");

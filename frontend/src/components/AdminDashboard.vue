@@ -3,7 +3,7 @@ import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  clearAdminSession, convertPostsMarkdown, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPost, fetchAdminPosts,
+  logout as apiLogout, convertPostsMarkdown, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPost, fetchAdminPosts,
   fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish,
   type AdminNoteSummary, type AdminPostSummary, type DishPayload, type PostPayload,
 } from '../api/admin'
@@ -197,7 +197,7 @@ async function load() {
 }
 
 function logout() {
-  clearAdminSession()
+  apiLogout()
   void router.replace('/admin/login')
 }
 

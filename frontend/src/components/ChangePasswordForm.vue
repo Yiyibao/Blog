@@ -2,7 +2,7 @@
 import axios from 'axios'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { changePassword, clearAdminSession } from '../api/admin'
+import { changePassword, logout as apiLogout } from '../api/admin'
 import { useUiStore } from '../stores/uiStore'
 
 const router = useRouter()
@@ -29,7 +29,7 @@ async function submit() {
     await changePassword(currentPassword.value, newPassword.value)
     // FD-25：服务端已推进 sessions_valid_from，本地会话立即作废
     uiStore.showToast('密码已更新，请用新密码重新登录')
-    clearAdminSession()
+    apiLogout()
     await router.replace('/login')
   } catch (cause) {
     const message = axios.isAxiosError(cause)

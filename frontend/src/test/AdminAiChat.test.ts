@@ -9,14 +9,14 @@ import * as adminApi from '../api/admin'
 import { useAuthStore } from '../stores/auth'
 
 const mockStreamAiChat = vi.fn()
-const mockClearAdminSession = vi.fn()
+const mockLogout = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof adminApi>()
   return {
     ...actual,
     streamAiChat: (...args: unknown[]) => mockStreamAiChat(...args),
-    clearAdminSession: (...args: unknown[]) => mockClearAdminSession(...args),
+    logout: (...args: unknown[]) => mockLogout(...args),
   }
 })
 
@@ -67,7 +67,7 @@ async function mountComponent(testRouter = createTestRouter()) {
 beforeEach(() => {
   setActivePinia(createPinia())
   mockStreamAiChat.mockReset()
-  mockClearAdminSession.mockReset()
+  mockLogout.mockReset()
   window.sessionStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
   window.sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
@@ -218,7 +218,7 @@ describe('AdminAiChat Component', () => {
 
     await flushPromises()
 
-    expect(mockClearAdminSession).toHaveBeenCalled()
+    expect(mockLogout).toHaveBeenCalled()
     expect(testRouter.currentRoute.value.path).toBe('/admin/login')
   })
 

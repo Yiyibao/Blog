@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/auth'
 
 const mockLogin = vi.fn()
 const mockFetchChallenge = vi.fn()
+const mockRefreshSession = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/admin')>()
@@ -15,6 +16,7 @@ vi.mock('../api/admin', async (importOriginal) => {
     ...actual,
     login: (...args: unknown[]) => mockLogin(...args),
     fetchLoginChallenge: (...args: unknown[]) => mockFetchChallenge(...args),
+    refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
   }
 })
 
@@ -41,7 +43,7 @@ const LOGIN_RESULT = {
   displayName: '站长',
 }
 
-/** 复刻 src/router/index.ts 的守卫逻辑（守卫读 useAuthStore；FD-8 起 requiresAuth+requiresRole）。 */
+/** 复刻 src/router/index.ts 的守卫逻辑（守卫读 useAuthStore；FD-8 起 requiresAuth+requiresRole；6C-1 加 refreshSession）。 */
 function createGuardedRouter(): Router {
   const r = createRouter({
     history: createMemoryHistory(),
@@ -53,15 +55,18 @@ function createGuardedRouter(): Router {
       { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
     ],
   })
-  r.beforeEach((to, _from, next) => {
+  r.beforeEach(async (to, _from, next) => {
     if (!to.meta.requiresAuth) {
       next()
       return
     }
     const auth = useAuthStore()
     if (!auth.isAuthenticated) {
-      next({ name: 'login', query: { next: to.fullPath } })
-      return
+      const ok = await mockRefreshSession()
+      if (!ok) {
+        next({ name: 'login', query: { next: to.fullPath } })
+        return
+      }
     }
     if (to.meta.requiresRole && to.meta.requiresRole !== auth.role) {
       next({ path: '/recipes' })
@@ -81,6 +86,8 @@ beforeEach(() => {
   mockLogin.mockReset()
   mockFetchChallenge.mockReset()
   mockFetchChallenge.mockResolvedValue(POW_CHALLENGE)
+  mockRefreshSession.mockReset()
+  mockRefreshSession.mockResolvedValue(false)
 })
 
 describe('NF-1 管理端登录态单一事实源', () => {
@@ -121,9 +128,10 @@ describe('NF-1 管理端登录态单一事实源', () => {
     startUnauthenticated()
     const router = createGuardedRouter()
 
-    // 未登录访问 /admin：被守卫送去 /login 并带上来路
+    // 未登录访问 /admin：refreshSession 失败 → 被守卫送去 /login 并带上来路
     await router.push('/admin')
     await router.isReady()
+    expect(mockRefreshSession).toHaveBeenCalledTimes(1)
     expect(router.currentRoute.value.name).toBe('login')
     expect(router.currentRoute.value.query.next).toBe('/admin')
 
