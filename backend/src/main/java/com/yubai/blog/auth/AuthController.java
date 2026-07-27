@@ -29,6 +29,7 @@ import com.yubai.blog.common.TooManyRequestsException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -46,6 +47,7 @@ public class AuthController {
     static final Duration PASSWORD_CHANGE_WINDOW = Duration.ofMinutes(10);
 
     private static final String REFRESH_COOKIE = "refresh_token";
+    public record TotpRequiredResponse(String challengeId) {}
 
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
@@ -55,12 +57,14 @@ public class AuthController {
     private final AdminUserRepository userRepository;
     private final AdminUserService userService;
     private final RefreshTokenService refreshTokenService;
+    private final TotpChallengeStore totpChallengeStore;
     private final boolean cookieSecure;
 
     public AuthController(AuthenticationManager authenticationManager, JwtService jwtService,
                           RateLimiter rateLimiter, ChallengeService challengeService,
                           LoginAttemptTracker attemptTracker, AdminUserRepository userRepository,
                           AdminUserService userService, RefreshTokenService refreshTokenService,
+                          TotpChallengeStore totpChallengeStore,
                           @Value("${app.jwt.cookie-secure:true}") boolean cookieSecure) {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
@@ -70,6 +74,7 @@ public class AuthController {
         this.userRepository = userRepository;
         this.userService = userService;
         this.refreshTokenService = refreshTokenService;
+        this.totpChallengeStore = totpChallengeStore;
         this.cookieSecure = cookieSecure;
     }
 
@@ -86,7 +91,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest,
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest,
                                             HttpServletResponse httpResponse) {
         var clientIp = ClientIps.resolve(httpRequest);
         rejectIfCoolingDown(clientIp, request.username());
@@ -106,12 +111,20 @@ public class AuthController {
         attemptTracker.clear(clientIp, request.username());
         var user = userRepository.findByUsername(request.username())
             .orElseThrow(() -> new BadCredentialsException("用户名或密码错误"));
+
+        if (user.isTotpEnabled()) {
+            var challengeToken = totpChallengeStore.create(user.getId(), request.rememberRequested());
+            clearRefreshCookie(httpResponse);
+            log.info("login totp-challenge: user={} role={} ip={}", request.username(), user.getRole(), clientIp);
+            return ResponseEntity.status(202).body(ApiResponse.accepted(new TotpRequiredResponse(challengeToken)));
+        }
+
         log.info("login success: user={} role={} ip={}", request.username(), user.getRole(), clientIp);
 
         var issued = refreshTokenService.issue(user.getId(), request.rememberRequested());
         var accessResponse = jwtService.issue(user, request.rememberRequested());
         setRefreshCookie(httpResponse, issued.raw(), issued.entity());
-        return ApiResponse.ok(accessResponse);
+        return ResponseEntity.ok(ApiResponse.ok(accessResponse));
     }
 
     @PostMapping("/refresh")

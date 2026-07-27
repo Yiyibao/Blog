@@ -117,8 +117,10 @@ api.interceptors.response.use(
     }
     const url = error.config?.url ?? ''
     // 6C-1：auth 端点不触发 refresh——login 本意是认证、refresh 失败会递归
+    // 6C-3：TOTP verify/setup/enable/disable 同样不触发 refresh
     if (url.includes('/auth/login') || url.includes('/auth/challenge') ||
-        url.includes('/auth/refresh') || url.includes('/auth/logout')) {
+        url.includes('/auth/refresh') || url.includes('/auth/logout') ||
+        url.includes('/auth/totp/')) {
       return Promise.reject(error)
     }
     // 防无限递归：_retry 标记表明已刷新过仍 401
@@ -201,9 +203,56 @@ export function changePassword(currentPassword: string, newPassword: string) {
   return api.put('/auth/password', { currentPassword, newPassword })
 }
 
+// 6C-3：TOTP 两步验证
+export interface TotpStatus {
+  enabled: boolean
+}
+
+export interface TotpSetupResult {
+  secret: string
+  otpauthUri: string
+}
+
+export interface TotpLoginChallenge {
+  totpRequired: true
+  challengeId: string
+}
+
+export function fetchTotpStatus() {
+  return unwrap<TotpStatus>(api.get('/auth/totp/status', { headers: tokenHeader() }))
+}
+
+export function setupTotp(currentPassword: string) {
+  return unwrap<TotpSetupResult>(api.post('/auth/totp/setup', { currentPassword }, { headers: tokenHeader() }))
+}
+
+export function enableTotp(code: string) {
+  return api.post('/auth/totp/enable', { code }, { headers: tokenHeader() })
+}
+
+export function disableTotp(currentPassword: string, code: string) {
+  return api.post('/auth/totp/disable', { currentPassword, code }, { headers: tokenHeader() })
+}
+
+export function verifyTotp(challengeId: string, code: string) {
+  return unwrap<LoginResult>(api.post('/auth/totp/verify', { challengeId, code }))
+}
+
 // FD-9：remember=true 请求 24h 长 token，配合 authStore 的 localStorage 持久化
-export function login(username: string, password: string, verification: LoginVerification, remember = false) {
-  return unwrap<LoginResult>(api.post('/auth/login', { username, password, remember, ...verification }))
+export async function login(
+  username: string,
+  password: string,
+  verification: LoginVerification,
+  remember = false,
+): Promise<LoginResult | TotpLoginChallenge> {
+  const response = await api.post<ApiEnvelope<LoginResult | { challengeId: string }>>(
+    '/auth/login', { username, password, remember, ...verification },
+  )
+  if (response.status === 202) {
+    const challenge = response.data.data as { challengeId: string }
+    return { totpRequired: true, challengeId: challenge.challengeId }
+  }
+  return response.data.data as LoginResult
 }
 
 function asPage<T>(data: PageResult<T> | T[], page = 0, size = 20): PageResult<T> {

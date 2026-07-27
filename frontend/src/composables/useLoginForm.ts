@@ -2,37 +2,40 @@ import axios from 'axios'
 import { ref } from 'vue'
 import {
   login,
+  verifyTotp,
   saveAdminSession,
   type LoginVerification,
 } from '../api/admin'
 import type { LoginResult } from '../stores/auth'
 
-/**
- * FD-9：登录表单逻辑，/login 与 /admin/login 双入口共用。
- * L-15：人机验证从提交内联流程改为显性弹窗（HumanVerifyModal）——
- * 提交先开弹窗，弹窗内完成 challenge/PoW/图形码/冷却闭环后回传凭据再真正登录；
- * 关闭弹窗即中止本次登录。challenge 协议与后端契约不变。
- */
 export function useLoginForm(onSuccess: (result: LoginResult) => void | Promise<void>) {
   const username = ref('')
   const password = ref('')
   const error = ref('')
   const submitting = ref(false)
   const remember = ref(false)
-  /** L-15：验证弹窗开关——模板据此挂载 HumanVerifyModal */
   const verifyOpen = ref(false)
+  const totpOpen = ref(false)
+  const totpChallengeId = ref('')
+  const totpSubmitting = ref(false)
+  const totpError = ref('')
 
   function submit() {
     error.value = ''
     verifyOpen.value = true
   }
 
-  /** 弹窗验证通过后回传凭据，执行真正的登录请求。 */
   async function handleVerified(verification: LoginVerification) {
     verifyOpen.value = false
     submitting.value = true
     try {
       const result = await login(username.value.trim(), password.value, verification, remember.value)
+      if ('totpRequired' in result) {
+        totpChallengeId.value = result.challengeId
+        totpError.value = ''
+        totpOpen.value = true
+        return
+      }
       saveAdminSession(result, { remember: remember.value })
       await onSuccess(result)
     } catch (cause) {
@@ -53,7 +56,34 @@ export function useLoginForm(onSuccess: (result: LoginResult) => void | Promise<
     }
   }
 
-  /** 关闭弹窗 = 中止登录（不视为错误）。 */
+  async function submitTotp(code: string) {
+    totpSubmitting.value = true
+    totpError.value = ''
+    try {
+      const result = await verifyTotp(totpChallengeId.value, code)
+      totpOpen.value = false
+      saveAdminSession(result, { remember: remember.value })
+      await onSuccess(result)
+    } catch (cause) {
+      if (axios.isAxiosError(cause) && cause.response?.status === 401) {
+        totpError.value = '验证码不正确、尝试次数过多或挑战已失效。'
+      } else if (axios.isAxiosError(cause) && cause.response?.status === 429) {
+        totpError.value = (cause.response.data as { message?: string } | undefined)?.message || '尝试过于频繁。'
+      } else {
+        totpError.value = '验证码验证失败，请稍后重试。'
+      }
+    } finally {
+      totpSubmitting.value = false
+    }
+  }
+
+  function cancelTotp() {
+    totpOpen.value = false
+    totpChallengeId.value = ''
+    totpError.value = ''
+    error.value = ''
+  }
+
   function handleVerifyCancel() {
     verifyOpen.value = false
   }
@@ -61,5 +91,6 @@ export function useLoginForm(onSuccess: (result: LoginResult) => void | Promise<
   return {
     username, password, error, submitting, remember,
     verifyOpen, handleVerified, handleVerifyCancel, submit,
+    totpOpen, totpSubmitting, totpError, submitTotp, cancelTotp,
   }
 }

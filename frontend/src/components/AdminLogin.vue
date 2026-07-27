@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { hasValidAdminSession } from '../api/admin'
 import { useLoginForm } from '../composables/useLoginForm'
 import HumanVerifyModal from './HumanVerifyModal.vue'
+import TotpVerifyModal from './TotpVerifyModal.vue'
 
 const router = useRouter()
 // FD-9：表单逻辑提取为 useLoginForm，与 /login 通用登录页共用
@@ -11,6 +12,7 @@ const router = useRouter()
 const {
   username, password, error, submitting, remember,
   verifyOpen, handleVerified, handleVerifyCancel, submit,
+  totpOpen, totpSubmitting, totpError, submitTotp, cancelTotp,
 } = useLoginForm(async () => {
   await router.replace('/admin')
 })
@@ -46,6 +48,13 @@ onMounted(() => {
       :username="username"
       @verified="handleVerified"
       @cancel="handleVerifyCancel"
+    />
+    <TotpVerifyModal
+      :open="totpOpen"
+      :submitting="totpSubmitting"
+      :error="totpError"
+      @submit="submitTotp"
+      @cancel="cancelTotp"
     />
   </section>
 </template>

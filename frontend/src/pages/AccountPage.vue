@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '../stores/auth'
 import ChangePasswordForm from '../components/ChangePasswordForm.vue'
+import TotpPanel from '../components/TotpPanel.vue'
 
 const auth = useAuthStore()
 </script>
@@ -18,6 +19,10 @@ const auth = useAuthStore()
     <div class="account-card">
       <h2>修改密码</h2>
       <ChangePasswordForm />
+    </div>
+    <div class="account-card">
+      <h2>两步验证</h2>
+      <TotpPanel />
     </div>
   </section>
 </template>

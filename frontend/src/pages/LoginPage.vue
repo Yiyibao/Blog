@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useLoginForm } from '../composables/useLoginForm'
 import HumanVerifyModal from '../components/HumanVerifyModal.vue'
+import TotpVerifyModal from '../components/TotpVerifyModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,7 @@ function destination(): string {
 const {
   username, password, error, submitting, remember,
   verifyOpen, handleVerified, handleVerifyCancel, submit,
+  totpOpen, totpSubmitting, totpError, submitTotp, cancelTotp,
 } = useLoginForm(async () => {
   await router.replace(destination())
 })
@@ -57,6 +59,13 @@ onMounted(() => {
       :username="username"
       @verified="handleVerified"
       @cancel="handleVerifyCancel"
+    />
+    <TotpVerifyModal
+      :open="totpOpen"
+      :submitting="totpSubmitting"
+      :error="totpError"
+      @submit="submitTotp"
+      @cancel="cancelTotp"
     />
   </section>
 </template>

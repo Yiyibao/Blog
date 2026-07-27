@@ -11,4 +11,8 @@ public record ApiResponse<T>(int code, String message, T data, Instant timestamp
     public static <T> ApiResponse<T> created(T data) {
         return new ApiResponse<>(201, "created", data, Instant.now());
     }
+
+    public static <T> ApiResponse<T> accepted(T data) {
+        return new ApiResponse<>(202, "accepted", data, Instant.now());
+    }
 }

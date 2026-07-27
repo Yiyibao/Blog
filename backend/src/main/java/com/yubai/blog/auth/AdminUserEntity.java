@@ -39,6 +39,12 @@ public class AdminUserEntity {
     @Column(name = "sessions_valid_from", nullable = false)
     private Instant sessionsValidFrom;
 
+    @Column(name = "totp_secret_encrypted", length = 255)
+    private String totpSecretEncrypted;
+
+    @Column(name = "totp_enabled", nullable = false)
+    private boolean totpEnabled;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -78,4 +84,9 @@ public class AdminUserEntity {
     public AdminUserRole getRole() { return role; }
     public String getDisplayName() { return displayName; }
     public Instant getSessionsValidFrom() { return sessionsValidFrom; }
+    public String getTotpSecretEncrypted() { return totpSecretEncrypted; }
+    public boolean isTotpEnabled() { return totpEnabled; }
+
+    public void setTotpSecretEncrypted(String s) { this.totpSecretEncrypted = s; }
+    public void setTotpEnabled(boolean b) { this.totpEnabled = b; }
 }

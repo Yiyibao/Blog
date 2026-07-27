@@ -65,6 +65,19 @@ beforeEach(() => {
 })
 
 describe('6C-1 refresh flow', () => {
+  it('returns a TOTP challenge from a 202 login response', async () => {
+    http.adapter = async (config) => ({
+      data: { data: { challengeId: 'totp-challenge' } },
+      status: 202,
+      statusText: 'Accepted',
+      headers: {},
+      config,
+    })
+
+    await expect(admin.login('admin', 'secret', { challengeId: 'human', nonce: '0' }))
+      .resolves.toEqual({ totpRequired: true, challengeId: 'totp-challenge' })
+  })
+
   it('coalesces concurrent 401 responses into one refresh and replays both requests', async () => {
     expect(http.requestInterceptor).not.toBeNull()
     let refreshCalls = 0

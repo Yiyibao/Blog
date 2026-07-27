@@ -48,7 +48,7 @@ public class SecurityConfiguration {
             .authorizeHttpRequests(auth -> auth
                 // 6A：Prometheus 指标仅 ADMIN 可读，置于 permitAll 规则之前——顺序敏感
                 .requestMatchers("/actuator/prometheus").hasAuthority(Permissions.METRICS_VIEW)
-                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/api/v1/auth/challenge", "/api/v1/auth/refresh", "/api/v1/auth/logout", "/sitemap.xml", "/rss.xml", "/robots.txt", "/error").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/info", "/api/v1/auth/login", "/api/v1/auth/challenge", "/api/v1/auth/refresh", "/api/v1/auth/logout", "/api/v1/auth/totp/verify", "/sitemap.xml", "/rss.xml", "/robots.txt", "/error").permitAll()
                 // P2-3：文档路径放行但功能默认关闭（SPRINGDOC_ENABLED=false 时如实 404），生产不暴露内容
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // L-16/D-17：/notes 与 /note-assets 移出公开白名单——学习笔记对游客真隐藏（落入下方 /api/** authenticated）
