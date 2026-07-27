@@ -64,6 +64,8 @@ mvn spring-boot:run
 - `GET /api/v1/dishes/{slug}`：读取菜品、食材、步骤和图片署名
 - `GET /api/v1/notes?page=0&size=20`、`GET /api/v1/notes/{id}`（仅返回公开学习笔记；P1-2 起列表为摘要 DTO（NoteSummary，**不含 markdownContent**），正文经 `/{id}` 详情获取）
 - `GET /api/v1/note-assets/{publicId}`（仅当所属笔记已公开时读取笔记内图片）
+- `GET /api/v1/graph/nodes`：返回全量知识图谱节点与边（L-16/D-17 游客不可见 NOTE 节点，登录用户可见全部）
+- `GET /api/v1/graph/nodes/{center}?depth=2`：5C 子图——以 `{center}` 节点为圆心 BFS `depth` 层（1–3，缺省 2），返回子图节点与两端均在节点集的边；未知 center 返回 404，非法 depth 返回 400；身份隔离与全图一致
 - `GET /api/v1/search?q=关键词&limit=5`：按 `articles/notes/dishes` 分组返回公开内容，每组最多 1–10 条
 
 管理接口：

@@ -2459,6 +2459,167 @@ class BlogApiIntegrationTest {
             .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    @Order(61)
+    void subgraphEndpointDefaultsToDepth2AndValidatesBounds() throws Exception {
+        // 5C：子图端点契约——默认 2、显式 1、越界 400、未知 center 404
+        String token = login();
+
+        // 获取一个已知 POST 节点作为 center
+        var full = objectMapper.readTree(mockMvc.perform(get("/api/v1/graph/nodes")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        String firstPostId = null;
+        for (var node : full.path("nodes")) {
+            if ("POST".equals(node.path("type").asText())) {
+                firstPostId = node.path("id").asText();
+                break;
+            }
+        }
+        assertTrue(firstPostId != null, "种子数据应至少有一篇已发布文章");
+
+        // 默认 depth=2
+        var defaultSub = objectMapper.readTree(mockMvc.perform(
+                get("/api/v1/graph/nodes/" + firstPostId))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertTrue(defaultSub.path("nodes").isArray());
+        assertTrue(defaultSub.path("nodes").size() > 0, "default depth=2 应返回节点");
+        // 子图节点数 ≤ 全图节点数
+        assertTrue(defaultSub.path("nodes").size() <= full.path("nodes").size());
+
+        // 显式 depth=2 应与默认结果一致
+        var explicitD2 = objectMapper.readTree(mockMvc.perform(
+                get("/api/v1/graph/nodes/" + firstPostId).param("depth", "2"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertEquals(defaultSub.path("nodes").size(), explicitD2.path("nodes").size(),
+            "默认 depth=2 应与显式 depth=2 节点数一致");
+        assertEquals(defaultSub.path("edges").size(), explicitD2.path("edges").size(),
+            "默认 depth=2 应与显式 depth=2 边数一致");
+
+        // 显式 depth=1
+        var depth1 = objectMapper.readTree(mockMvc.perform(
+                get("/api/v1/graph/nodes/" + firstPostId).param("depth", "1"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        assertTrue(depth1.path("nodes").size() <= defaultSub.path("nodes").size(),
+            "depth=1 应不多于 depth=2");
+
+        // 子图边两端都在节点集中
+        for (var edge : depth1.path("edges")) {
+            var src = edge.path("source").asText();
+            var tgt = edge.path("target").asText();
+            boolean srcFound = false, tgtFound = false;
+            for (var n : depth1.path("nodes")) {
+                String id = n.path("id").asText();
+                if (id.equals(src)) srcFound = true;
+                if (id.equals(tgt)) tgtFound = true;
+            }
+            assertTrue(srcFound, "子图边 source " + src + " 应在节点集中");
+            assertTrue(tgtFound, "子图边 target " + tgt + " 应在节点集中");
+        }
+
+        // depth=0 → 400
+        mockMvc.perform(get("/api/v1/graph/nodes/" + firstPostId).param("depth", "0"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value(400));
+
+        // depth=4 → 400
+        mockMvc.perform(get("/api/v1/graph/nodes/" + firstPostId).param("depth", "4"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status").value(400));
+
+        // 未知 center → 404
+        mockMvc.perform(get("/api/v1/graph/nodes/p-99999"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.status").value(404));
+
+        // NOTE 中心测试——先创建一篇笔记用于获取有效 NOTE center，用后删除
+        String noteBody = objectMapper.writeValueAsString(java.util.Map.of(
+            "title", "5c-subgraph-note",
+            "markdownContent", "# 5c-subgraph-note",
+            "folder", "5C",
+            "status", "PUBLISHED",
+            "tags", java.util.List.of("5c"),
+            "version", 0
+        ));
+        MvcResult noteCreated = mockMvc.perform(post("/api/v1/admin/notes")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(noteBody))
+            .andExpect(status().isCreated()).andReturn();
+        long noteId = objectMapper.readTree(noteCreated.getResponse().getContentAsString()).path("data").path("id").asLong();
+        String noteCenter = "n-" + noteId;
+
+        // 登录请求该 NOTE center → 200，结果包含该 NOTE
+        var noteSubAuth = objectMapper.readTree(mockMvc.perform(
+                get("/api/v1/graph/nodes/" + noteCenter).header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        boolean sawNote = false;
+        for (var node : noteSubAuth.path("nodes")) {
+            if ("NOTE".equals(node.path("type").asText())) sawNote = true;
+        }
+        assertTrue(sawNote, "登录用户的子图应包含 NOTE");
+
+        // 游客请求同一 NOTE center → 404
+        mockMvc.perform(get("/api/v1/graph/nodes/" + noteCenter))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.status").value(404));
+
+        // 清理创建的笔记
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @Order(62)
+    void graphCacheHeadersVaryByAuthForFullAndSubgraphEndpoints() throws Exception {
+        // 5C：全图与子图游客 public、登录 private，均携带 Vary: Authorization
+        String token = login();
+
+        // 全图——游客：public, Vary: Authorization
+        mockMvc.perform(get("/api/v1/graph/nodes"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("public")))
+            .andExpect(header().string("Vary", org.hamcrest.Matchers.containsString("Authorization")));
+
+        // 全图——登录：private, Vary: Authorization
+        mockMvc.perform(get("/api/v1/graph/nodes").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("private")))
+            .andExpect(header().string("Vary", org.hamcrest.Matchers.containsString("Authorization")));
+
+        // 从登录后全图取一个已知 POST center
+        var full = objectMapper.readTree(mockMvc.perform(get("/api/v1/graph/nodes")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data");
+        String postCenter = null;
+        for (var node : full.path("nodes")) {
+            if ("POST".equals(node.path("type").asText())) {
+                postCenter = node.path("id").asText();
+                break;
+            }
+        }
+        assertTrue(postCenter != null, "种子数据应至少有一篇已发布文章");
+
+        // 子图——游客
+        mockMvc.perform(get("/api/v1/graph/nodes/" + postCenter))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("public")))
+            .andExpect(header().string("Vary", org.hamcrest.Matchers.containsString("Authorization")));
+
+        // 子图——登录
+        mockMvc.perform(get("/api/v1/graph/nodes/" + postCenter)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("private")))
+            .andExpect(header().string("Vary", org.hamcrest.Matchers.containsString("Authorization")));
+    }
+
     private String login() throws Exception {
         return loginAs("admin", "admin-pass-12345");
     }

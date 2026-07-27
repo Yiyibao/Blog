@@ -11,6 +11,8 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import com.yubai.blog.common.CurrentUser;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -40,10 +42,27 @@ public class WebConfiguration implements WebMvcConfigurer {
             @Override
             public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
                 if ("GET".equals(request.getMethod())) {
-                    // NB-7：计数类端点（浏览/点赞/收藏统计）不能被 5 分钟 public 缓存冻结
-                    response.setHeader("Cache-Control", isCounterEndpoint(request.getRequestURI())
-                        ? CacheControl.noCache().getHeaderValue()
-                        : CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic().getHeaderValue());
+                    String path = request.getRequestURI();
+                    // 5C：图谱响应按身份变化——添加 Vary: Authorization，登录用户走 private 缓存
+                    if (path.contains("/api/v1/graph/")) {
+                        String vary = response.getHeader("Vary");
+                        String newVary = "Authorization";
+                        if (vary != null && !vary.isBlank() && !vary.contains("Authorization")) {
+                            newVary = vary + ", Authorization";
+                        } else if (vary != null && vary.contains("Authorization")) {
+                            newVary = vary;
+                        }
+                        response.setHeader("Vary", newVary);
+                        boolean authed = CurrentUser.isAuthenticated();
+                        response.setHeader("Cache-Control", (authed
+                            ? CacheControl.maxAge(Duration.ofMinutes(5)).cachePrivate()
+                            : CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic()).getHeaderValue());
+                    } else if (isCounterEndpoint(path)) {
+                        response.setHeader("Cache-Control", CacheControl.noCache().getHeaderValue());
+                    } else {
+                        response.setHeader("Cache-Control",
+                            CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic().getHeaderValue());
+                    }
                 }
                 return true;
             }

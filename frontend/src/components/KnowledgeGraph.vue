@@ -3,6 +3,7 @@ import axios from 'axios'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchGraphNodes } from '../api/content'
+import { useGraphSubgraph } from '../composables/useGraphSubgraph'
 
 export interface GraphNode {
   id: string
@@ -44,6 +45,21 @@ const loading = ref(false)
 const loadError = ref('')
 const selectedNodeId = ref<string | null>(null)
 const hoveredNodeId = ref<string | null>(null)
+
+const {
+  subgraphLoading,
+  subgraphError,
+  subgraphActive,
+  localMode,
+  localModeCenter,
+  saveSnapshot,
+  restoreOverview,
+  expandSubgraph,
+  autoLocalSubgraph,
+} = useGraphSubgraph()
+
+const initialLoadDone = ref(false)
+const expandedFromIds = ref(new Set<string>())
 
 // Maximum nodes to display for clarity
 const MAX_DISPLAY_NODES = 40
@@ -100,16 +116,40 @@ async function loadGraphData() {
   if (props.initialNodes && props.initialNodes.length > 0) {
     nodes.value = props.initialNodes
     edges.value = props.initialEdges
+    initialLoadDone.value = true
+    saveSnapshot(nodes.value, edges.value)
+    if (nodes.value.length > 300) {
+      const result = await autoLocalSubgraph(nodes.value, edges.value)
+      if (result) {
+        nodes.value = result.nodes
+        edges.value = result.edges
+      }
+    }
     return
   }
 
   loading.value = true
   loadError.value = ''
   try {
-    // NF-7：改走统一 api 层，不再组件内裸 fetch
     const data = await fetchGraphNodes()
-    nodes.value = data.nodes || []
-    edges.value = data.edges || []
+    const fullNodes: GraphNode[] = data.nodes || []
+    const fullEdges: GraphEdge[] = data.edges || []
+    saveSnapshot(fullNodes, fullEdges)
+
+    if (fullNodes.length > 300) {
+      const result = await autoLocalSubgraph(fullNodes, fullEdges)
+      if (result) {
+        nodes.value = result.nodes
+        edges.value = result.edges
+      } else {
+        nodes.value = fullNodes
+        edges.value = fullEdges
+      }
+    } else {
+      nodes.value = fullNodes
+      edges.value = fullEdges
+    }
+    initialLoadDone.value = true
   } catch (cause) {
     loadError.value = axios.isAxiosError(cause) && cause.response
       ? '关联图谱数据加载失败'
@@ -141,6 +181,7 @@ const nodeDegree = computed(() => {
 })
 
 // L-13/D-15：分类筛选整体移除，仅保留数量上限与节点点击驱动的关联交互
+// 5C：子图展开的节点（expandedFromIds）不受 MAX_DISPLAY_NODES 限制
 const filteredNodes = computed(() => {
   const tags = nodes.value
     .filter((node) => node.type === 'TAG')
@@ -148,7 +189,10 @@ const filteredNodes = computed(() => {
   const content = nodes.value
     .filter((node) => node.type !== 'TAG')
     .sort((a, b) => a.id.localeCompare(b.id))
-  return [...tags.slice(0, 12), ...content.slice(0, MAX_DISPLAY_NODES - 12)]
+  const capped = [...tags.slice(0, 12), ...content.slice(0, MAX_DISPLAY_NODES - 12)]
+  const cappedIds = new Set(capped.map((n) => n.id))
+  const expanded = nodes.value.filter((n) => expandedFromIds.value.has(n.id) && !cappedIds.has(n.id))
+  return [...capped, ...expanded]
 })
 
 const activeNodeIds = computed(() => new Set(filteredNodes.value.map((n) => n.id)))
@@ -264,6 +308,48 @@ function handleOpenContent() {
   }
 }
 
+async function doExpandRelations() {
+  if (!selectedNodeId.value) return
+  const result = await expandSubgraph(selectedNodeId.value, 2, nodes.value, edges.value)
+  if (result) {
+    const beforeIds = new Set(nodes.value.map((n) => n.id))
+    const newIds = new Set<string>()
+    for (const n of result.nodes) {
+      if (!beforeIds.has(n.id)) newIds.add(n.id)
+    }
+    expandedFromIds.value = newIds
+    nodes.value = result.nodes
+    edges.value = result.edges
+  }
+}
+
+async function doReturnToOverview() {
+  const snapshot = restoreOverview()
+  if (snapshot) {
+    nodes.value = snapshot.nodes
+    edges.value = snapshot.edges
+    expandedFromIds.value = new Set()
+    resetView()
+  }
+}
+
+async function retrySubgraph() {
+  subgraphError.value = ''
+  await doExpandRelations()
+}
+
+function handleNodeDblClick(node: GraphNode) {
+  selectedNodeId.value = node.id
+  void doExpandRelations()
+}
+
+const ariaStatusText = computed(() => {
+  if (subgraphLoading.value) return '正在展开关联节点…'
+  if (subgraphError.value) return `关联展开失败：${subgraphError.value}`
+  if (localMode.value) return `已自动切换至局部图谱模式，聚焦 ${localModeCenter.value}`
+  return ''
+})
+
 function toggleFullscreen() {
   isFullscreen.value = !isFullscreen.value
 }
@@ -306,8 +392,36 @@ watch(filteredNodes, (visibleNodes) => {
         <button type="button" class="fullscreen-btn" :title="isFullscreen ? '退出全屏' : '全屏浏览'" @click="toggleFullscreen">
           {{ isFullscreen ? '⤢ 退出全屏' : '⤢ 全屏罗盘' }}
         </button>
+        <button
+          v-if="subgraphActive"
+          type="button"
+          class="return-overview-btn"
+          aria-label="返回全图概览"
+          @click="doReturnToOverview"
+        >
+          ← 全图概览
+        </button>
       </div>
     </header>
+
+    <!-- 5C：aria-live 状态宣告（加载/失败/自动局部模式） -->
+    <div aria-live="polite" aria-atomic="true" class="sr-only">
+      {{ ariaStatusText }}
+    </div>
+
+    <div v-if="localMode" class="graph-local-mode" role="status">
+      <span>局部图谱模式 · 聚焦「{{ localModeCenter }}」</span>
+      <button type="button" class="return-overview-btn-inline" @click="doReturnToOverview">返回全图</button>
+    </div>
+
+    <div v-if="subgraphLoading && !loading" class="graph-expanding" role="status">
+      <span>正在展开关联节点…</span>
+    </div>
+
+    <div v-if="subgraphError" class="graph-subgraph-error" role="alert">
+      <p>{{ subgraphError }}</p>
+      <button type="button" class="button primary" @click="retrySubgraph">重试</button>
+    </div>
 
     <div v-if="loading" class="graph-state graph-loading" role="status">
       <span>正在加载关联图谱…</span>
@@ -318,7 +432,7 @@ watch(filteredNodes, (visibleNodes) => {
       <button class="button primary" type="button" @click="loadGraphData">重试</button>
     </div>
 
-    <div v-else-if="filteredNodes.length === 0" class="graph-state graph-empty">
+    <div v-else-if="filteredNodes.length === 0 && !loadError" class="graph-state graph-empty">
       <p>暂无符合条件的关联节点。</p>
     </div>
 
@@ -369,6 +483,7 @@ watch(filteredNodes, (visibleNodes) => {
             role="button"
             :aria-label="`${node.label} (${node.type})`"
             @click="handleNodeClick(node)"
+            @dblclick="handleNodeDblClick(node)"
             @mouseenter="hoveredNodeId = id"
             @mouseleave="hoveredNodeId = null"
             @keydown.enter.prevent="handleNodeClick(node)"
@@ -418,7 +533,15 @@ watch(filteredNodes, (visibleNodes) => {
           <span v-if="selectedNode.category" class="panel-category">{{ selectedNode.category }}</span>
         </div>
         <div class="panel-actions">
-          <!-- 5B：TAG 节点补链标签页——「打开」对 TAG 同样可用（点击节点仍是本地过滤） -->
+          <button
+            type="button"
+            class="expand-btn"
+            :disabled="subgraphLoading"
+            aria-label="展开两层关联"
+            @click="doExpandRelations"
+          >
+            展开两层关联
+          </button>
           <button
             v-if="selectedNode.url"
             type="button"
@@ -519,6 +642,43 @@ watch(filteredNodes, (visibleNodes) => {
   cursor: pointer;
 }
 
+.return-overview-btn {
+  min-height: 44px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.return-overview-btn-inline {
+  min-height: 44px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: 12px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
 .graph-state {
   display: grid;
   place-items: center;
@@ -526,6 +686,45 @@ watch(filteredNodes, (visibleNodes) => {
   padding: 40px;
   text-align: center;
   color: var(--muted);
+}
+
+.graph-local-mode {
+  min-height: auto;
+  padding: 14px 20px;
+  flex-direction: row;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.graph-expanding,
+.graph-subgraph-error {
+  min-height: auto;
+  padding: 14px 20px;
+  gap: 10px;
+}
+
+.graph-expanding {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.graph-subgraph-error {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.graph-subgraph-error p {
+  margin: 0;
+}
+
+.graph-subgraph-error .button {
+  min-height: 36px;
+  font-size: 12px;
+  padding: 4px 14px;
 }
 
 .svg-wrapper {
@@ -677,6 +876,24 @@ svg {
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+}
+
+.expand-btn {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.expand-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .close-panel-btn {
   min-height: 44px;

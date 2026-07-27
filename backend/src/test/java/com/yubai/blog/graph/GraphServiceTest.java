@@ -151,6 +151,58 @@ class GraphServiceTest {
         org.mockito.Mockito.verifyNoInteractions(noteRepository);
     }
 
+    // 5C：子图抽取（纯函数 BFS）
+
+    @Test
+    void subgraphDepthOneKeepsCenterAndDirectNeighborsOnly() {
+        stubAll(
+            List.of(new P(1L, "A", "a", "设计札记", List.of("产品设计")),
+                    new P(2L, "B", "b", "设计札记", List.of("信息架构"))),
+            List.of(),
+            List.of()
+        );
+        var graph = service.buildGraph(true); // true：消费 stubAll 的全部桩（strict stubs）
+        var designHub = tagByLabel(graph, "设计札记");
+
+        var sub = GraphService.extractSubgraph(graph, "p-1", 1);
+
+        // p-1 的直接邻居：产品设计 + 设计札记（分类枢纽）；p-2 在两跳外不进
+        assertThat(sub.nodes()).extracting(GraphNode::id)
+            .containsExactlyInAnyOrder("p-1", designHub.id(), tagByLabel(graph, "产品设计").id());
+        assertThat(sub.edges()).allSatisfy(edge -> {
+            assertThat(sub.nodes()).extracting(GraphNode::id).contains(edge.source());
+            assertThat(sub.nodes()).extracting(GraphNode::id).contains(edge.target());
+        });
+    }
+
+    @Test
+    void subgraphDepthTwoReachesPostsSharingAHub() {
+        stubAll(
+            List.of(new P(1L, "A", "a", "设计札记", List.of()),
+                    new P(2L, "B", "b", "设计札记", List.of()),
+                    new P(3L, "C", "c", "前端", List.of())),
+            List.of(),
+            List.of()
+        );
+        var graph = service.buildGraph(true);
+
+        var sub = GraphService.extractSubgraph(graph, "p-1", 2);
+
+        // 两跳经「设计札记」枢纽到 p-2；p-3 挂在另一枢纽不可达
+        assertThat(sub.nodes()).extracting(GraphNode::id).contains("p-1", "p-2");
+        assertThat(sub.nodes()).extracting(GraphNode::id).doesNotContain("p-3");
+    }
+
+    @Test
+    void subgraphUnknownCenterThrowsNotFound() {
+        stubAll(List.of(new P(1L, "A", "a", "设计札记", List.of())), List.of(), List.of());
+        var graph = service.buildGraph(true);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                GraphService.extractSubgraph(graph, "p-999", 2))
+            .isInstanceOf(com.yubai.blog.common.NotFoundException.class);
+    }
+
     @Test
     void tagNodesLinkToPublicTagPages() {
         // 5B：TAG 节点补链 /tags/{label}（旧契约 url=null 废止；/categories 死链不复现）
@@ -265,6 +317,70 @@ class GraphServiceTest {
         var tagNodes = result.nodes().stream().filter(n -> n.type().equals("TAG")).toList();
         assertThat(tagNodes).hasSize(2);
         assertThat(result.edges()).hasSize(4).doesNotHaveDuplicates();
+    }
+
+    @Test
+    void subgraphEdgesOnlyConnectNodesWithinResult() {
+        // 3 个菜品共享 1 个分类枢纽；center d-1 depth 1 只取 d-1 + 分类 + 该分类下全部邻居
+        stubAll(
+            List.of(),
+            List.of(),
+            List.of(new D(1L, "糖醋排骨", "sweet-sour-pork", "粤式家常"),
+                    new D(2L, "白切鸡", "white-cut-chicken", "粤式家常"),
+                    new D(3L, "麻婆豆腐", "mapo-tofu", "川味"))
+        );
+        var graph = service.buildGraph(true);
+        var sub = GraphService.extractSubgraph(graph, "d-1", 3);
+        // 子图边两端必须都在子图节点集中
+        assertThat(sub.edges()).allSatisfy(edge -> {
+            assertThat(sub.nodes()).extracting(GraphNode::id).contains(edge.source());
+            assertThat(sub.nodes()).extracting(GraphNode::id).contains(edge.target());
+        });
+        // d-1 和同分类的 d-2 都在子图中，d-3 通过另一分类不可达
+        assertThat(sub.nodes()).extracting(GraphNode::id).contains("d-1", "d-2");
+        assertThat(sub.nodes()).extracting(GraphNode::id).doesNotContain("d-3");
+    }
+
+    @Test
+    void subgraphOnGuestGraphHidesNoteCenters() {
+        when(postRepository.findPublishedGraphRows())
+            .thenReturn(List.of(row(new P(1L, "文章", "post-a", "设计札记", List.of()))));
+        when(postRepository.findPublishedTagRows())
+            .thenReturn(List.<Object[]>of());
+        when(dishRepository.findAllPublishedForGraph()).thenReturn(List.of());
+        var guestGraph = service.buildGraph(false);
+        // NOTE 节点在游客图中不存在，以其为中心的请求应 404
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                GraphService.extractSubgraph(guestGraph, "n-1", 2))
+            .isInstanceOf(com.yubai.blog.common.NotFoundException.class);
+        // POST 中心在游客图中正常
+        var sub = GraphService.extractSubgraph(guestGraph, "p-1", 1);
+        assertThat(sub.nodes()).extracting(GraphNode::id).contains("p-1");
+        assertThat(sub.nodes()).noneMatch(n -> n.type().equals("NOTE"));
+    }
+
+    @Test
+    void subgraphDepthFourReachesFurtherNodes() {
+        // p-1 —tagA— p-2 —tagB— p-3（四跳链：p-1→tagA→p-2→tagB→p-3，depth=4 可达）
+        stubAll(
+            List.of(new P(1L, "A", "a", "设计札记", List.of("tagA")),
+                    new P(2L, "B", "b", "工程实践", List.of("tagA", "tagB")),
+                    new P(3L, "C", "c", "前端", List.of("tagB"))),
+            List.of(),
+            List.of()
+        );
+        var graph = service.buildGraph(true);
+        // depth=1: 仅 p-1 + tagA + 设计札记
+        var d1 = GraphService.extractSubgraph(graph, "p-1", 1);
+        assertThat(d1.nodes()).extracting(GraphNode::id).contains("p-1")
+            .doesNotContain("p-2", "p-3");
+        // depth=2: 经 tagA 到 p-2
+        var d2 = GraphService.extractSubgraph(graph, "p-1", 2);
+        assertThat(d2.nodes()).extracting(GraphNode::id).contains("p-1", "p-2")
+            .doesNotContain("p-3");
+        // depth=4: 经 p-2→tagB→p-3（纯函数无 depth 上限约束）
+        var d4 = GraphService.extractSubgraph(graph, "p-1", 4);
+        assertThat(d4.nodes()).extracting(GraphNode::id).contains("p-1", "p-2", "p-3");
     }
 
     @Test

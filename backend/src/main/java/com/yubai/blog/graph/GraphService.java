@@ -136,6 +136,43 @@ public class GraphService {
         return new GraphResponse(List.copyOf(nodes), List.copyOf(sortedEdges));
     }
 
+    /**
+     * 5C：从整图抽取以 center 为圆心的 BFS 子图（depth 层邻居），边只保留两端都在子图内的。
+     * 纯函数——调用方先经代理拿缓存整图（自调用会绕过 @Cacheable，故不在本类内部调 buildGraph）。
+     */
+    public static GraphResponse extractSubgraph(GraphResponse graph, String centerId, int depth) {
+        var byId = new java.util.HashMap<String, GraphNode>();
+        for (var node : graph.nodes()) byId.put(node.id(), node);
+        if (!byId.containsKey(centerId)) {
+            throw new com.yubai.blog.common.NotFoundException("图谱节点不存在：" + centerId);
+        }
+
+        Map<String, List<String>> adjacency = new java.util.HashMap<>();
+        for (var edge : graph.edges()) {
+            adjacency.computeIfAbsent(edge.source(), key -> new ArrayList<>()).add(edge.target());
+            adjacency.computeIfAbsent(edge.target(), key -> new ArrayList<>()).add(edge.source());
+        }
+
+        Set<String> visited = new LinkedHashSet<>();
+        visited.add(centerId);
+        var frontier = List.of(centerId);
+        for (int level = 0; level < depth && !frontier.isEmpty(); level++) {
+            var next = new ArrayList<String>();
+            for (var id : frontier) {
+                for (var neighbor : adjacency.getOrDefault(id, List.of())) {
+                    if (visited.add(neighbor)) next.add(neighbor);
+                }
+            }
+            frontier = next;
+        }
+
+        var nodes = graph.nodes().stream().filter(node -> visited.contains(node.id())).toList();
+        var edges = graph.edges().stream()
+            .filter(edge -> visited.contains(edge.source()) && visited.contains(edge.target()))
+            .toList();
+        return new GraphResponse(nodes, edges);
+    }
+
     /** NB-5：把 [id, tag] 行分组为 id -> tags（一次查询替代逐实体集合加载）。 */
     private static Map<Long, List<String>> groupPairs(List<Object[]> rows) {
         Map<Long, List<String>> grouped = new java.util.HashMap<>();

@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { CategorySummary, Dish, PageResult, Post, PostSummary, SearchHit } from '../data'
 import type { AdminNote, AdminNoteSummary } from './admin'
+import { useAuthStore } from '../stores/auth'
 
 interface ApiEnvelope<T> {
   data: T
@@ -11,6 +12,16 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 5000,
   headers: { Accept: 'application/json' },
+})
+
+api.interceptors.request.use((config) => {
+  if (typeof config.url === 'string' && config.url.includes('/graph/nodes')) {
+    const authStore = useAuthStore()
+    if (authStore.isAuthenticated && authStore.token) {
+      config.headers.Authorization = `Bearer ${authStore.token}`
+    }
+  }
+  return config
 })
 
 async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T> {
@@ -127,6 +138,12 @@ export interface GraphApiEdge {
 
 export function fetchGraphNodes() {
   return unwrap<{ nodes: GraphApiNode[]; edges: GraphApiEdge[] }>(api.get('/graph/nodes'))
+}
+
+export function fetchGraphSubgraph(center: string, depth = 2) {
+  return unwrap<{ nodes: GraphApiNode[]; edges: GraphApiEdge[] }>(
+    api.get(`/graph/nodes/${encodeURIComponent(center)}`, { params: { depth } })
+  )
 }
 
 export interface RemoteMusicTrack {
