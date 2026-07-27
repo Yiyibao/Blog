@@ -47,6 +47,7 @@ class DishServiceTest {
             @Override public boolean isFeatured() { return true; }
             @Override public boolean isPublished() { return published; }
             @Override public int getDisplayOrder() { return 1; }
+            @Override public int getBaseServings() { return 2; }
             @Override public List<String> getIngredients() { return List.of("a"); }
             @Override public List<String> getSteps() { return List.of("b"); }
         };
@@ -107,9 +108,9 @@ class DishServiceTest {
         when(repository.existsBySlug("new-dish")).thenReturn(false);
         when(repository.save(any())).thenReturn(mockDish(1L, "new-dish", true));
 
-        var request = new DishRequest("new-dish", "新菜品", "简介", "川菜",
-            "/food/new.jpg", "图片", "作者", "https://example.com",
-            10, "简单", BigDecimal.valueOf(4.0), false, true, 2, List.of("原料"), List.of("步骤"));
+            var request = new DishRequest("new-dish", "新菜品", "简介", "川菜",
+                "/food/new.jpg", "图片", "作者", "https://example.com",
+                10, "简单", BigDecimal.valueOf(4.0), false, true, 2, 2, List.of("原料"), List.of("步骤"));
         var result = service.create(request);
         assertThat(result).isNotNull();
     }
@@ -118,9 +119,9 @@ class DishServiceTest {
     void createThrowsOnDuplicateSlug() {
         when(repository.existsBySlug("dup-dish")).thenReturn(true);
 
-        var request = new DishRequest("dup-dish", "重复", "简介", "川菜",
-            "/food/dup.jpg", "图片", "作者", "https://example.com",
-            10, "简单", BigDecimal.valueOf(4.0), false, true, 2, List.of("原料"), List.of("步骤"));
+            var request = new DishRequest("dup-dish", "重复", "简介", "川菜",
+                "/food/dup.jpg", "图片", "作者", "https://example.com",
+                10, "简单", BigDecimal.valueOf(4.0), false, true, 2, 2, List.of("原料"), List.of("步骤"));
         assertThatThrownBy(() -> service.create(request)).isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -130,9 +131,9 @@ class DishServiceTest {
         when(repository.findById(1L)).thenReturn(Optional.of(dish));
         when(repository.existsBySlugAndIdNot("mapo-tofu", 1L)).thenReturn(false);
 
-        var request = new DishRequest("mapo-tofu", "更新版麻婆豆腐", "新简介", "川菜",
-            "/food/mapo.jpg", "图片", "作者", "https://example.com",
-            25, "家常", BigDecimal.valueOf(4.8), true, true, 1, List.of("豆腐"), List.of("炒"));
+            var request = new DishRequest("mapo-tofu", "更新版麻婆豆腐", "新简介", "川菜",
+                "/food/mapo.jpg", "图片", "作者", "https://example.com",
+                25, "家常", BigDecimal.valueOf(4.8), true, true, 1, 2, List.of("豆腐"), List.of("炒"));
         var result = service.update(1L, request);
         assertThat(result.slug()).isEqualTo("mapo-tofu");
     }

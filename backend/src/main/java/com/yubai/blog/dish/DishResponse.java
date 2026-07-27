@@ -22,6 +22,7 @@ public record DishResponse(
     int displayOrder,
     int favoriteCount,
     int viewsCount,
+    int baseServings,
     List<String> ingredients,
     List<String> steps,
     Instant createdAt,
@@ -32,7 +33,7 @@ public record DishResponse(
             dish.getId(), dish.getSlug(), dish.getName(), dish.getSummary(), dish.getCategory(),
             dish.getImageUrl(), dish.getImageAlt(), dish.getImageCredit(), dish.getImageSourceUrl(),
             dish.getPrepMinutes(), dish.getDifficulty(), dish.getRating(), dish.isFeatured(), dish.isPublished(),
-            dish.getDisplayOrder(), dish.getFavoriteCount(), dish.getViewsCount(),
+            dish.getDisplayOrder(), dish.getFavoriteCount(), dish.getViewsCount(), dish.getBaseServings(),
             dish.getIngredients(), dish.getSteps(), dish.getCreatedAt(), dish.getUpdatedAt()
         );
     }

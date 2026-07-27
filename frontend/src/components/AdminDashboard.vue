@@ -138,7 +138,7 @@ function applyRestoredPost(post: AdminPost) {
 const dishForm = reactive({
   slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
   prepMinutes: 20, difficulty: '家常' as AdminDish['difficulty'], rating: 4.5, featured: false, published: true,
-  displayOrder: 0, ingredients: '', steps: '',
+  displayOrder: 0, baseServings: 2, ingredients: '', steps: '',
 })
 const contentTitle = computed(() => ({ posts: '文章管理', dishes: '菜品管理' })[tab.value])
 const contentNoun = computed(() => ({ posts: '文章', dishes: '菜品' })[tab.value])
@@ -216,7 +216,7 @@ function newItem() {
   else Object.assign(dishForm, {
     slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
     prepMinutes: 20, difficulty: '家常', rating: 4.5, featured: false, published: true,
-    displayOrder: dishTotal.value + 1, ingredients: '', steps: '',
+    displayOrder: dishTotal.value + 1, baseServings: 2, ingredients: '', steps: '',
   })
   editorOpen.value = true
 }
@@ -271,6 +271,7 @@ function dishPayload(): DishPayload {
     imageUrl: dishForm.imageUrl, imageAlt: dishForm.imageAlt, imageCredit: dishForm.imageCredit, imageSourceUrl: dishForm.imageSourceUrl,
     prepMinutes: dishForm.prepMinutes, difficulty: dishForm.difficulty, rating: dishForm.rating,
     featured: dishForm.featured, published: dishForm.published, displayOrder: dishForm.displayOrder,
+    baseServings: dishForm.baseServings,
     ingredients: dishForm.ingredients.split('\n').map(item => item.trim()).filter(Boolean),
     steps: dishForm.steps.split('\n').map(item => item.trim()).filter(Boolean),
   }
@@ -391,7 +392,7 @@ onMounted(load)
           </template>
         </template>
         <template v-else>
-          <div class="admin-form-grid"><label>菜品名称<input v-model="dishForm.name" required maxlength="120"></label><label>Slug<input v-model="dishForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="dishForm.category" required maxlength="60"></label><label>准备时间（分钟）<input v-model.number="dishForm.prepMinutes" type="number" min="1" max="1440" required></label><label>难度<select v-model="dishForm.difficulty" required><option value="简单">简单</option><option value="家常">家常</option><option value="进阶">进阶</option></select></label><label>评分<input v-model.number="dishForm.rating" type="number" min="0" max="5" step="0.1" required></label><label>展示顺序<input v-model.number="dishForm.displayOrder" type="number" min="0" required></label><label class="admin-check"><input v-model="dishForm.featured" type="checkbox">设为精选菜品</label><label class="admin-check"><input v-model="dishForm.published" type="checkbox">公开发布</label></div>
+          <div class="admin-form-grid"><label>菜品名称<input v-model="dishForm.name" required maxlength="120"></label><label>Slug<input v-model="dishForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="dishForm.category" required maxlength="60"></label><label>准备时间（分钟）<input v-model.number="dishForm.prepMinutes" type="number" min="1" max="1440" required></label><label>难度<select v-model="dishForm.difficulty" required><option value="简单">简单</option><option value="家常">家常</option><option value="进阶">进阶</option></select></label><label>评分<input v-model.number="dishForm.rating" type="number" min="0" max="5" step="0.1" required></label><label>展示顺序<input v-model.number="dishForm.displayOrder" type="number" min="0" required></label><label>份量基准（人份）<input v-model.number="dishForm.baseServings" type="number" min="1" max="20" required></label><label class="admin-check"><input v-model="dishForm.featured" type="checkbox">设为精选菜品</label><label class="admin-check"><input v-model="dishForm.published" type="checkbox">公开发布</label></div>
           <label>简介<textarea v-model="dishForm.summary" rows="3" required maxlength="1000" /></label>
           <label>图片地址<input v-model="dishForm.imageUrl" required placeholder="/food/example.jpg 或 https://..."></label>
           <label>图片替代文本<input v-model="dishForm.imageAlt" required maxlength="240"></label>

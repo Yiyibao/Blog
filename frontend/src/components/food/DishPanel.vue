@@ -10,7 +10,6 @@ const panelRoot = ref<HTMLElement | null>(null)
 const closeButton = ref<HTMLButtonElement | null>(null)
 
 const servings = ref(2)
-// NF-12 未落地前基准仍为硬编码 2；落地后改读 dish.baseServings
 const originalServings = ref(2)
 function setServings(n: number) {
   servings.value = Math.max(1, Math.min(20, n))
@@ -49,12 +48,13 @@ function onWindowKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape' && props.dish) emit('close')
 }
 
-watch(() => props.dish, async (dish, previous) => {
-  if (dish) {
-    if (dish.slug !== previous?.slug) {
-      servings.value = 2
-      checkedIngredients.clear()
-    }
+  watch(() => props.dish, async (dish, previous) => {
+    if (dish) {
+      if (dish.slug !== previous?.slug) {
+        originalServings.value = dish.baseServings ?? 2
+        servings.value = dish.baseServings ?? 2
+        checkedIngredients.clear()
+      }
     document.body.style.overflow = 'hidden'
     await nextTick()
     closeButton.value?.focus()

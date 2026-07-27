@@ -73,6 +73,9 @@ public class DishEntity {
     @Column(name = "favorite_count", nullable = false)
     private int favoriteCount;
 
+    @Column(name = "base_servings", nullable = false)
+    private int baseServings = 2;
+
     // 3C：P1-8 真实浏览量模式推广——数据库端原子自增，去重窗口在控制器层
     @Column(name = "views_count", nullable = false)
     private int viewsCount;
@@ -123,6 +126,7 @@ public class DishEntity {
         this.featured = request.featured();
         this.published = request.published();
         this.displayOrder = request.displayOrder();
+        this.baseServings = request.baseServings();
         this.ingredients.clear();
         this.ingredients.addAll(request.ingredients());
         this.steps.clear();
@@ -159,6 +163,7 @@ public class DishEntity {
     public int getFavoriteCount() { return favoriteCount; }
     public void setFavoriteCount(int favoriteCount) { this.favoriteCount = favoriteCount; }
     public int getViewsCount() { return viewsCount; }
+    public int getBaseServings() { return baseServings; }
     public List<String> getIngredients() { return List.copyOf(ingredients); }
     public List<String> getSteps() { return List.copyOf(steps); }
     public Instant getCreatedAt() { return createdAt; }

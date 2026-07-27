@@ -95,6 +95,8 @@ export interface Dish {
   displayOrder: number
   // FD-3：后端 DishResponse 一直在返回该字段（V12 起），前端类型此前缺失
   favoriteCount: number
+  // NF-12：份量基准，默认 2 人份
+  baseServings?: number
   ingredients: string[]
   steps: string[]
   createdAt: string

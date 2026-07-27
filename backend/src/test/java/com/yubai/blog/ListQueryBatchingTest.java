@@ -113,7 +113,7 @@ class ListQueryBatchingTest {
             dishRepository.save(DishEntity.create(new DishRequest(
                 "qc-batch-dish-" + i, "批量测试菜 " + i, "简介 " + i, "批量测试",
                 "/images/dishes/qc-" + i + ".webp", "图 " + i, "测试", "https://example.com/qc",
-                15, "简单", new BigDecimal("4.5"), false, true, 100 + i,
+                15, "简单", new BigDecimal("4.5"), false, true, 100 + i, 2,
                 List.of("食材A", "食材B"), List.of("步骤一", "步骤二")
             )));
         }
@@ -135,7 +135,7 @@ class ListQueryBatchingTest {
         var dish = dishRepository.save(DishEntity.create(new DishRequest(
             "qc-meallog-dish", "打卡防线菜", "简介", "批量测试",
             "/images/dishes/qc-ml.webp", "图", "测试", "https://example.com/qc",
-            15, "简单", new BigDecimal("4.5"), false, true, 200,
+            15, "简单", new BigDecimal("4.5"), false, true, 200, 2,
             List.of("食材A", "食材B"), List.of("步骤一", "步骤二")
         )));
         for (int i = 1; i <= SEED; i++) {

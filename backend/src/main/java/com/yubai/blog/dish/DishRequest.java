@@ -29,6 +29,7 @@ public record DishRequest(
     boolean featured,
     boolean published,
     @Min(0) int displayOrder,
+    @Min(1) int baseServings,
     @NotEmpty @Size(max = 30) List<@NotBlank @Size(max = 240) String> ingredients,
     @NotEmpty @Size(max = 30) List<@NotBlank @Size(max = 2000) String> steps
 ) {

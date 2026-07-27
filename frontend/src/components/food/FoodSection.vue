@@ -409,7 +409,7 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
                 <span class="dish-index">{{ String(index + 1).padStart(2, '0') }}</span>
               </span>
               <span class="dish-copy">
-                <small>{{ dish.prepMinutes }} 分钟 · {{ dish.difficulty }} · {{ dish.ingredients.length }} 种食材</small>
+                <small>{{ dish.prepMinutes }} 分钟 · {{ dish.difficulty }} · {{ dish.ingredients.length }} 种食材 · {{ dish.baseServings ?? 2 }} 人份</small>
                 <strong>{{ dish.name }}</strong>
                 <span>{{ dish.summary }}</span>
                 <u>打开这份菜谱 <b>↗</b></u>

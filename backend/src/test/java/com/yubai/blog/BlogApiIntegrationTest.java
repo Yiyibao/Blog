@@ -295,6 +295,7 @@ class BlogApiIntegrationTest {
               "featured":false,
               "published":false,
               "displayOrder":99,
+              "baseServings":2,
               "ingredients":["面条 200 克","葱适量"],
               "steps":["煮面。","拌入葱油。"]
             }
@@ -2263,7 +2264,7 @@ class BlogApiIntegrationTest {
                     {"slug":"fd15-temp-dish","name":"临时炖菜","summary":"回归用","category":"测试",
                      "imageUrl":"/food/x.jpg","imageAlt":"x","imageCredit":"x","imageSourceUrl":"https://example.com",
                      "prepMinutes":10,"difficulty":"简单","rating":4.0,"featured":false,"published":true,
-                     "displayOrder":98,"ingredients":["水"],"steps":["炖"]}
+                     "displayOrder":98,"baseServings":2,"ingredients":["水"],"steps":["炖"]}
                     """))
             .andExpect(status().isCreated())
             .andReturn().getResponse().getContentAsString()).path("data");
