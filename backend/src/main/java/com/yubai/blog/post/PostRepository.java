@@ -44,7 +44,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         String getCategory();
     }
 
-    /** NB-5：搜索命中只取展示所需列，不再为拼 URL/摘要捞整实体（含全文）。L-8：补 date/readTime。 */
+    /** NB-5：搜索命中只取展示所需列，不再为拼 URL/摘要捞整实体（含全文）。L-8：补 date/readTime。5A：补加权分。 */
     interface PostSearchRow {
         Long getId();
         String getTitle();
@@ -55,6 +55,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         String getNumber();
         LocalDate getDate();
         int getReadTime();
+        int getScore();
     }
 
     public interface CategoryCountProjection {
@@ -127,14 +128,22 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     long countByCategorySlugAndStatus(String categorySlug, PostStatus status);
 
     /**
-     * L-8：categorySlug 可选过滤（null 即不过滤）；ORDER BY 不再内嵌，
-     * 由调用方经 Pageable.Sort 指定（date DESC/ASC），DISTINCT 所需列均在 SELECT 中。
+     * L-8：categorySlug 可选过滤（null 即不过滤）；ORDER BY 由调用方经 Pageable.Sort 指定
+     * （5A relevance 用 JpaSort.unsafe 引用 score 别名）。
+     * 5A：标签条件 EXISTS 化替代 LEFT JOIN+DISTINCT（每篇一行，score 表达式不受 tag 行复制干扰）；
+     * 加权分：标题 4 > 摘要/分类/标签 2 > 正文 1（LIKE 召回面即降级兜底，pg_trgm 索引仍服务加速）。
      */
     @Query(value = """
-        SELECT DISTINCT p.id as id, p.title as title, p.excerpt as excerpt, p.category as category,
-               p.slug as slug, p.color as color, p.number as number, p.date as date, p.readTime as readTime
+        SELECT p.id as id, p.title as title, p.excerpt as excerpt, p.category as category,
+               p.slug as slug, p.color as color, p.number as number, p.date as date, p.readTime as readTime,
+               (CASE WHEN LOWER(p.title) LIKE LOWER(:query) THEN 4 ELSE 0 END
+                + CASE WHEN LOWER(p.excerpt) LIKE LOWER(:query) THEN 2 ELSE 0 END
+                + CASE WHEN LOWER(p.category) LIKE LOWER(:query) THEN 2 ELSE 0 END
+                + CASE WHEN EXISTS (SELECT 1 FROM PostEntity p2 JOIN p2.tags tag2
+                                    WHERE p2.id = p.id AND LOWER(tag2) LIKE LOWER(:query)) THEN 2 ELSE 0 END
+                + CASE WHEN LOWER(p.content) LIKE LOWER(:query)
+                        OR LOWER(p.markdownContent) LIKE LOWER(:query) THEN 1 ELSE 0 END) as score
         FROM PostEntity p
-        LEFT JOIN p.tags tag
         WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
           AND (:categorySlug IS NULL OR p.categorySlug = :categorySlug)
           AND (LOWER(p.title) LIKE LOWER(:query)
@@ -142,10 +151,10 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
             OR LOWER(p.category) LIKE LOWER(:query)
             OR LOWER(p.content) LIKE LOWER(:query)
             OR LOWER(p.markdownContent) LIKE LOWER(:query)
-            OR LOWER(tag) LIKE LOWER(:query))
+            OR EXISTS (SELECT 1 FROM PostEntity p3 JOIN p3.tags tag3
+                       WHERE p3.id = p.id AND LOWER(tag3) LIKE LOWER(:query)))
         """, countQuery = """
-        SELECT COUNT(DISTINCT p) FROM PostEntity p
-        LEFT JOIN p.tags tag
+        SELECT COUNT(p) FROM PostEntity p
         WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
           AND (:categorySlug IS NULL OR p.categorySlug = :categorySlug)
           AND (LOWER(p.title) LIKE LOWER(:query)
@@ -153,7 +162,8 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
             OR LOWER(p.category) LIKE LOWER(:query)
             OR LOWER(p.content) LIKE LOWER(:query)
             OR LOWER(p.markdownContent) LIKE LOWER(:query)
-            OR LOWER(tag) LIKE LOWER(:query))
+            OR EXISTS (SELECT 1 FROM PostEntity p3 JOIN p3.tags tag3
+                       WHERE p3.id = p.id AND LOWER(tag3) LIKE LOWER(:query)))
         """)
     Page<PostSearchRow> searchPublished(@Param("query") String query,
                                         @Param("categorySlug") String categorySlug,

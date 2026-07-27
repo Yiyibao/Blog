@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSearch } from '../composables/useSearch'
+import { splitHighlight } from '../utils/searchHighlight'
 import type { SearchHit } from '../data'
 
 const props = defineProps<{ open: boolean }>()
@@ -260,7 +261,8 @@ onBeforeUnmount(() => {
                     ? (item.hit?.category ?? '') + ' · 美食'
                     : '学习笔记'
               }}</small>
-              <strong>{{ item.hit?.title }}</strong>
+              <!-- 5A：命中词 <mark> 高亮——纯文本分段插值，无 v-html/XSS 面 -->
+              <strong><template v-for="(seg, si) in splitHighlight(item.hit?.title ?? '', query)" :key="si"><mark v-if="seg.hit">{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template></strong>
             </div>
             <b>↗</b>
           </button>
@@ -296,6 +298,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 5A：命中词高亮 */
+.search-result strong mark {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
 .search-result.active,
 .search-result:focus-visible {
   padding-inline: 14px;

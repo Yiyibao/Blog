@@ -8,7 +8,8 @@ import jakarta.validation.constraints.NotNull;
 /**
  * P2-2/NB-11：移除曾使 @NotNull/@Min 失效的构造器 null 回退——
  * 非法请求（缺 type、page<0、size 越界）现在如实返回 400，而不是被静默修正。
- * L-8：categorySlug 与 sort 为可选契约扩展，仅 POST 类型分支生效；缺省不过滤、最新优先。
+ * L-8：categorySlug 与 sort 为可选契约扩展，仅 POST 类型分支生效；缺省不过滤。
+ * 5A：缺省排序改为加权相关性（标题>摘要/分类/标签>正文），显式 date_desc/date_asc 行为不变。
  */
 public record SearchRequest(
     @NotBlank String query,
@@ -19,7 +20,7 @@ public record SearchRequest(
     SearchSort sort
 ) {
     public SearchSort sortOrDefault() {
-        return sort == null ? SearchSort.DATE_DESC : sort;
+        return sort == null ? SearchSort.RELEVANCE : sort;
     }
 
     public String categorySlugOrNull() {

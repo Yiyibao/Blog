@@ -1354,6 +1354,61 @@ class BlogApiIntegrationTest {
     }
 
     @Test
+    @Order(59)
+    void searchDefaultsToWeightedRelevanceWhileExplicitDateSortKeepsBehavior() throws Exception {
+        // 5A：缺省排序=加权相关性（标题命中 > 仅正文命中，日期新旧不翻盘）；显式 date_desc 行为不变
+        String token = login();
+        rateLimiter.reset();
+
+        String template = """
+            {"slug":"%s","title":"%s","excerpt":"%s",
+             "date":"%s","readTime":3,"category":"工程实践","tags":["relevance"],
+             "color":"#112233","number":"%s","featured":false,"status":"PUBLISHED",
+             "contentFormat":"MARKDOWN","markdownContent":"%s"}
+            """;
+        // A：标题命中（日期较旧）；B：仅正文命中（日期较新）
+        long postA = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(template.formatted("relevance-title-hit", "独角鲸导航手册", "5A 验证",
+                    "2026-07-01", "RA", "# 正文没有关键词")))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+        long postB = objectMapper.readTree(mockMvc.perform(post("/api/v1/admin/posts")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(template.formatted("relevance-body-hit", "普通标题", "5A 验证",
+                    "2026-07-26", "RB", "# 正文提到独角鲸一次")))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("id").asLong();
+
+        // 缺省（relevance）：标题命中的 A 排最前，尽管 B 更新
+        var byRelevance = objectMapper.readTree(mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"独角鲸\",\"type\":\"POST\",\"page\":0,\"size\":10}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("results");
+        assertEquals(2, byRelevance.size(), "标题命中与正文命中都应召回");
+        assertEquals("relevance-title-hit", byRelevance.get(0).path("slug").asText(),
+            "缺省排序应按加权相关性：标题命中优先于仅正文命中");
+
+        // 显式 date_desc：最新的 B 在前（L-8 行为不变）
+        var byDate = objectMapper.readTree(mockMvc.perform(post("/api/v1/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"query\":\"独角鲸\",\"type\":\"POST\",\"page\":0,\"size\":10,\"sort\":\"DATE_DESC\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8))
+            .path("data").path("results");
+        assertEquals("relevance-body-hit", byDate.get(0).path("slug").asText(),
+            "显式 date_desc 仍按日期最新优先");
+
+        mockMvc.perform(delete("/api/v1/admin/posts/" + postA)
+                .header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/v1/admin/posts/" + postB)
+                .header("Authorization", "Bearer " + token)).andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
     @Order(53)
     void stage3ViewCountsRssAndNeighborsWork() throws Exception {
         rateLimiter.reset();

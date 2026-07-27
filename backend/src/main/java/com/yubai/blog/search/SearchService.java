@@ -40,7 +40,7 @@ public class SearchService {
         var pageable = PageRequest.of(0, limit);
         var likePattern = "%" + escapeLike(normalized) + "%";
 
-        var articles = postRepository.searchPublished(likePattern, null, withDateSort(pageable, SearchSort.DATE_DESC)).stream()
+        var articles = postRepository.searchPublished(likePattern, null, withSort(pageable, SearchSort.RELEVANCE)).stream()
             .map(SearchService::toResult)
             .toList();
 
@@ -75,7 +75,7 @@ public class SearchService {
         if (type == SearchType.ALL) {
             var maxSize = Math.max(1, Math.min(10, request.size()));
             var allPageable = PageRequest.of(0, maxSize);
-            var posts = postRepository.searchPublished(likePattern, null, withDateSort(allPageable, SearchSort.DATE_DESC));
+            var posts = postRepository.searchPublished(likePattern, null, withSort(allPageable, SearchSort.RELEVANCE));
             var dishes = dishRepository.searchPublished(likePattern, allPageable);
 
             List<SearchResult> allResults = new ArrayList<>();
@@ -94,7 +94,7 @@ public class SearchService {
         if (type == SearchType.POST) {
             // L-8：分类过滤与排序下推到数据库，命中补 date/readTime/tags——前端不再客户端补偿
             var page = postRepository.searchPublished(likePattern, request.categorySlugOrNull(),
-                withDateSort(pageable, request.sortOrDefault()));
+                withSort(pageable, request.sortOrDefault()));
             var tagsByPost = tagsFor(page.getContent());
             return new SearchPostResponse("POST", request.query(),
                 page.stream().map(row -> toResult(row, tagsByPost.getOrDefault(row.getId(), List.of()))).toList(),
@@ -118,8 +118,16 @@ public class SearchService {
         return SearchPostResponse.empty(request.type().name(), request.query());
     }
 
-    /** L-8：排序统一由 Pageable.Sort 表达（仓库查询不再内嵌 ORDER BY）。 */
-    private static PageRequest withDateSort(org.springframework.data.domain.Pageable pageable, SearchSort sort) {
+    /**
+     * L-8：排序统一由 Pageable.Sort 表达（仓库查询不再内嵌 ORDER BY）。
+     * 5A：RELEVANCE 用 JpaSort.unsafe 引用查询里的 score 别名（加权分降序，同分最新优先）。
+     */
+    private static PageRequest withSort(org.springframework.data.domain.Pageable pageable, SearchSort sort) {
+        if (sort == SearchSort.RELEVANCE) {
+            var relevance = org.springframework.data.jpa.domain.JpaSort.unsafe(Sort.Direction.DESC, "score")
+                .and(org.springframework.data.jpa.domain.JpaSort.unsafe(Sort.Direction.DESC, "date"));
+            return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), relevance);
+        }
         var direction = sort == SearchSort.DATE_ASC ? Sort.Direction.ASC : Sort.Direction.DESC;
         return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(direction, "date"));
     }

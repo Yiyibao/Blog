@@ -263,6 +263,7 @@ class SearchServiceTest {
             @Override public String getNumber() { return "001"; }
             @Override public java.time.LocalDate getDate() { return java.time.LocalDate.of(2026, 7, 1); }
             @Override public int getReadTime() { return 6; }
+            @Override public int getScore() { return 4; }
         };
     }
 
