@@ -124,6 +124,11 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
+    @ExceptionHandler(com.yubai.blog.dish.InvalidRecipeException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidRecipe(com.yubai.blog.dish.InvalidRecipeException exception) {
+        return error(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
     @ExceptionHandler(NoteVersionConflictException.class)
     public ResponseEntity<Map<String, Object>> handleNoteConflict(NoteVersionConflictException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());

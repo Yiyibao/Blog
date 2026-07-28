@@ -19,8 +19,8 @@ spring:
     enabled: true
   servlet:
     multipart:
-      max-file-size: 8MB
-      max-request-size: 8MB
+      max-file-size: 25MB
+      max-request-size: 25MB
 
 # P2-3：API 文档默认关闭——本地开发在 .env.properties 设 SPRINGDOC_ENABLED=true 后访问 /swagger-ui.html
 springdoc:
@@ -88,6 +88,11 @@ app:
   attachment:
     storage:
       dir: ${APP_ATTACHMENT_STORAGE_DIR:./data/attachments}
+  recipe:
+    # P1-15：食谱导入大小限制（服务层按需校验，全局 multipart 25MB 为上限兜底）
+    max-compressed-size: ${APP_RECIPE_MAX_COMPRESSED_SIZE:25MB}
+    max-uncompressed-total: ${APP_RECIPE_MAX_UNCOMPRESSED_TOTAL:40MB}
+    max-entry-size: ${APP_RECIPE_MAX_ENTRY_SIZE:10MB}
 
   ai:
     enabled: ${AI_ENABLED:false}

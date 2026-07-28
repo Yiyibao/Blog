@@ -64,6 +64,9 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
 
     Optional<DishEntity> findBySlug(String slug);
 
+    @Query("SELECT COALESCE(MAX(d.displayOrder), 0) FROM DishEntity d")
+    int maxDisplayOrder();
+
     Page<DishEntity> findAllByPublishedTrueOrderByFavoriteCountDesc(Pageable pageable);
 
     /** P0-4：数据库端原子自增，消除读-改-写并发丢失更新。 */

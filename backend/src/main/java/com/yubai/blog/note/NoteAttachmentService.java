@@ -145,7 +145,7 @@ public class NoteAttachmentService {
         return NoteAttachmentResponse.from(entity);
     }
 
-    static boolean matchesMagicBytes(byte[] data, String mimeType) {
+    public static boolean matchesMagicBytes(byte[] data, String mimeType) {
         return switch (mimeType) {
             case "image/png" -> startsWith(data, new int[]{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
             case "image/jpeg" -> startsWith(data, new int[]{0xFF, 0xD8, 0xFF});

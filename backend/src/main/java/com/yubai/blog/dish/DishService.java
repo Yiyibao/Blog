@@ -1,24 +1,34 @@
 package com.yubai.blog.dish;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
-import com.yubai.blog.config.CacheConfig;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.PageRequests;
+import com.yubai.blog.config.CacheConfig;
+import com.yubai.blog.storage.StorageService;
 
 @Service
 @Transactional(readOnly = true)
 public class DishService {
+    private static final Logger log = LoggerFactory.getLogger(DishService.class);
     private final DishRepository repository;
     private final DishCategoryService categoryService;
+    private final DishAssetRepository dishAssetRepository;
+    private final StorageService storageService;
 
-    public DishService(DishRepository repository, DishCategoryService categoryService) {
+    public DishService(DishRepository repository, DishCategoryService categoryService, DishAssetRepository dishAssetRepository, StorageService storageService) {
         this.repository = repository;
         this.categoryService = categoryService;
+        this.dishAssetRepository = dishAssetRepository;
+        this.storageService = storageService;
     }
 
     public PageResponse<DishResponse> findPublished(int page, int size) {
@@ -116,11 +126,41 @@ public class DishService {
 
     @Transactional
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
+    public void updateImageUrl(long id, String imageUrl) {
+        var dish = entity(id);
+        dish.updateImageUrl(imageUrl);
+    }
+
+    @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public void delete(long id) {
-        if (!repository.existsById(id)) {
-            throw new NotFoundException("菜品不存在：" + id);
-        }
+        entity(id);
+        var storageKey = dishAssetRepository.findByDishId(id)
+            .map(asset -> {
+                var key = asset.getStorageKey();
+                dishAssetRepository.delete(asset);
+                return key;
+            })
+            .orElse(null);
         repository.deleteById(id);
+        deleteStorageAfterCommit(storageKey);
+    }
+
+    private void deleteStorageAfterCommit(String storageKey) {
+        if (storageKey != null && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        storageService.delete(storageKey);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete dish asset storage {}: {}", storageKey, e.toString());
+                    }
+                }
+            });
+        } else if (storageKey != null) {
+            storageService.delete(storageKey);
+        }
     }
 
     private DishEntity entity(long id) {

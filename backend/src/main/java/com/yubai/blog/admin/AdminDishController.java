@@ -1,6 +1,7 @@
 package com.yubai.blog.admin;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,7 @@ import com.yubai.blog.common.ApiResponse;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import com.yubai.blog.common.PageResponse;
+import com.yubai.blog.dish.DishImportService;
 import com.yubai.blog.dish.DishRequest;
 import com.yubai.blog.dish.DishResponse;
 import com.yubai.blog.dish.DishService;
@@ -29,9 +31,11 @@ import jakarta.validation.Valid;
 @Validated
 public class AdminDishController {
     private final DishService service;
+    private final DishImportService importService;
 
-    public AdminDishController(DishService service) {
+    public AdminDishController(DishService service, DishImportService importService) {
         this.service = service;
+        this.importService = importService;
     }
 
     @GetMapping
@@ -56,6 +60,11 @@ public class AdminDishController {
     @PutMapping("/{id}")
     public ApiResponse<DishResponse> update(@PathVariable long id, @Valid @RequestBody DishRequest request) {
         return ApiResponse.ok(service.update(id, request));
+    }
+
+    @GetMapping("/{id}/export")
+    public ResponseEntity<byte[]> export(@PathVariable long id) {
+        return importService.export(id);
     }
 
     @DeleteMapping("/{id}")

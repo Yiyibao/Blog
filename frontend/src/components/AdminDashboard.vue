@@ -8,6 +8,7 @@ import {
   fetchAdminPost, fetchAdminPosts, fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish,
   updateDishCategory, updatePost, updatePostCategory, type AdminDish, type AdminDishCategory, type AdminNoteSummary,
   type AdminPostCategory, type AdminPostSummary, type DishPayload, type PostPayload,
+  previewDishImport, commitDishImport, cancelDishImport, exportDish, type YrecipePreview,
 } from '../api/admin'
 import type { PostStatus } from '../data'
 
@@ -158,6 +159,13 @@ function applyRestoredPost(post: AdminPost) {
   })
   revisionDrawerOpen.value = false
 }
+
+const importOpen = ref(false)
+const importLoading = ref(false)
+const importError = ref('')
+const importPreview = ref<YrecipePreview | null>(null)
+const importCommitSlug = ref('')
+const importCommitCategory = ref('')
 
 const dishForm = reactive({
   slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
@@ -352,6 +360,83 @@ async function remove(kind: 'post' | 'dish', id: number, title: string) {
   }
 }
 
+const importFileInput = ref<HTMLInputElement | null>(null)
+
+function openImportFileInput() {
+  importError.value = ''
+  importPreview.value = null
+  importCommitSlug.value = ''
+  importCommitCategory.value = ''
+  importOpen.value = true
+  setTimeout(() => importFileInput.value?.click(), 100)
+}
+
+async function handleImportFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input?.files?.[0]
+  if (!file) { importOpen.value = false; return }
+  importLoading.value = true
+  importError.value = ''
+  try {
+    const preview = await previewDishImport(file)
+    importPreview.value = preview
+    importCommitSlug.value = preview.recipe.recipe.slug || ''
+    importCommitCategory.value = preview.categoryMatch || (dishCategories.value[0]?.name ?? '')
+  } catch (cause) {
+    if (!handleAuthError(cause)) {
+      importError.value = axios.isAxiosError(cause) && cause.response?.data?.message
+        ? cause.response.data.message : '导入菜谱失败，请检查文件格式。'
+    }
+  } finally {
+    importLoading.value = false
+    if (input) { (input as HTMLInputElement).value = '' }
+  }
+}
+
+async function commitImport() {
+  if (!importPreview.value) return
+  importLoading.value = true
+  importError.value = ''
+  try {
+    await commitDishImport(importPreview.value.token, {
+      category: importCommitCategory.value,
+      correctedSlug: importCommitSlug.value || undefined,
+    })
+    importOpen.value = false
+    importPreview.value = null
+    await load()
+    const contentStore = useContentStore()
+    await contentStore.loadRemoteContent().catch(() => null)
+  } catch (cause) {
+    if (!handleAuthError(cause)) {
+      importError.value = axios.isAxiosError(cause) && cause.response?.data?.message
+        ? cause.response.data.message : '创建菜品草稿失败。'
+    }
+  } finally {
+    importLoading.value = false
+  }
+}
+
+async function cancelImport() {
+  if (importPreview.value) {
+    try { await cancelDishImport(importPreview.value.token) } catch {}
+  }
+  importOpen.value = false
+  importPreview.value = null
+  importError.value = ''
+}
+
+async function handleExportDish(dish: AdminDish) {
+  try {
+    await exportDish(dish.id)
+  } catch (cause) {
+    if (!handleAuthError(cause)) {
+      error.value = axios.isAxiosError(cause) && cause.response?.data?.message
+        ? cause.response.data.message : '导出失败。'
+    }
+  }
+}
+
 function newCategory() {
   categoryEditingId.value = null
   Object.assign(categoryForm, { name: '', description: '' })
@@ -473,7 +558,7 @@ onMounted(load)
       </template>
 
       <section v-if="!isOverview" class="admin-content-section">
-        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><div class="content-head-actions"><button class="button secondary" type="button" @click="tab === 'posts' ? newCategory() : newDishCategory()">分类管理</button><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></div></header>
+        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><div class="content-head-actions"><button class="button secondary" type="button" @click="tab === 'posts' ? newCategory() : newDishCategory()">分类管理</button><button v-if="tab === 'dishes'" class="button secondary" type="button" @click="openImportFileInput">导入菜谱</button><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></div></header>
         <div v-if="tab === 'posts'" class="admin-tabs" style="margin-bottom: 16px">
           <button :class="{ active: postStatusFilter === '' }" @click="postStatusFilter = ''">全部</button>
           <button :class="{ active: postStatusFilter === 'PUBLISHED' }" @click="postStatusFilter = 'PUBLISHED'">已发布</button>
@@ -488,7 +573,7 @@ onMounted(load)
         </div>
         <div v-else class="admin-table admin-dish-table">
           <div class="admin-table-head"><span>序号</span><span>菜品</span><span>状态</span><span>操作</span></div>
-          <article v-for="(dish, index) in dishes" :key="dish.id"><span class="admin-index">{{ String(dishPage * contentPageSize + index + 1).padStart(2, '0') }}</span><div class="admin-dish-cell"><img :src="dish.imageUrl" :alt="dish.imageAlt"><div><small>{{ dish.category }} · {{ dish.prepMinutes }} 分钟 · ★ {{ dish.rating.toFixed(1) }}</small><strong>{{ dish.name }}</strong><p>{{ dish.summary }}</p></div></div><span class="admin-status" :class="{ featured: dish.featured && dish.published }">{{ dish.published ? (dish.featured ? '精选' : '已发布') : '草稿' }}</span><div class="admin-row-actions"><button @click="editDish(dish)">编辑</button><button class="danger" @click="remove('dish', dish.id, dish.name)">删除</button></div></article>
+          <article v-for="(dish, index) in dishes" :key="dish.id"><span class="admin-index">{{ String(dishPage * contentPageSize + index + 1).padStart(2, '0') }}</span><div class="admin-dish-cell"><img :src="dish.imageUrl" :alt="dish.imageAlt"><div><small>{{ dish.category }} · {{ dish.prepMinutes }} 分钟 · ★ {{ dish.rating.toFixed(1) }}</small><strong>{{ dish.name }}</strong><p>{{ dish.summary }}</p></div></div><span class="admin-status" :class="{ featured: dish.featured && dish.published }">{{ dish.published ? (dish.featured ? '精选' : '已发布') : '草稿' }}</span><div class="admin-row-actions"><button @click="editDish(dish)">编辑</button><button @click="handleExportDish(dish)">导出</button><button class="danger" @click="remove('dish', dish.id, dish.name)">删除</button></div></article>
           <PaginationNav :page="dishPage" :total-pages="dishTotalPages" aria-label="后台菜品分页" @change="changeDishPage" />
         </div>
       </section>
@@ -653,6 +738,78 @@ onMounted(load)
       </section>
     </div>
 
+    <!-- 6D：菜谱导入预览对话框 -->
+    <div v-if="importOpen" class="admin-editor-backdrop" @click.self="cancelImport">
+      <section class="admin-editor import-modal" role="dialog" aria-modal="true" aria-label="导入菜谱">
+        <header>
+          <div>
+            <small>IMPORT RECIPE</small>
+            <h2>导入菜谱</h2>
+          </div>
+          <button type="button" aria-label="关闭导入" @click="cancelImport">×</button>
+        </header>
+        <div v-if="importLoading && !importPreview" class="admin-empty">正在解析菜谱包…</div>
+        <template v-else-if="!importPreview">
+          <p class="admin-empty">请选择一个 .yrecipe 文件</p>
+          <input ref="importFileInput" type="file" accept=".yrecipe,application/vnd.yubai.recipe+zip" style="display:none" @change="handleImportFile">
+          <footer><button class="button primary" type="button" @click="importFileInput?.click()">选择文件</button></footer>
+          <p v-if="importError" class="admin-error" role="alert">{{ importError }}</p>
+        </template>
+        <template v-else>
+          <div class="import-preview-layout">
+            <div class="import-cover">
+              <img :src="importPreview.coverPreviewUrl" :alt="importPreview.recipe.cover.alt || importPreview.recipe.recipe.name">
+            </div>
+            <div class="import-details">
+              <h3>{{ importPreview.recipe.recipe.name }}</h3>
+              <p class="import-summary">{{ importPreview.recipe.recipe.summary }}</p>
+              <div class="import-meta">
+                <span>{{ importPreview.recipe.recipe.prepMinutes }} 分钟</span>
+                <span>{{ importPreview.recipe.recipe.difficulty || '未指定难度' }}</span>
+                <span>{{ importPreview.recipe.recipe.baseServings }} 人份</span>
+              </div>
+              <div v-if="importPreview.recipe.source" class="import-source">
+                <small>来源：{{ importPreview.recipe.source.title || importPreview.recipe.source.creator || '未知' }}</small>
+              </div>
+              <div v-if="importPreview.warnings.length" class="import-warnings">
+                <p v-for="(w, i) in importPreview.warnings" :key="i" class="import-warning">{{ w }}</p>
+              </div>
+            </div>
+          </div>
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />导入设置</div>
+            <div class="admin-form-grid">
+              <label><span>Slug（路由别名）</span>
+                <input v-model="importCommitSlug" type="text" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="120" :placeholder="importPreview.recipe.recipe.slug || '根据名称自动生成'">
+              </label>
+              <label><span>菜品分类</span>
+                <select v-model="importCommitCategory" required>
+                  <option v-for="cat in dishCategories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />食材</div>
+            <ul class="import-list">
+              <li v-for="item in importPreview.recipe.recipe.ingredients" :key="item">{{ item }}</li>
+            </ul>
+          </div>
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />制作步骤</div>
+            <ol class="import-list">
+              <li v-for="step in importPreview.recipe.recipe.steps" :key="step">{{ step }}</li>
+            </ol>
+          </div>
+          <p v-if="importError" class="admin-error" role="alert">{{ importError }}</p>
+          <footer>
+            <button class="button secondary" type="button" :disabled="importLoading" @click="cancelImport">取消</button>
+            <button class="button primary" type="button" :disabled="importLoading || !importCommitCategory" @click="commitImport">{{ importLoading ? '正在创建…' : '创建菜品草稿' }}</button>
+          </footer>
+        </template>
+      </section>
+    </div>
+
     <!-- 4C：版本历史抽屉（仅编辑既有文章时可用） -->
     <PostRevisionDrawer
       v-if="revisionDrawerOpen && editingId && editorKind === 'post'"
@@ -751,5 +908,23 @@ onMounted(load)
 }
 .legacy-html-notice button:active:not(:disabled) {
   transform: translateY(1px) scale(0.97);
+}
+
+/* 6D：导入菜谱预览对话框 */
+.import-modal { max-width: 800px; }
+.import-preview-layout { display: flex; gap: 20px; padding: 20px 0; }
+.import-cover { flex-shrink: 0; width: 200px; }
+.import-cover img { width: 100%; border-radius: 12px; object-fit: cover; aspect-ratio: 1; }
+.import-details { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.import-summary { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.import-meta { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+.import-source { font-size: 12px; color: var(--muted); }
+.import-warnings { display: flex; flex-direction: column; gap: 4px; }
+.import-warning { font-size: 12px; color: #c47b2c; padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, #c47b2c 10%, var(--surface)); }
+.import-list { display: flex; flex-direction: column; gap: 6px; padding: 0; margin: 0; list-style-position: inside; }
+.import-list li { font-size: 14px; line-height: 1.5; color: var(--ink); }
+@media (max-width: 640px) {
+  .import-preview-layout { flex-direction: column; }
+  .import-cover { width: 100%; max-width: 300px; }
 }
 </style>

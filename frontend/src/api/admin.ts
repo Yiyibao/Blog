@@ -542,6 +542,82 @@ export function deleteDish(id: number) {
   return api.delete(`/admin/dishes/${id}`, { headers: tokenHeader() })
 }
 
+// 6D：.yrecipe 导入/导出
+export interface YrecipePreview {
+  token: string
+  expiresAt: string
+  recipe: {
+    schemaVersion: string
+    kind: string
+    packageId: string
+    recipe: {
+      name: string
+      slug: string | null
+      summary: string
+      categoryHint: string | null
+      prepMinutes: number
+      difficulty: string | null
+      baseServings: number
+      ingredients: string[]
+      steps: string[]
+    }
+    cover: {
+      path: string
+      alt: string | null
+      credit: string | null
+      sourceUrl: string | null
+    }
+    source: Record<string, unknown> | null
+    generation: Record<string, unknown> | null
+  }
+  warnings: string[]
+  categoryMatch: string | null
+  slugAvailable: boolean
+  coverPreviewUrl: string
+}
+
+export interface DishImportCommitRequest {
+  category: string
+  correctedSlug?: string
+}
+
+export async function previewDishImport(file: File) {
+  const body = new FormData()
+  body.append('file', file)
+  return unwrap<YrecipePreview>(api.post('/admin/dish-imports/preview', body, {
+    headers: { ...tokenHeader(), 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  }))
+}
+
+export function commitDishImport(token: string, payload: DishImportCommitRequest) {
+  return api.post<ApiEnvelope<AdminDish>>(`/admin/dish-imports/${token}/commit`, payload, {
+    headers: tokenHeader(),
+  }).then(r => {
+    if (r.status === 201) return r.data.data as AdminDish
+    return r.data.data as AdminDish
+  })
+}
+
+export function cancelDishImport(token: string) {
+  return api.delete(`/admin/dish-imports/${token}`, { headers: tokenHeader() })
+}
+
+export async function exportDish(id: number) {
+  const response = await api.get<Blob>(`/admin/dishes/${id}/export`, {
+    headers: tokenHeader(), responseType: 'blob',
+  })
+  const disposition = response.headers['content-disposition'] || ''
+  const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i)
+  const filename = match ? decodeURIComponent(match[1].trim()) : `${id}.yrecipe`
+  const url = URL.createObjectURL(response.data)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export async function fetchNotes(page = 0, size = 20, status?: NoteStatus | '') {
   const data = await unwrap<PageResult<AdminNoteSummary> | AdminNoteSummary[]>(api.get('/admin/notes', {
     headers: tokenHeader(), params: { page, size, ...(status ? { status } : {}) },

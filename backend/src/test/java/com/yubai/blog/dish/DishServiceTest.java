@@ -20,6 +20,7 @@ import org.springframework.data.domain.PageImpl;
 
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.common.PageRequests;
+import com.yubai.blog.storage.StorageService;
 
 @ExtendWith(MockitoExtension.class)
 class DishServiceTest {
@@ -30,10 +31,16 @@ class DishServiceTest {
     @Mock
     DishCategoryService categoryService;
 
+    @Mock
+    DishAssetRepository dishAssetRepository;
+
+    @Mock
+    StorageService storageService;
+
     @InjectMocks
     DishService service;
 
-    private DishEntity mockDish(long id, String slug, boolean published) {
+    private DishEntity mockDish(long id, String slug, boolean published, int favoriteCount) {
         return new DishEntity() {
             @Override public Long getId() { return id; }
             @Override public String getSlug() { return slug; }
@@ -51,6 +58,7 @@ class DishServiceTest {
             @Override public boolean isPublished() { return published; }
             @Override public int getDisplayOrder() { return 1; }
             @Override public int getBaseServings() { return 2; }
+            @Override public int getFavoriteCount() { return favoriteCount; }
             @Override public List<String> getIngredients() { return List.of("a"); }
             @Override public List<String> getSteps() { return List.of("b"); }
         };
@@ -58,7 +66,7 @@ class DishServiceTest {
 
     @Test
     void findPublishedReturnsPublishedOnly() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(repository.findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(List.of(dish)));
 
@@ -69,7 +77,7 @@ class DishServiceTest {
 
     @Test
     void findPublishedFiltersByCategorySlug() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(categoryService.findNameBySlug("chuan-cai")).thenReturn("川菜");
         when(repository.findByCategoryAndPublishedTrueOrderByFeaturedDescDisplayOrderAsc("川菜", PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(List.of(dish)));
@@ -90,7 +98,7 @@ class DishServiceTest {
 
     @Test
     void findPublishedSearchesByQuery() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(repository.searchPublishedEntities("%tofu%", PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(List.of(dish)));
 
@@ -101,7 +109,7 @@ class DishServiceTest {
 
     @Test
     void findPublishedSearchesByCategoryAndQuery() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(categoryService.findNameBySlug("chuan-cai")).thenReturn("川菜");
         when(repository.searchPublishedByCategory("川菜", "%tofu%", PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(List.of(dish)));
@@ -113,7 +121,7 @@ class DishServiceTest {
 
     @Test
     void findPublishedBySlugReturnsDish() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(repository.findBySlugAndPublishedTrue("mapo-tofu")).thenReturn(Optional.of(dish));
 
         var result = service.findPublishedBySlug("mapo-tofu");
@@ -128,7 +136,7 @@ class DishServiceTest {
 
     @Test
     void findAllReturnsAllDishes() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(repository.findAllByOrderByDisplayOrderAsc(any())).thenReturn(new PageImpl<>(List.of(dish)));
 
         var result = service.findAll(0, 10);
@@ -137,7 +145,7 @@ class DishServiceTest {
 
     @Test
     void findOneReturnsDish() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(repository.findById(1L)).thenReturn(Optional.of(dish));
 
         var result = service.findOne(1L);
@@ -153,11 +161,11 @@ class DishServiceTest {
     @Test
     void createSavesWithUniqueSlug() {
         when(repository.existsBySlug("new-dish")).thenReturn(false);
-        when(repository.save(any())).thenReturn(mockDish(1L, "new-dish", true));
+        when(repository.save(any())).thenReturn(mockDish(1L, "new-dish", true, 0));
 
-            var request = new DishRequest("new-dish", "新菜品", "简介", "川菜",
-                "/food/new.jpg", "图片", "作者", "https://example.com",
-                10, "简单", BigDecimal.valueOf(4.0), false, true, 2, 2, List.of("原料"), List.of("步骤"));
+        var request = new DishRequest("new-dish", "新菜品", "简介", "川菜",
+            "/food/new.jpg", "图片", "作者", "https://example.com",
+            10, "简单", BigDecimal.valueOf(4.0), false, true, 2, 2, List.of("原料"), List.of("步骤"));
         var result = service.create(request);
         assertThat(result).isNotNull();
     }
@@ -166,42 +174,43 @@ class DishServiceTest {
     void createThrowsOnDuplicateSlug() {
         when(repository.existsBySlug("dup-dish")).thenReturn(true);
 
-            var request = new DishRequest("dup-dish", "重复", "简介", "川菜",
-                "/food/dup.jpg", "图片", "作者", "https://example.com",
-                10, "简单", BigDecimal.valueOf(4.0), false, true, 2, 2, List.of("原料"), List.of("步骤"));
+        var request = new DishRequest("dup-dish", "重复", "简介", "川菜",
+            "/food/dup.jpg", "图片", "作者", "https://example.com",
+            10, "简单", BigDecimal.valueOf(4.0), false, true, 2, 2, List.of("原料"), List.of("步骤"));
         assertThatThrownBy(() -> service.create(request)).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void updateSavesWithUniqueSlug() {
-        var dish = mockDish(1L, "mapo-tofu", true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
         when(repository.findById(1L)).thenReturn(Optional.of(dish));
         when(repository.existsBySlugAndIdNot("mapo-tofu", 1L)).thenReturn(false);
 
-            var request = new DishRequest("mapo-tofu", "更新版麻婆豆腐", "新简介", "川菜",
-                "/food/mapo.jpg", "图片", "作者", "https://example.com",
-                25, "家常", BigDecimal.valueOf(4.8), true, true, 1, 2, List.of("豆腐"), List.of("炒"));
+        var request = new DishRequest("mapo-tofu", "更新版麻婆豆腐", "新简介", "川菜",
+            "/food/mapo.jpg", "图片", "作者", "https://example.com",
+            25, "家常", BigDecimal.valueOf(4.8), true, true, 1, 2, List.of("豆腐"), List.of("炒"));
         var result = service.update(1L, request);
         assertThat(result.slug()).isEqualTo("mapo-tofu");
     }
 
     @Test
     void deleteRemovesExistingDish() {
-        when(repository.existsById(1L)).thenReturn(true);
+        var dish = mockDish(1L, "mapo-tofu", true, 0);
+        when(repository.findById(1L)).thenReturn(Optional.of(dish));
+        when(dishAssetRepository.findByDishId(1L)).thenReturn(Optional.empty());
         service.delete(1L);
         verify(repository).deleteById(1L);
     }
 
     @Test
     void deleteThrowsWhenNotFound() {
-        when(repository.existsById(99L)).thenReturn(false);
+        when(repository.findById(99L)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.delete(99L)).isInstanceOf(NotFoundException.class);
     }
 
     @Test
     void favoriteIncrementsCountAtomically() {
-        var dish = mockDish(1L, "mapo-tofu", true);
-        dish.setFavoriteCount(6); // 原子 UPDATE 之后重新读取到的值
+        var dish = mockDish(1L, "mapo-tofu", true, 6);
         when(repository.incrementFavoriteCount("mapo-tofu")).thenReturn(1);
         when(repository.findBySlugAndPublishedTrue("mapo-tofu")).thenReturn(Optional.of(dish));
 
@@ -219,8 +228,7 @@ class DishServiceTest {
 
     @Test
     void findFavoritesReturnsByPopularity() {
-        var dish = mockDish(1L, "mapo-tofu", true);
-        dish.setFavoriteCount(42);
+        var dish = mockDish(1L, "mapo-tofu", true, 42);
         when(repository.findAllByPublishedTrueOrderByFavoriteCountDesc(PageRequests.of(0, 10)))
             .thenReturn(new PageImpl<>(List.of(dish)));
 

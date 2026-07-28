@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Yubai Recipe Package",
+  "description": "Schema for .yrecipe files used by Yubai blog platform for recipe import/export",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "packageId", "recipe", "cover"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Schema version. Must be 1.0."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["yubai.recipe"],
+      "description": "Package kind. Must be yubai.recipe."
+    },
+    "packageId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Globally unique package identifier (UUID v4)."
+    },
+    "recipe": {
+      "type": "object",
+      "required": ["name", "summary", "ingredients", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 120 },
+        "summary": { "type": "string", "maxLength": 1000 },
+        "categoryHint": { "type": "string", "maxLength": 60 },
+        "prepMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "difficulty": { "type": "string", "enum": ["简单", "家常", "进阶"] },
+        "baseServings": { "type": "integer", "minimum": 1 },
+        "ingredients": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": { "type": "string", "maxLength": 240 }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": { "type": "string", "maxLength": 2000 }
+        }
+      }
+    },
+    "cover": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "enum": ["assets/cover.jpg", "assets/cover.jpeg", "assets/cover.png", "assets/cover.webp"],
+          "description": "Path to cover image inside the ZIP package."
+        },
+        "alt": { "type": "string", "maxLength": 240 },
+        "credit": { "type": "string", "maxLength": 240 },
+        "sourceUrl": { "type": "string", "format": "uri" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["MANUAL", "WEB_URL", "VIDEO_URL", "VIDEO_UPLOAD", "TEXT"] },
+        "url": { "type": "string", "format": "uri" },
+        "title": { "type": "string", "maxLength": 240 },
+        "creator": { "type": "string", "maxLength": 120 },
+        "capturedAtSeconds": { "type": ["integer", "null"] }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "generator": { "type": "string", "maxLength": 120 },
+        "provider": { "type": "string", "maxLength": 120 },
+        "model": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "warnings": { "type": "array", "items": { "type": "string", "maxLength": 500 } }
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@ package com.yubai.blog.dish;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import jakarta.persistence.CollectionTable;
@@ -133,6 +134,10 @@ public class DishEntity {
         this.steps.addAll(request.steps());
     }
 
+    public void updateImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
     @PrePersist
     void onCreate() {
         var now = Instant.now();
@@ -161,11 +166,11 @@ public class DishEntity {
     public boolean isPublished() { return published; }
     public int getDisplayOrder() { return displayOrder; }
     public int getFavoriteCount() { return favoriteCount; }
-    public void setFavoriteCount(int favoriteCount) { this.favoriteCount = favoriteCount; }
     public int getViewsCount() { return viewsCount; }
     public int getBaseServings() { return baseServings; }
-    public List<String> getIngredients() { return List.copyOf(ingredients); }
-    public List<String> getSteps() { return List.copyOf(steps); }
+    public List<String> getIngredients() { return Collections.unmodifiableList(ingredients); }
+    public List<String> getSteps() { return Collections.unmodifiableList(steps); }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
 }
