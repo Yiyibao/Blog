@@ -37,7 +37,7 @@ class PostRevisionServiceTest {
         var request = new PostRequest("rev-post", title, "摘要", LocalDate.of(2026, 7, 27), 3,
             "工程实践", List.of("rev"), "#112233", "R1", false, PostStatus.DRAFT,
             null, markdown, ContentFormat.MARKDOWN);
-        var entity = PostEntity.create(request, new PostContentSanitizer());
+        var entity = PostEntity.create(request, request.slug(), new PostContentSanitizer());
         setField(entity, "id", id);
         return entity;
     }

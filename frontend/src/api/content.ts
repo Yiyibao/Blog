@@ -76,9 +76,21 @@ export function fetchCategories() {
   return unwrap<CategorySummary[]>(api.get('/categories'))
 }
 
-export async function fetchDishes(page = 0, size = 12) {
-  const data = await unwrap<PageResult<Dish> | Dish[]>(api.get('/dishes', { params: { page, size } }))
+export async function fetchDishes(page = 0, size = 12, categorySlug?: string, query?: string) {
+  const params: Record<string, unknown> = { page, size }
+  if (categorySlug) params.categorySlug = categorySlug
+  if (query) params.query = query
+  const data = await unwrap<PageResult<Dish> | Dish[]>(api.get('/dishes', { params }))
   return asPage(data, page, size)
+}
+
+export interface DishCategorySummary {
+  name: string
+  slug: string
+}
+
+export function fetchDishCategories() {
+  return unwrap<DishCategorySummary[]>(api.get('/dish-categories'))
 }
 
 // P1-2：公开笔记列表为摘要 DTO（不含 markdownContent），正文经 fetchPublishedNote 详情获取。

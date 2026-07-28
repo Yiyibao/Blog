@@ -32,12 +32,14 @@ vi.mock('../api/kitchen', async (importOriginal) => {
 
 const mockFetchDishes = vi.fn()
 const mockFetchDishFavorites = vi.fn()
+const mockFetchDishCategories = vi.fn()
 
 vi.mock('../api/content', () => ({
   fetchDishes: (...args: unknown[]) => mockFetchDishes(...args),
   fetchDish: vi.fn(),
   favoriteDish: vi.fn(),
   fetchDishFavorites: (...args: unknown[]) => mockFetchDishFavorites(...args),
+  fetchDishCategories: (...args: unknown[]) => mockFetchDishCategories(...args),
 }))
 
 function logOf(id: number, overrides: Partial<MealLog> = {}): MealLog {
@@ -79,6 +81,7 @@ beforeEach(() => {
   mockFetchDishStats.mockReset().mockResolvedValue([])
   mockFetchDishes.mockReset().mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
   mockFetchDishFavorites.mockReset().mockResolvedValue({ items: [], page: 0, size: 5, totalElements: 0, totalPages: 1 })
+  mockFetchDishCategories.mockReset().mockResolvedValue([])
 })
 
 async function mountSection(url = '/recipes') {

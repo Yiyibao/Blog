@@ -125,7 +125,14 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
 
     long countByCategoryAndStatus(String category, PostStatus status);
 
+    long countByCategory(String category);
+
     long countByCategorySlugAndStatus(String categorySlug, PostStatus status);
+
+    @Modifying
+    @Query("UPDATE PostEntity p SET p.category = :newName, p.categorySlug = :newSlug WHERE p.category = :oldName")
+    int updateCategory(@Param("oldName") String oldName, @Param("newName") String newName,
+                       @Param("newSlug") String newSlug);
 
     /**
      * L-8：categorySlug 可选过滤（null 即不过滤）；ORDER BY 由调用方经 Pageable.Sort 指定

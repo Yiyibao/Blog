@@ -29,10 +29,15 @@ function writeChoice(value: string) {
   }
 }
 
+/** 支持带有 ?entry=1 或 ?gate=1 或 ?resetEntry=1 时主动呼出入口弹窗 */
+const forceShow = computed(() =>
+  route.query.entry === '1' || route.query.gate === '1' || route.query.resetEntry === '1'
+)
+
 const dismissed = ref(readChoice() !== null)
 
 const visible = computed(() =>
-  !dismissed.value && route.path === '/' && !auth.isAuthenticated)
+  (forceShow.value || !dismissed.value) && route.path === '/' && !auth.isAuthenticated)
 
 function chooseGuest() {
   writeChoice('guest')

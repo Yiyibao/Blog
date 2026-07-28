@@ -185,9 +185,9 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
   <div class="typora-editor">
     <div class="typora-toolbar" role="toolbar" aria-label="Markdown 格式工具栏">
       <div class="tool-group">
-        <button :class="{ active: editor?.isActive('heading', { level: 1 }) }" title="一级标题" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()">H1</button>
-        <button :class="{ active: editor?.isActive('heading', { level: 2 }) }" title="二级标题" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
-        <button :class="{ active: editor?.isActive('heading', { level: 3 }) }" title="三级标题" @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()">H3</button>
+        <button :class="{ active: editor?.isActive('heading', { level: 1 }) }" title="一级标题 (H1)" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()">H1</button>
+        <button :class="{ active: editor?.isActive('heading', { level: 2 }) }" title="二级标题 (H2)" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
+        <button :class="{ active: editor?.isActive('heading', { level: 3 }) }" title="三级标题 (H3)" @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()">H3</button>
       </div>
       <div class="tool-group">
         <button :class="{ active: editor?.isActive('bold') }" title="粗体 Ctrl+B" @click="editor?.chain().focus().toggleBold().run()"><b>B</b></button>
@@ -196,11 +196,11 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
         <button :class="{ active: editor?.isActive('code') }" title="行内代码" @click="editor?.chain().focus().toggleCode().run()">&lt;/&gt;</button>
       </div>
       <div class="tool-group">
-        <button title="无序列表" @click="editor?.chain().focus().toggleBulletList().run()">• 列表</button>
-        <button title="有序列表" @click="editor?.chain().focus().toggleOrderedList().run()">1. 列表</button>
-        <button title="任务列表" @click="editor?.chain().focus().toggleTaskList().run()">☑ 任务</button>
-        <button title="引用" @click="editor?.chain().focus().toggleBlockquote().run()">❝</button>
-        <button :class="{ active: editor?.isActive('codeBlock') }" title="代码块" @click="editor?.chain().focus().toggleCodeBlock().run()">{ }</button>
+        <button title="无序列表" @click="editor?.chain().focus().toggleBulletList().run()"><span class="tool-icon">•</span><span>列表</span></button>
+        <button title="有序列表" @click="editor?.chain().focus().toggleOrderedList().run()"><span class="tool-icon">1.</span><span>列表</span></button>
+        <button title="任务列表" @click="editor?.chain().focus().toggleTaskList().run()"><span class="tool-icon">☑</span><span>任务</span></button>
+        <button title="引用" @click="editor?.chain().focus().toggleBlockquote().run()"><span class="tool-icon">❝</span><span>引用</span></button>
+        <button :class="{ active: editor?.isActive('codeBlock') }" title="代码块" @click="editor?.chain().focus().toggleCodeBlock().run()"><span class="tool-icon">{ }</span><span>代码</span></button>
         <select
           v-if="activeCodeLanguage !== null"
           class="code-lang-select"
@@ -213,17 +213,20 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
         </select>
       </div>
       <div class="tool-group">
-        <button title="链接" @click="setLink">↗ 链接</button>
-        <button title="插入表格" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">▦ 表格</button>
-        <button title="上传图片，也可直接粘贴或拖入" @click="imageInput?.click()">▧ 图片</button>
-        <button title="插入数学公式" @click="editMath('block')">∑ 公式</button>
-        <button title="分隔线" @click="editor?.chain().focus().setHorizontalRule().run()">—</button>
+        <button title="链接" @click="setLink"><span class="tool-icon">↗</span><span>链接</span></button>
+        <button title="插入表格" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()"><span class="tool-icon">▦</span><span>表格</span></button>
+        <button title="上传图片，也可直接粘贴或拖入" @click="imageInput?.click()"><span class="tool-icon">▧</span><span>图片</span></button>
+        <button title="插入数学公式" @click="editMath('block')"><span class="tool-icon">∑</span><span>公式</span></button>
+        <button title="分隔线" @click="editor?.chain().focus().setHorizontalRule().run()"><span class="tool-icon">—</span></button>
       </div>
       <div class="tool-group tool-history">
         <button :disabled="!can?.can().undo()" title="撤销" @click="editor?.chain().focus().undo().run()">↶</button>
         <button :disabled="!can?.can().redo()" title="重做" @click="editor?.chain().focus().redo().run()">↷</button>
       </div>
-      <button class="source-toggle" :class="{ active: sourceMode }" title="Markdown 源码模式 Ctrl+Shift+M" @click="toggleSource">{{ sourceMode ? '所见即所得' : '&lt;/&gt; 源码' }}</button>
+      <button class="source-toggle" :class="{ active: sourceMode }" title="Markdown 源码模式 Ctrl+Shift+M" @click="toggleSource">
+        <span class="tool-icon">&lt;/&gt;</span>
+        <span>{{ sourceMode ? '所见即所得' : '源码' }}</span>
+      </button>
       <input ref="imageInput" hidden type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif" @change="chooseImages">
     </div>
     <div v-if="uploading" class="editor-uploading"><i /> 正在上传并插入图片…</div>
@@ -255,44 +258,88 @@ onBeforeUnmount(() => { window.removeEventListener('keydown', onGlobalShortcut);
 </template>
 
 <style scoped>
-/* L-14：工具栏清晰化——H1/H2 等按钮字形加重加大、对比与层级贴近 Typora（scoped 覆盖全局基线） */
-.typora-toolbar button {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-  min-height: 34px;
-  padding-inline: 10px;
-  border-radius: 8px;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+.typora-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line-strong, #cbd5e1) 60%, transparent);
+  background: color-mix(in srgb, var(--surface, #ffffff) 90%, transparent);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(12px);
 }
-.typora-toolbar button:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+.typora-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--ink, #334155);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.typora-toolbar button .tool-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  opacity: 0.85;
+}
+.typora-toolbar button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent, #6366f1) 12%, var(--surface, #ffffff));
+  color: var(--accent, #6366f1);
 }
 .typora-toolbar button.active {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--accent, #6366f1);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent, #6366f1) 35%, transparent);
+}
+.typora-toolbar button.active .tool-icon {
+  opacity: 1;
+}
+.typora-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 .typora-toolbar .tool-group {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
-  padding: 2px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-/* L-14：代码块语言选择器 */
-.code-lang-select {
-  min-height: 34px;
-  padding: 0 8px;
+  padding: 3px;
   border-radius: 8px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface-solid);
-  color: var(--ink);
+  background: color-mix(in srgb, var(--ink, #000) 4%, transparent);
+}
+.source-toggle {
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--accent, #6366f1) 25%, transparent) !important;
+  background: color-mix(in srgb, var(--accent, #6366f1) 6%, var(--surface, #ffffff)) !important;
+}
+.source-toggle:hover {
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, var(--surface, #ffffff)) !important;
+}
+/* 代码块语言选择器 */
+.code-lang-select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong, #cbd5e1);
+  background: var(--surface-solid, #ffffff);
+  color: var(--ink, #1e293b);
   font-size: 12px;
   cursor: pointer;
 }
 .code-lang-select:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent, #6366f1);
 }
 </style>

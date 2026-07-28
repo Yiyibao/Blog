@@ -27,6 +27,9 @@ class DishServiceTest {
     @Mock
     DishRepository repository;
 
+    @Mock
+    DishCategoryService categoryService;
+
     @InjectMocks
     DishService service;
 
@@ -62,6 +65,50 @@ class DishServiceTest {
         var result = service.findPublished(0, 10);
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().get(0).name()).isEqualTo("Test Dish");
+    }
+
+    @Test
+    void findPublishedFiltersByCategorySlug() {
+        var dish = mockDish(1L, "mapo-tofu", true);
+        when(categoryService.findNameBySlug("chuan-cai")).thenReturn("川菜");
+        when(repository.findByCategoryAndPublishedTrueOrderByFeaturedDescDisplayOrderAsc("川菜", PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(List.of(dish)));
+
+        var result = service.findPublished(0, 10, "chuan-cai", null);
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).slug()).isEqualTo("mapo-tofu");
+    }
+
+    @Test
+    void findPublishedReturnsEmptyWhenCategoryNotFound() {
+        when(categoryService.findNameBySlug("nonexistent")).thenReturn(null);
+
+        var result = service.findPublished(0, 10, "nonexistent", null);
+        assertThat(result.items()).isEmpty();
+        assertThat(result.totalElements()).isZero();
+    }
+
+    @Test
+    void findPublishedSearchesByQuery() {
+        var dish = mockDish(1L, "mapo-tofu", true);
+        when(repository.searchPublishedEntities("%tofu%", PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(List.of(dish)));
+
+        var result = service.findPublished(0, 10, null, "tofu");
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).name()).isEqualTo("Test Dish");
+    }
+
+    @Test
+    void findPublishedSearchesByCategoryAndQuery() {
+        var dish = mockDish(1L, "mapo-tofu", true);
+        when(categoryService.findNameBySlug("chuan-cai")).thenReturn("川菜");
+        when(repository.searchPublishedByCategory("川菜", "%tofu%", PageRequests.of(0, 10)))
+            .thenReturn(new PageImpl<>(List.of(dish)));
+
+        var result = service.findPublished(0, 10, "chuan-cai", "tofu");
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).slug()).isEqualTo("mapo-tofu");
     }
 
     @Test

@@ -8,6 +8,11 @@ const content = useContentStore()
 const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
+const archivePageSize = 6
+
+function displayNumber(index: number) {
+  return String(content.archivePage * archivePageSize + index + 1).padStart(2, '0')
+}
 
 // NF-5：URL ?page=N（1 起）与 store.archivePage（0 起）双向同步，刷新/分享链接落在同一页。
 watch(() => route.query.page, (raw) => {
@@ -59,8 +64,8 @@ onMounted(() => {
       <template v-if="content.archiveLoading && !content.archivePosts.length">
         <div v-for="i in 3" :key="`sk-${i}`" class="archive-skeleton-card" aria-hidden="true" />
       </template>
-      <article v-for="post in content.archivePosts" :key="post.slug" class="project-card article-project-card" :style="{ '--project-color': post.color }">
-        <div class="project-number">{{ post.number }}</div>
+      <article v-for="(post, index) in content.archivePosts" :key="post.slug" class="project-card article-project-card" :style="{ '--project-color': post.color }">
+        <div class="project-number">{{ displayNumber(index) }}</div>
         <div class="article-project-copy">
           <div class="project-meta"><span v-if="post.date">{{ post.date }}</span><span>{{ post.category }}</span><span v-if="post.readTime">{{ post.readTime }} MIN READ</span></div>
           <h2><RouterLink :to="`/articles/${post.slug}`">{{ post.title }}</RouterLink></h2>

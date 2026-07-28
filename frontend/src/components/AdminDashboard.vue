@@ -3,9 +3,11 @@ import axios from 'axios'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  logout as apiLogout, convertPostsMarkdown, createDish, createPost, deleteDish, deletePost, fetchAdminDishes, fetchAdminPost, fetchAdminPosts,
-  fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish, updatePost, type AdminDish,
-  type AdminNoteSummary, type AdminPostSummary, type DishPayload, type PostPayload,
+  logout as apiLogout, convertPostsMarkdown, createDish, createDishCategory, createPost, createPostCategory, deleteDish,
+  deleteDishCategory, deletePost, deletePostCategory, fetchAdminCategories, fetchAdminDishCategories, fetchAdminDishes,
+  fetchAdminPost, fetchAdminPosts, fetchAdminStats, fetchNotes, getAdminSessionName, hasValidAdminSession, updateDish,
+  updateDishCategory, updatePost, updatePostCategory, type AdminDish, type AdminDishCategory, type AdminNoteSummary,
+  type AdminPostCategory, type AdminPostSummary, type DishPayload, type PostPayload,
 } from '../api/admin'
 import type { PostStatus } from '../data'
 
@@ -15,10 +17,23 @@ import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
 import PostRevisionDrawer from './PostRevisionDrawer.vue'
 import DashboardTrends from './DashboardTrends.vue'
 import type { AdminPost, AdminStats } from '../api/admin'
+import { useContentStore } from '../stores/contentStore'
 
 const router = useRouter()
 const route = useRoute()
 const tab = ref<'posts' | 'dishes'>('posts')
+
+const isOverview = computed(() => {
+  const section = Array.isArray(route.query.section) ? route.query.section[0] : route.query.section
+  return !section || section === 'overview'
+})
+
+const breadcrumbTitle = computed(() => {
+  const section = Array.isArray(route.query.section) ? route.query.section[0] : route.query.section
+  if (section === 'posts') return '后台管理 / 文章管理'
+  if (section === 'dishes') return '后台管理 / 菜品管理'
+  return '后台管理 / 总览'
+})
 
 function syncTabFromQuery() {
   const section = Array.isArray(route.query.section) ? route.query.section[0] : route.query.section
@@ -35,22 +50,30 @@ function setTab(nextTab: 'posts' | 'dishes') {
 const posts = ref<AdminPostSummary[]>([])
 const dishes = ref<AdminDish[]>([])
 const notes = ref<AdminNoteSummary[]>([])
+const categories = ref<AdminPostCategory[]>([])
+const dishCategories = ref<AdminDishCategory[]>([])
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const editorOpen = ref(false)
 const editingId = ref<number | null>(null)
 const editorKind = ref<'post' | 'dish'>('post')
+const categoryManagerOpen = ref(false)
+const categoryEditingId = ref<number | null>(null)
+const categoryForm = reactive({ name: '', description: '' })
+const dishCategoryManagerOpen = ref(false)
+const dishCategoryEditingId = ref<number | null>(null)
+const dishCategoryForm = reactive({ name: '', description: '' })
 const postStatusFilter = ref<'' | PostStatus>('')
 const postPage = ref(0)
-const postPageSize = 10
+const postPageSize = 6
 const postTotalPages = ref(1)
 const postTotal = ref(0)
 const dishPage = ref(0)
 const dishTotalPages = ref(1)
 const dishTotal = ref(0)
 const noteTotal = ref(0)
-const contentPageSize = 10
+const contentPageSize = 6
 const username = getAdminSessionName() || 'Admin'
 const greeting = (() => {
   const hour = new Date().getHours()
@@ -168,15 +191,19 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [, remoteDishes, remoteNotes] = await Promise.all([
+    const [, remoteDishes, remoteNotes, remoteCategories, remoteDishCategories] = await Promise.all([
       loadPosts(),
       fetchAdminDishes(dishPage.value, contentPageSize),
       fetchNotes(0, 1),
+      fetchAdminCategories(),
+      fetchAdminDishCategories(),
     ])
     dishes.value = remoteDishes.items
     dishTotal.value = remoteDishes.totalElements
     dishTotalPages.value = Math.max(1, remoteDishes.totalPages)
     notes.value = remoteNotes.items
+    categories.value = remoteCategories
+    dishCategories.value = remoteDishCategories
     noteTotal.value = remoteNotes.totalElements
     if (dishPage.value > 0 && dishPage.value >= remoteDishes.totalPages) {
       dishPage.value = Math.max(0, remoteDishes.totalPages - 1)
@@ -208,13 +235,13 @@ function newItem() {
   editorKind.value = tab.value === 'posts' ? 'post' : 'dish'
   if (editorKind.value === 'post') Object.assign(postForm, {
     slug: '', title: '', excerpt: '', date: new Date().toISOString().slice(0, 10), readTime: 5,
-    category: '工程实践', tags: '', color: '#A6784C', number: String(postTotal.value + 1).padStart(2, '0'), featured: false, status: 'DRAFT',
+    category: categories.value[0]?.name ?? '', tags: '', color: '#A6784C', number: String(postTotal.value + 1).padStart(2, '0'), featured: false, status: 'DRAFT',
     content: '',
     markdownContent: '# 新文章\n\n从这里开始写正文。',
     contentFormat: 'MARKDOWN',
   })
   else Object.assign(dishForm, {
-    slug: '', name: '', summary: '', category: '十分钟菜', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
+    slug: '', name: '', summary: '', category: dishCategories.value[0]?.name ?? '', imageUrl: '', imageAlt: '', imageCredit: '', imageSourceUrl: '',
     prepMinutes: 20, difficulty: '家常', rating: 4.5, featured: false, published: true,
     displayOrder: dishTotal.value + 1, baseServings: 2, ingredients: '', steps: '',
   })
@@ -259,6 +286,7 @@ function postPayload(): PostPayload {
   // content 原样回传保留 HTML 快照，双列并存随时可回退
   return {
     ...postForm,
+    slug: postForm.slug.trim() || null,
     tags: postForm.tags.split(',').map((item) => item.trim()).filter(Boolean),
     contentFormat: postMarkdownMode.value ? 'MARKDOWN' : 'HTML',
     markdownContent: postForm.markdownContent || null,
@@ -290,6 +318,8 @@ async function save() {
     }
     editorOpen.value = false
     await load()
+    const contentStore = useContentStore()
+    await contentStore.loadRemoteContent().catch(() => null)
   } catch (cause) {
     if (!handleAuthError(cause)) error.value = axios.isAxiosError(cause) && cause.response?.status === 409
       ? '保存失败：唯一字段与现有记录冲突。' : '保存失败，请检查必填项和字段格式。'
@@ -304,8 +334,98 @@ async function remove(kind: 'post' | 'dish', id: number, title: string) {
     if (kind === 'post') await deletePost(id)
     else await deleteDish(id)
     await load()
+    const contentStore = useContentStore()
+    await contentStore.loadRemoteContent().catch(() => null)
   } catch (cause) {
     if (!handleAuthError(cause)) error.value = '删除失败，请稍后再试。'
+  }
+}
+
+function newCategory() {
+  categoryEditingId.value = null
+  Object.assign(categoryForm, { name: '', description: '' })
+  categoryManagerOpen.value = true
+}
+
+function editCategory(category: AdminPostCategory) {
+  categoryEditingId.value = category.id
+  Object.assign(categoryForm, { name: category.name, description: category.description })
+}
+
+async function saveCategory() {
+  saving.value = true
+  error.value = ''
+  try {
+    const payload = { name: categoryForm.name.trim(), description: categoryForm.description.trim() }
+    const saved = categoryEditingId.value
+      ? await updatePostCategory(categoryEditingId.value, payload)
+      : await createPostCategory(payload)
+    categories.value = await fetchAdminCategories()
+    postForm.category = saved.name
+    categoryEditingId.value = null
+    Object.assign(categoryForm, { name: '', description: '' })
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = axios.isAxiosError(cause) && cause.response?.status === 409
+      ? '类别名称已存在。' : '类别保存失败，请检查名称。'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeCategory(category: AdminPostCategory) {
+  if (category.postCount > 0 || !window.confirm(`确认删除类别“${category.name}”？`)) return
+  try {
+    await deletePostCategory(category.id)
+    categories.value = await fetchAdminCategories()
+    if (!categories.value.some((item) => item.name === postForm.category)) {
+      postForm.category = categories.value[0]?.name ?? ''
+    }
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = '类别仍被文章使用，无法删除。'
+  }
+}
+
+function newDishCategory() {
+  dishCategoryEditingId.value = null
+  Object.assign(dishCategoryForm, { name: '', description: '' })
+  dishCategoryManagerOpen.value = true
+}
+
+function editDishCategory(category: AdminDishCategory) {
+  dishCategoryEditingId.value = category.id
+  Object.assign(dishCategoryForm, { name: category.name, description: category.description })
+}
+
+async function saveDishCategory() {
+  saving.value = true
+  error.value = ''
+  try {
+    const payload = { name: dishCategoryForm.name.trim(), description: dishCategoryForm.description.trim() }
+    const saved = dishCategoryEditingId.value
+      ? await updateDishCategory(dishCategoryEditingId.value, payload)
+      : await createDishCategory(payload)
+    dishCategories.value = await fetchAdminDishCategories()
+    dishForm.category = saved.name
+    dishCategoryEditingId.value = null
+    Object.assign(dishCategoryForm, { name: '', description: '' })
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = axios.isAxiosError(cause) && cause.response?.status === 409
+      ? '菜品分类名称已存在。' : '菜品分类保存失败，请检查名称。'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeDishCategory(category: AdminDishCategory) {
+  if (category.dishCount > 0 || !window.confirm(`确认删除分类“${category.name}”？`)) return
+  try {
+    await deleteDishCategory(category.id)
+    dishCategories.value = await fetchAdminDishCategories()
+    if (!dishCategories.value.some((item) => item.name === dishForm.category)) {
+      dishForm.category = dishCategories.value[0]?.name ?? ''
+    }
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = '分类仍被菜品使用，无法删除。'
   }
 }
 
@@ -327,20 +447,22 @@ onMounted(load)
     <AdminSidebar :post-total="postTotal" :dish-total="dishTotal" :note-total="noteTotal" />
 
     <main class="admin-main">
-      <header class="admin-topbar"><div><span class="admin-breadcrumb">后台管理 / 总览</span><h1>{{ greeting }}，{{ username }}</h1></div><div><RouterLink to="/">查看博客 ↗</RouterLink><button @click="logout">退出登录</button></div></header>
+      <header class="admin-topbar"><div><span class="admin-breadcrumb">{{ breadcrumbTitle }}</span><h1>{{ greeting }}，{{ username }}</h1></div><div><RouterLink to="/">查看博客 ↗</RouterLink><button @click="logout">退出登录</button></div></header>
 
-      <section class="admin-writing-hero">
-        <div><span class="writing-kicker">WRITING STUDIO · TYPORA MODE</span><h2>开始写一篇<br><em>学习笔记。</em></h2><p>所见即所得 Markdown、图片粘贴、KaTeX 公式、任务清单与自动保存，都在同一个安静的写作空间。</p><RouterLink class="admin-write-button" to="/admin/notes"><span>打开 Typora 写作台</span><b>→</b></RouterLink></div>
-        <div class="writing-preview" aria-hidden="true"><header><i /><i /><i /><span>learning-note.md</span></header><div><small># 今天学到的东西</small><strong>让知识留下结构，<br>而不只是痕迹。</strong><p>输入 <b>/</b> 快速插入 · 自动保存中</p></div><footer><span>Markdown</span><span>{{ noteTotal }} NOTES</span></footer></div>
-      </section>
+      <template v-if="isOverview">
+        <section class="admin-writing-hero">
+          <div><span class="writing-kicker">WRITING STUDIO · TYPORA MODE</span><h2>开始写一篇<br><em>学习笔记。</em></h2><p>所见即所得 Markdown、图片粘贴、KaTeX 公式、任务清单与自动保存，都在同一个安静的写作空间。</p><RouterLink class="admin-write-button" to="/admin/notes"><span>打开 Typora 写作台</span><b>→</b></RouterLink></div>
+          <div class="writing-preview" aria-hidden="true"><header><i /><i /><i /><span>learning-note.md</span></header><div><small># 今天学到的东西</small><strong>让知识留下结构，<br>而不只是痕迹。</strong><p>输入 <b>/</b> 快速插入 · 自动保存中</p></div><footer><span>Markdown</span><span>{{ noteTotal }} NOTES</span></footer></div>
+        </section>
 
-      <section class="admin-stat-grid"><article><span>文章</span><strong>{{ postTotal }}</strong><small>POSTS</small></article><article><span>菜品</span><strong>{{ dishTotal }}</strong><small>DISHES</small></article><article><span>学习笔记</span><strong>{{ noteTotal }}</strong><small>NOTES</small></article></section>
+        <section class="admin-stat-grid"><article><span>文章</span><strong>{{ postTotal }}</strong><small>POSTS</small></article><article><span>菜品</span><strong>{{ dishTotal }}</strong><small>DISHES</small></article><article><span>学习笔记</span><strong>{{ noteTotal }}</strong><small>NOTES</small></article></section>
 
-      <!-- 4D：趋势/热文/容量/AI 用量 -->
-      <DashboardTrends v-if="adminStats" :stats="adminStats" />
+        <!-- 4D：趋势/热文/容量/AI 用量 -->
+        <DashboardTrends v-if="adminStats" :stats="adminStats" />
+      </template>
 
       <section class="admin-content-section">
-        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></header>
+        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><div class="content-head-actions"><button class="button secondary" type="button" @click="tab === 'posts' ? newCategory() : newDishCategory()">分类管理</button><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></div></header>
         <div v-if="tab === 'posts'" class="admin-tabs" style="margin-bottom: 16px">
           <button :class="{ active: postStatusFilter === '' }" @click="postStatusFilter = ''">全部</button>
           <button :class="{ active: postStatusFilter === 'PUBLISHED' }" @click="postStatusFilter = 'PUBLISHED'">已发布</button>
@@ -349,8 +471,8 @@ onMounted(load)
         <p v-if="error" class="admin-error admin-page-error" role="alert">{{ error }}</p>
         <div v-if="loading" class="admin-empty">正在读取管理数据…</div>
         <div v-else-if="tab === 'posts'" class="admin-table">
-          <div class="admin-table-head"><span>编号</span><span>内容</span><span>状态</span><span>操作</span></div>
-          <article v-for="post in posts" :key="post.id"><span class="admin-index">{{ post.number }}</span><div><small>{{ post.category }} · {{ post.date }}</small><strong>{{ post.title }}</strong><p>{{ post.excerpt }}</p></div><span class="admin-status" :class="{ featured: post.featured && post.status !== 'DRAFT' }">{{ postStatusText(post) }}</span><div class="admin-row-actions"><button @click="editPost(post)">编辑</button><button class="danger" @click="remove('post', post.id, post.title)">删除</button></div></article>
+          <div class="admin-table-head"><span>序号</span><span>内容</span><span>状态</span><span>操作</span></div>
+          <article v-for="(post, index) in posts" :key="post.id"><span class="admin-index">{{ String(postPage * postPageSize + index + 1).padStart(2, '0') }}</span><div><small>{{ post.category }} · {{ post.date }}</small><strong>{{ post.title }}</strong><p>{{ post.excerpt }}</p></div><span class="admin-status" :class="{ featured: post.featured && post.status !== 'DRAFT' }">{{ postStatusText(post) }}</span><div class="admin-row-actions"><button @click="editPost(post)">编辑</button><button class="danger" @click="remove('post', post.id, post.title)">删除</button></div></article>
           <nav v-if="postTotalPages > 1" class="pagination" aria-label="后台文章分页">
             <button type="button" :disabled="postPage <= 0" @click="postPage -= 1; load()">上一页</button>
             <span>{{ postPage + 1 }} / {{ postTotalPages }}</span>
@@ -358,8 +480,8 @@ onMounted(load)
           </nav>
         </div>
         <div v-else class="admin-table admin-dish-table">
-          <div class="admin-table-head"><span>顺序</span><span>菜品</span><span>状态</span><span>操作</span></div>
-          <article v-for="dish in dishes" :key="dish.id"><span class="admin-index">{{ String(dish.displayOrder).padStart(2, '0') }}</span><div class="admin-dish-cell"><img :src="dish.imageUrl" :alt="dish.imageAlt"><div><small>{{ dish.category }} · {{ dish.prepMinutes }} 分钟 · ★ {{ dish.rating.toFixed(1) }}</small><strong>{{ dish.name }}</strong><p>{{ dish.summary }}</p></div></div><span class="admin-status" :class="{ featured: dish.featured && dish.published }">{{ dish.published ? (dish.featured ? '精选' : '已发布') : '草稿' }}</span><div class="admin-row-actions"><button @click="editDish(dish)">编辑</button><button class="danger" @click="remove('dish', dish.id, dish.name)">删除</button></div></article>
+          <div class="admin-table-head"><span>序号</span><span>菜品</span><span>状态</span><span>操作</span></div>
+          <article v-for="(dish, index) in dishes" :key="dish.id"><span class="admin-index">{{ String(dishPage * contentPageSize + index + 1).padStart(2, '0') }}</span><div class="admin-dish-cell"><img :src="dish.imageUrl" :alt="dish.imageAlt"><div><small>{{ dish.category }} · {{ dish.prepMinutes }} 分钟 · ★ {{ dish.rating.toFixed(1) }}</small><strong>{{ dish.name }}</strong><p>{{ dish.summary }}</p></div></div><span class="admin-status" :class="{ featured: dish.featured && dish.published }">{{ dish.published ? (dish.featured ? '精选' : '已发布') : '草稿' }}</span><div class="admin-row-actions"><button @click="editDish(dish)">编辑</button><button class="danger" @click="remove('dish', dish.id, dish.name)">删除</button></div></article>
           <nav v-if="dishTotalPages > 1" class="pagination" aria-label="后台菜品分页"><button type="button" :disabled="dishPage <= 0" @click="dishPage -= 1; load()">上一页</button><span>{{ dishPage + 1 }} / {{ dishTotalPages }}</span><button type="button" :disabled="dishPage >= dishTotalPages - 1" @click="dishPage += 1; load()">下一页</button></nav>
         </div>
       </section>
@@ -367,42 +489,161 @@ onMounted(load)
 
     <div v-if="editorOpen" class="admin-editor-backdrop" @click.self="editorOpen = false">
       <form class="admin-editor" @submit.prevent="save">
-        <header><div><small>{{ editingId ? 'EDIT RECORD' : 'NEW RECORD' }}</small><h2>{{ editingId ? '编辑' : '新建' }}{{ editorNoun }}</h2></div><div class="editor-head-actions"><button v-if="editorKind === 'post' && editingId" type="button" class="revision-trigger" @click="revisionDrawerOpen = true">↺ 历史版本</button><button type="button" aria-label="关闭编辑器" @click="editorOpen = false">×</button></div></header>
-        <template v-if="editorKind === 'post'">
-          <div class="admin-form-grid"><label>标题<input v-model="postForm.title" required maxlength="200"></label><label>Slug<input v-model="postForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="postForm.category" required></label><label>发布日期<input v-model="postForm.date" type="date" required></label><label>阅读时间（分钟）<input v-model.number="postForm.readTime" type="number" min="1" max="180" required></label><label>编号<input v-model="postForm.number" required maxlength="10"></label><label>颜色<input v-model="postForm.color" type="color" required></label><label>状态<select v-model="postForm.status" required><option value="DRAFT">草稿</option><option value="PUBLISHED">发布</option></select></label><label class="admin-check"><input v-model="postForm.featured" type="checkbox">设为精选文章</label></div>
-          <label>标签（逗号分隔）<input v-model="postForm.tags" required placeholder="Vue, TypeScript"></label>
-          <label>摘要<textarea v-model="postForm.excerpt" rows="3" required /></label>
-          <!-- 4A-5：场景化 AI 动作（结果只填入不保存） -->
-          <AiActionChips :get-context="currentPostContext" @apply="applyAiAction" />
-          <!-- 3A-3：Markdown 模式复用 TyporaEditor；纯 HTML 存量篇先转换（旧文本域兜底可继续编辑 HTML） -->
-          <div v-if="postMarkdownMode" class="post-markdown-field">
-            <span class="field-label">正文（Markdown）</span>
-            <TyporaEditor
-              v-model="postForm.markdownContent"
-              :upload-image="rejectPostImageUpload"
-              @upload-error="error = '文章编辑器暂不支持直传图片，请使用站内路径或外链。'"
-            />
+        <header>
+          <div>
+            <small>{{ editingId ? 'EDIT RECORD' : 'NEW RECORD' }}</small>
+            <h2>{{ editingId ? '编辑' : '新建' }}{{ editorNoun }}</h2>
           </div>
-          <template v-else>
-            <div class="legacy-html-notice" role="status">
-              <span>该篇为存量 HTML，尚未生成 Markdown 稿。转换后即可用 Markdown 编辑器（保存前不改线上渲染）。</span>
-              <button type="button" :disabled="converting" @click="convertLegacyPost">{{ converting ? '转换中…' : '一键转换' }}</button>
+          <div class="editor-head-actions">
+            <button v-if="editorKind === 'post' && editingId" type="button" class="revision-trigger" @click="revisionDrawerOpen = true">↺ 历史版本</button>
+            <button type="button" aria-label="关闭编辑器" @click="editorOpen = false">×</button>
+          </div>
+        </header>
+
+        <template v-if="editorKind === 'post'">
+          <!-- 卡片 1：属性与元数据 -->
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />基本属性与分类</div>
+            <label class="full-width-label">
+              <span>文章标题</span>
+              <input v-model="postForm.title" type="text" required maxlength="200" placeholder="请输入清晰、具有概括性的文章标题…">
+            </label>
+            <div class="admin-form-grid">
+              <label><span>Slug（路由别名，可选）</span><input v-model="postForm.slug" type="text" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="留空将根据标题自动生成"></label>
+              <label><span>文章类别</span><span class="category-select-row"><select v-model="postForm.category" required><option value="" disabled>请先创建并选择类别</option><option v-for="category in categories" :key="category.id" :value="category.name">{{ category.name }}</option></select><button type="button" @click="newCategory">＋ 新建</button></span></label>
+              <label><span>发布日期</span><input v-model="postForm.date" type="date" required></label>
+              <label><span>预计阅读时间 (分钟)</span><input v-model.number="postForm.readTime" type="number" min="1" max="180" required></label>
+              <label><span>文章编号</span><input v-model="postForm.number" type="text" required maxlength="10" placeholder="01"></label>
+              <label><span>发布状态</span>
+                <select v-model="postForm.status" required>
+                  <option value="DRAFT">📝 草稿 (DRAFT)</option>
+                  <option value="PUBLISHED">🚀 已发布 (PUBLISHED)</option>
+                </select>
+              </label>
+              <label><span>主题色彩</span>
+                <div class="color-picker-wrap">
+                  <input v-model="postForm.color" type="color" required>
+                  <span class="color-hex-val">{{ postForm.color }}</span>
+                </div>
+              </label>
+              <label class="admin-check">
+                <input v-model="postForm.featured" type="checkbox">
+                <span>设为首页精选文章</span>
+              </label>
             </div>
-            <label>HTML 正文<textarea v-model="postForm.content" class="admin-code-editor" rows="14" required spellcheck="false" /></label>
-          </template>
+          </div>
+
+          <!-- 卡片 2：标签与摘要 -->
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />标签与摘要</div>
+            <label>
+              <span>文章标签（英文逗号分隔）</span>
+              <input v-model="postForm.tags" type="text" required placeholder="Vue, TypeScript, WebGL">
+            </label>
+            <label>
+              <span>内容摘要 (Excerpt)</span>
+              <textarea v-model="postForm.excerpt" rows="3" required placeholder="简短总结本篇文章的核心洞见与主要内容…" />
+            </label>
+          </div>
+
+          <!-- 卡片 3：AI 智能助手与正文编辑 -->
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />AI 智能创作与正文内容</div>
+            <!-- 4A-5：场景化 AI 动作（结果只填入不保存） -->
+            <AiActionChips :get-context="currentPostContext" @apply="applyAiAction" />
+            <!-- 3A-3：Markdown 模式复用 TyporaEditor；纯 HTML 存量篇先转换 -->
+            <div v-if="postMarkdownMode" class="post-markdown-field">
+              <TyporaEditor
+                v-model="postForm.markdownContent"
+                :upload-image="rejectPostImageUpload"
+                @upload-error="error = '文章编辑器暂不支持直传图片，请使用站内路径或外链。'"
+              />
+            </div>
+            <template v-else>
+              <div class="legacy-html-notice" role="status">
+                <span>该篇为存量 HTML，尚未生成 Markdown 稿。转换后即可用 Markdown 编辑器。</span>
+                <button type="button" :disabled="converting" @click="convertLegacyPost">{{ converting ? '转换中…' : '一键转换' }}</button>
+              </div>
+              <label><span>HTML 正文</span><textarea v-model="postForm.content" class="admin-code-editor" rows="14" required spellcheck="false" /></label>
+            </template>
+          </div>
         </template>
         <template v-else>
-          <div class="admin-form-grid"><label>菜品名称<input v-model="dishForm.name" required maxlength="120"></label><label>Slug<input v-model="dishForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label><label>分类<input v-model="dishForm.category" required maxlength="60"></label><label>准备时间（分钟）<input v-model.number="dishForm.prepMinutes" type="number" min="1" max="1440" required></label><label>难度<select v-model="dishForm.difficulty" required><option value="简单">简单</option><option value="家常">家常</option><option value="进阶">进阶</option></select></label><label>评分<input v-model.number="dishForm.rating" type="number" min="0" max="5" step="0.1" required></label><label>展示顺序<input v-model.number="dishForm.displayOrder" type="number" min="0" required></label><label>份量基准（人份）<input v-model.number="dishForm.baseServings" type="number" min="1" max="20" required></label><label class="admin-check"><input v-model="dishForm.featured" type="checkbox">设为精选菜品</label><label class="admin-check"><input v-model="dishForm.published" type="checkbox">公开发布</label></div>
-          <label>简介<textarea v-model="dishForm.summary" rows="3" required maxlength="1000" /></label>
-          <label>图片地址<input v-model="dishForm.imageUrl" required placeholder="/food/example.jpg 或 https://..."></label>
-          <label>图片替代文本<input v-model="dishForm.imageAlt" required maxlength="240"></label>
-          <div class="admin-form-grid"><label>图片署名<input v-model="dishForm.imageCredit" required maxlength="240" placeholder="作者 · 许可"></label><label>图片来源页面<input v-model="dishForm.imageSourceUrl" type="url" required></label></div>
-          <label>食材清单（每行一项）<textarea v-model="dishForm.ingredients" rows="7" required placeholder="嫩豆腐 400 克&#10;牛肉末 80 克" /></label>
-          <label>制作步骤（每行一步）<textarea v-model="dishForm.steps" rows="8" required placeholder="豆腐切块并焯水。&#10;炒香肉末与豆瓣酱。" /></label>
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />菜品基本属性</div>
+            <div class="admin-form-grid">
+              <label><span>菜品名称</span><input v-model="dishForm.name" required maxlength="120"></label>
+              <label><span>Slug</span><input v-model="dishForm.slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*"></label>
+              <label><span>菜品分类</span><span class="category-select-row"><select v-model="dishForm.category" required><option value="" disabled>请先创建并选择分类</option><option v-for="category in dishCategories" :key="category.id" :value="category.name">{{ category.name }}</option></select><button type="button" @click="newDishCategory">＋ 新建</button></span></label>
+              <label><span>准备时间（分钟）</span><input v-model.number="dishForm.prepMinutes" type="number" min="1" max="1440" required></label>
+              <label><span>难度</span>
+                <select v-model="dishForm.difficulty" required>
+                  <option value="简单">简单</option>
+                  <option value="家常">家常</option>
+                  <option value="进阶">进阶</option>
+                </select>
+              </label>
+              <label><span>评分</span><input v-model.number="dishForm.rating" type="number" min="0" max="5" step="0.1" required></label>
+              <label><span>展示顺序</span><input v-model.number="dishForm.displayOrder" type="number" min="0" required></label>
+              <label><span>份量基准（人份）</span><input v-model.number="dishForm.baseServings" type="number" min="1" max="20" required></label>
+              <label class="admin-check"><input v-model="dishForm.featured" type="checkbox"><span>设为精选菜品</span></label>
+              <label class="admin-check"><input v-model="dishForm.published" type="checkbox"><span>公开发布</span></label>
+            </div>
+          </div>
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />简介与媒体图示</div>
+            <label><span>简介</span><textarea v-model="dishForm.summary" rows="3" required maxlength="1000" /></label>
+            <label><span>图片地址</span><input v-model="dishForm.imageUrl" required placeholder="/food/example.jpg 或 https://..."></label>
+            <label><span>图片替代文本</span><input v-model="dishForm.imageAlt" required maxlength="240"></label>
+            <div class="admin-form-grid">
+              <label><span>图片署名</span><input v-model="dishForm.imageCredit" required maxlength="240" placeholder="作者 · 许可"></label>
+              <label><span>图片来源页面</span><input v-model="dishForm.imageSourceUrl" type="url" required></label>
+            </div>
+          </div>
+          <div class="editor-card">
+            <div class="card-title"><span class="badge-dot" />食材与烹饪步骤</div>
+            <label><span>食材清单（每行一项）</span><textarea v-model="dishForm.ingredients" rows="7" required placeholder="嫩豆腐 400 克&#10;牛肉末 80 克" /></label>
+            <label><span>制作步骤（每行一步）</span><textarea v-model="dishForm.steps" rows="8" required placeholder="豆腐切块并焯水。&#10;炒香肉末与豆瓣酱。" /></label>
+          </div>
         </template>
         <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
         <footer><button class="button secondary" type="button" @click="editorOpen = false">取消</button><button class="button primary" type="submit" :disabled="saving">{{ saving ? '正在保存…' : '保存内容 ↗' }}</button></footer>
       </form>
+    </div>
+
+    <div v-if="categoryManagerOpen" class="admin-editor-backdrop" @click.self="categoryManagerOpen = false">
+      <section class="admin-editor category-manager" role="dialog" aria-modal="true" aria-label="文章类别管理">
+        <header><div><small>POST CATEGORIES</small><h2>类别管理</h2></div><button type="button" aria-label="关闭类别管理" @click="categoryManagerOpen = false">×</button></header>
+        <form class="editor-card category-form" @submit.prevent="saveCategory">
+          <label><span>类别名称</span><input v-model="categoryForm.name" type="text" required maxlength="80" placeholder="如：工程实践"></label>
+          <label><span>类别说明（可选）</span><input v-model="categoryForm.description" type="text" maxlength="500" placeholder="简单说明该类别收录的内容"></label>
+          <div class="category-form-actions"><button v-if="categoryEditingId" class="button secondary" type="button" @click="categoryEditingId = null; categoryForm.name = ''; categoryForm.description = ''">取消编辑</button><button class="button primary" type="submit" :disabled="saving">{{ categoryEditingId ? '保存修改' : '新建类别' }}</button></div>
+        </form>
+        <div class="category-list">
+          <article v-for="category in categories" :key="category.id">
+            <div><strong>{{ category.name }}</strong><small>{{ category.slug }} · {{ category.publishedPostCount }}/{{ category.postCount }} 篇已发布</small><p v-if="category.description">{{ category.description }}</p></div>
+            <div class="admin-row-actions"><button type="button" @click="editCategory(category)">编辑</button><button class="danger" type="button" :disabled="category.postCount > 0" :title="category.postCount > 0 ? '请先调整使用该类别的文章' : ''" @click="removeCategory(category)">删除</button></div>
+          </article>
+          <p v-if="!categories.length" class="admin-empty">还没有类别，请先新建一个类别。</p>
+        </div>
+        <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
+      </section>
+    </div>
+
+    <div v-if="dishCategoryManagerOpen" class="admin-editor-backdrop" @click.self="dishCategoryManagerOpen = false">
+      <section class="admin-editor category-manager" role="dialog" aria-modal="true" aria-label="菜品分类管理">
+        <header><div><small>DISH CATEGORIES</small><h2>菜品分类管理</h2></div><button type="button" aria-label="关闭菜品分类管理" @click="dishCategoryManagerOpen = false">×</button></header>
+        <form class="editor-card category-form" @submit.prevent="saveDishCategory">
+          <label><span>分类名称</span><input v-model="dishCategoryForm.name" type="text" required maxlength="60" placeholder="如：十分钟菜"></label>
+          <label><span>分类说明（可选）</span><input v-model="dishCategoryForm.description" type="text" maxlength="500"></label>
+          <div class="category-form-actions"><button v-if="dishCategoryEditingId" class="button secondary" type="button" @click="dishCategoryEditingId = null; dishCategoryForm.name = ''; dishCategoryForm.description = ''">取消编辑</button><button class="button primary" type="submit" :disabled="saving">{{ dishCategoryEditingId ? '保存修改' : '新建分类' }}</button></div>
+        </form>
+        <div class="category-list">
+          <article v-for="category in dishCategories" :key="category.id"><div><strong>{{ category.name }}</strong><small>{{ category.slug }} · {{ category.publishedDishCount }}/{{ category.dishCount }} 道已发布</small><p v-if="category.description">{{ category.description }}</p></div><div class="admin-row-actions"><button type="button" @click="editDishCategory(category)">编辑</button><button class="danger" type="button" :disabled="category.dishCount > 0" :title="category.dishCount > 0 ? '请先调整使用该分类的菜品' : ''" @click="removeDishCategory(category)">删除</button></div></article>
+          <p v-if="!dishCategories.length" class="admin-empty">还没有菜品分类，请先新建。</p>
+        </div>
+        <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
+      </section>
     </div>
 
     <!-- 4C：版本历史抽屉（仅编辑既有文章时可用） -->
@@ -420,15 +661,45 @@ onMounted(load)
 /* 4C：编辑器头部动作区与历史版本入口 */
 .editor-head-actions { display: flex; align-items: center; gap: 8px; }
 .revision-trigger {
+  padding: 6px 12px;
   border: 1px solid var(--line-strong);
+  border-radius: 8px;
   background: var(--surface);
   color: var(--ink);
-  border-radius: 10px;
-  padding: 6px 12px;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.revision-trigger:hover { border-color: var(--accent); }
+.revision-trigger:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.revision-trigger:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: none;
+}
+
+.content-head-actions, .category-select-row, .category-form-actions { display: flex; align-items: center; gap: 10px; }
+.category-select-row select { flex: 1; min-width: 0; }
+.category-select-row button { flex: none; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-solid); color: var(--ink); cursor: pointer; }
+.category-manager { max-width: 760px; }
+.category-form { display: grid; grid-template-columns: 1fr 1.5fr auto; align-items: end; gap: 12px; }
+.category-form-actions { padding-bottom: 1px; }
+.category-list { display: grid; gap: 10px; }
+.category-list article { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-solid); }
+.category-list article > div:first-child { display: grid; gap: 3px; }
+.category-list small, .category-list p { color: var(--muted); font-size: 12px; }
+.category-list p { margin: 2px 0 0; }
+.category-list button:disabled { cursor: not-allowed; opacity: 0.45; }
+@media (max-width: 720px) {
+  .category-form { grid-template-columns: 1fr; }
+  .category-list article { align-items: flex-start; flex-direction: column; }
+  .content-head-actions { width: 100%; }
+}
 
 /* 3A-3：文章 Markdown 编辑区与存量转换提示条 */
 .post-markdown-field {
@@ -461,9 +732,17 @@ onMounted(load)
   background: var(--surface-solid);
   color: var(--ink);
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .legacy-html-notice button:hover:not(:disabled) {
   border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-solid));
+  transform: translateY(-1px);
+}
+.legacy-html-notice button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
 }
 </style>

@@ -9,6 +9,7 @@ const mockFetchDishes = vi.fn()
 const mockFetchDish = vi.fn()
 const mockFavoriteDish = vi.fn()
 const mockFetchDishFavorites = vi.fn()
+const mockFetchDishCategories = vi.fn()
 
 vi.mock('../api/kitchen', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/kitchen')>()
@@ -25,9 +26,17 @@ vi.mock('../api/content', () => ({
   fetchDish: (...args: unknown[]) => mockFetchDish(...args),
   favoriteDish: (...args: unknown[]) => mockFavoriteDish(...args),
   fetchDishFavorites: (...args: unknown[]) => mockFetchDishFavorites(...args),
+  fetchDishCategories: (...args: unknown[]) => mockFetchDishCategories(...args),
 }))
 
 let dishSeq = 0
+
+const CATEGORY_ITEMS = [
+  { name: '硬菜', slug: '硬菜' },
+  { name: '凉菜', slug: '凉菜' },
+  { name: '家常菜', slug: '家常菜' },
+]
+
 function makeDish(overrides: Partial<Dish> = {}): Dish {
   dishSeq += 1
   return {
@@ -55,8 +64,34 @@ function makeDish(overrides: Partial<Dish> = {}): Dish {
   }
 }
 
+const ALL_TEST_DISHES = [
+  makeDish({ name: '红烧肉', category: '硬菜', featured: true }),
+  makeDish({ name: '拍黄瓜', category: '凉菜' }),
+  makeDish({ name: '蒜蓉西兰花', category: '家常菜' }),
+]
+
+function mockFetchDishesImpl(page: number, size: number, categorySlug?: string, query?: string) {
+  let filtered = [...ALL_TEST_DISHES]
+  if (categorySlug) {
+    filtered = filtered.filter(d => d.category.toLowerCase() === categorySlug.toLowerCase())
+  }
+  if (query) {
+    const q = query.toLowerCase()
+    filtered = filtered.filter(d =>
+      d.name.toLowerCase().includes(q) ||
+      d.summary.toLowerCase().includes(q) ||
+      d.category.toLowerCase().includes(q))
+  }
+  return Promise.resolve({
+    items: filtered, page, size,
+    totalElements: filtered.length,
+    totalPages: Math.max(1, Math.ceil(filtered.length / size)),
+  })
+}
+
 function pageOf<T>(items: T[], extra: Partial<{ totalElements: number; totalPages: number }> = {}) {
-  return { items, page: 0, size: 12, totalElements: extra.totalElements ?? items.length, totalPages: extra.totalPages ?? 1 }
+  const total = extra.totalElements ?? items.length
+  return { items, page: 0, size: 4, totalElements: total, totalPages: extra.totalPages ?? Math.max(1, Math.ceil(total / 4)) }
 }
 
 let router: Router
@@ -82,13 +117,11 @@ beforeEach(() => {
   mockFetchDish.mockReset()
   mockFavoriteDish.mockReset()
   mockFetchDishFavorites.mockReset()
+  mockFetchDishCategories.mockReset()
   document.body.innerHTML = ''
   mockFetchDishFavorites.mockResolvedValue(pageOf([]))
-  mockFetchDishes.mockResolvedValue(pageOf([
-    makeDish({ name: '红烧肉', category: '硬菜', featured: true }),
-    makeDish({ name: '拍黄瓜', category: '凉菜' }),
-    makeDish({ name: '蒜蓉西兰花', category: '家常菜' }),
-  ]))
+  mockFetchDishCategories.mockResolvedValue(CATEGORY_ITEMS)
+  mockFetchDishes.mockImplementation(mockFetchDishesImpl)
 })
 
 describe('FoodSection baseline', () => {
@@ -116,11 +149,12 @@ describe('FoodSection baseline', () => {
     expect(cards[1].classes()).not.toContain('featured')
   })
 
-  it('filters by category tab and drops the featured treatment outside 全部', async () => {
+  it('filters by category tab, calls server with categorySlug, resets to page 0', async () => {
     const wrapper = await mountSection()
     const tab = wrapper.findAll('.food-filter-tabs button').find(b => b.text() === '凉菜')!
     await tab.trigger('click')
     await flushPromises()
+    expect(mockFetchDishes).toHaveBeenLastCalledWith(0, 4, '凉菜', undefined)
     const cards = wrapper.findAll('.dish-card')
     expect(cards).toHaveLength(1)
     expect(cards[0].text()).toContain('拍黄瓜')
@@ -128,10 +162,12 @@ describe('FoodSection baseline', () => {
     expect(wrapper.find('.food-catalog-head h2').text()).toContain('凉菜')
   })
 
-  it('filters by search keyword across name/summary/category', async () => {
+  it('filters by search keyword with debounce, calls server with query param', async () => {
     const wrapper = await mountSection()
     await wrapper.find('.food-search input').setValue('西兰花')
+    await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
+    expect(mockFetchDishes).toHaveBeenLastCalledWith(0, 4, undefined, '西兰花')
     const cards = wrapper.findAll('.dish-card')
     expect(cards).toHaveLength(1)
     expect(cards[0].text()).toContain('蒜蓉西兰花')
@@ -140,6 +176,7 @@ describe('FoodSection baseline', () => {
   it('shows a status empty state when nothing matches the query', async () => {
     const wrapper = await mountSection()
     await wrapper.find('.food-search input').setValue('佛跳墙')
+    await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     const empty = wrapper.find('.food-no-result')
     expect(empty.exists()).toBe(true)
@@ -149,28 +186,93 @@ describe('FoodSection baseline', () => {
   })
 
   it('renders hero stats from global totals and accumulated categories', async () => {
-    sessionStorage.clear() // FD-13：登录态英雄区换菜单卡，统计盒是匿名视角
+    sessionStorage.clear()
     const wrapper = await mountSection()
     const stats = wrapper.find('.food-stats')
     expect(stats.text()).toContain('03')
     expect(stats.text()).toContain('3')
   })
 
-  it('keeps hero stats monotonic across pagination instead of shrinking', async () => {
-    sessionStorage.clear() // FD-13：统计盒是匿名视角
-    mockFetchDishes.mockResolvedValueOnce(pageOf([
-      makeDish({ name: '红烧肉', category: '硬菜', featured: true }),
-      makeDish({ name: '拍黄瓜', category: '凉菜' }),
-    ], { totalElements: 3, totalPages: 2 }))
+  it('fires only one fetchDishes call per pagination click (no duplicate requests)', async () => {
+    mockFetchDishes
+      .mockReset()
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '红烧肉', category: '硬菜', featured: true }), makeDish({ name: '拍黄瓜', category: '凉菜' })],
+        page: 0, size: 4, totalElements: 3, totalPages: 2,
+      }))
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '蒜蓉西兰花', category: '家常菜' })],
+        page: 1, size: 4, totalElements: 3, totalPages: 2,
+      }))
+      .mockImplementation(() => { throw new Error('unexpected extra fetchDishes call') })
     const wrapper = await mountSection()
-    expect(wrapper.find('.food-stats').text()).toContain('2')
-    mockFetchDishes.mockResolvedValueOnce(pageOf([
-      makeDish({ name: '蒜蓉西兰花', category: '家常菜' }),
-    ], { totalElements: 3, totalPages: 2 }))
+    expect(mockFetchDishes).toHaveBeenCalledTimes(1)
     const next = wrapper.findAll('.pagination button')[1]
     await next.trigger('click')
     await flushPromises()
-    expect(mockFetchDishes).toHaveBeenLastCalledWith(1, 12)
+    expect(mockFetchDishes).toHaveBeenCalledTimes(2)
+  })
+
+  it('fires only one fetchDishes call per category filter change (no duplicate requests)', async () => {
+    mockFetchDishes
+      .mockReset()
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '红烧肉', category: '硬菜', featured: true }), makeDish({ name: '拍黄瓜', category: '凉菜' }), makeDish({ name: '蒜蓉西兰花', category: '家常菜' })],
+        page: 0, size: 4, totalElements: 3, totalPages: 1,
+      }))
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '拍黄瓜', category: '凉菜' })],
+        page: 0, size: 4, totalElements: 1, totalPages: 1,
+      }))
+      .mockImplementation(() => { throw new Error('unexpected extra fetchDishes call') })
+    const wrapper = await mountSection()
+    expect(mockFetchDishes).toHaveBeenCalledTimes(1)
+    const tab = wrapper.findAll('.food-filter-tabs button').find(b => b.text() === '凉菜')!
+    await tab.trigger('click')
+    await flushPromises()
+    expect(mockFetchDishes).toHaveBeenCalledTimes(2)
+  })
+
+  it('fires only one fetchDishes call per search (no duplicate requests)', async () => {
+    mockFetchDishes
+      .mockReset()
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '红烧肉', category: '硬菜', featured: true }), makeDish({ name: '拍黄瓜', category: '凉菜' }), makeDish({ name: '蒜蓉西兰花', category: '家常菜' })],
+        page: 0, size: 4, totalElements: 3, totalPages: 1,
+      }))
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '蒜蓉西兰花', category: '家常菜' })],
+        page: 0, size: 4, totalElements: 1, totalPages: 1,
+      }))
+      .mockImplementation(() => { throw new Error('unexpected extra fetchDishes call') })
+    const wrapper = await mountSection()
+    expect(mockFetchDishes).toHaveBeenCalledTimes(1)
+    await wrapper.find('.food-search input').setValue('西兰花')
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+    expect(mockFetchDishes).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps hero stats monotonic across pagination instead of shrinking', async () => {
+    sessionStorage.clear()
+    mockFetchDishes
+      .mockReset()
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [
+          makeDish({ name: '红烧肉', category: '硬菜', featured: true }),
+          makeDish({ name: '拍黄瓜', category: '凉菜' }),
+        ], page: 0, size: 4, totalElements: 3, totalPages: 2,
+      }))
+      .mockImplementationOnce(() => Promise.resolve({
+        items: [makeDish({ name: '蒜蓉西兰花', category: '家常菜' })],
+        page: 1, size: 4, totalElements: 3, totalPages: 2,
+      }))
+    const wrapper = await mountSection()
+    expect(wrapper.find('.food-stats').text()).toContain('2')
+    const next = wrapper.findAll('.pagination button')[1]
+    await next.trigger('click')
+    await flushPromises()
+    expect(mockFetchDishes).toHaveBeenLastCalledWith(1, 4, undefined, undefined)
     const statsText = wrapper.find('.food-stats').text()
     expect(statsText).toContain('3')
   })
@@ -182,18 +284,18 @@ describe('FoodSection baseline', () => {
 
   it('opens the roulette from the catalog trigger and lands on the drawn dish', async () => {
     const wrapper = await mountSection()
-    await wrapper.find('.food-search input').setValue('拍黄瓜')
     await wrapper.find('.roulette-trigger').trigger('click')
     await flushPromises()
     expect(document.body.querySelector('.roulette-dialog')).not.toBeNull()
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
     document.body.querySelector<HTMLButtonElement>('.roulette-spin')!.click()
     await vi.advanceTimersByTimeAsync(2000)
     await flushPromises()
     document.body.querySelector<HTMLButtonElement>('.roulette-open')!.click()
     await flushPromises()
     expect(document.body.querySelector('.roulette-dialog')).toBeNull()
-    expect(document.body.querySelector('.dish-panel h2')?.textContent).toContain('拍黄瓜')
-    expect(router.currentRoute.value.query.dish).toBe('dish-2')
+    expect(document.body.querySelector('.dish-panel h2')?.textContent).toContain('红烧肉')
+    expect(router.currentRoute.value.query.dish).toBe('dish-1')
   })
 
   it('shows the mobile roulette fab once content is ready', async () => {

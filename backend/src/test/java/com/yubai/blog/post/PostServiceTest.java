@@ -43,6 +43,9 @@ class PostServiceTest {
     @Mock
     PostRevisionService revisionService;
 
+    @Mock
+    PostCategoryService categoryService;
+
     @InjectMocks
     PostService service;
 
@@ -61,7 +64,8 @@ class PostServiceTest {
         // Use reflection-free approach: PostEntity fields are private with package-level constructor
         // We rely on the repository mock returning entities created via the full constructor path
         return PostEntity.create(new PostRequest("test-slug", "Test Title", "Excerpt", LocalDate.of(2026, 1, 1),
-            5, "工程实践", List.of("tag1"), "#000000", "01", false, PostStatus.PUBLISHED, "<p>content</p>", null, null), sanitizer);
+            5, "工程实践", List.of("tag1"), "#000000", "01", false, PostStatus.PUBLISHED, "<p>content</p>", null, null),
+            "test-slug", sanitizer);
     }
 
     /** L-12：列表路径 stub 轻量投影行（标签由 findTagRows 批量补取，未 stub 时 Mockito 返回空列表即空标签）。 */
@@ -235,9 +239,30 @@ class PostServiceTest {
     }
 
     @Test
+    void createGeneratesUniqueSlugWhenOmitted() {
+        var request = new PostRequest(null, "Hello, Spring Boot!", "Excerpt", LocalDate.of(2026, 1, 1),
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
+        when(repository.existsBySlug("hello-spring-boot")).thenReturn(true);
+        when(repository.existsBySlug("hello-spring-boot-2")).thenReturn(false);
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.create(request).slug()).isEqualTo("hello-spring-boot-2");
+    }
+
+    @Test
+    void createGeneratesStableAsciiSlugForChineseTitle() {
+        var request = new PostRequest(" ", "把复杂留给系统", "Excerpt", LocalDate.of(2026, 1, 1),
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.create(request).slug()).matches("post-[0-9a-f]{16}");
+    }
+
+    @Test
     void createWithRevisionRecordsSnapshot() {
         var post = PostEntity.create(new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
-            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null), sanitizer);
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null),
+            "new-slug", sanitizer);
         setField(post, "id", 10L);
         var request = new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
             3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
@@ -267,7 +292,8 @@ class PostServiceTest {
     @Test
     void createWithRevisionRollsBackOnRevisionFailure() {
         var post = PostEntity.create(new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
-            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null), sanitizer);
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null),
+            "new-slug", sanitizer);
         setField(post, "id", 10L);
         var request = new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
             3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
@@ -308,6 +334,19 @@ class PostServiceTest {
 
         var result = service.update(1L, request);
         assertThat(result.title()).isEqualTo("Updated");
+    }
+
+    @Test
+    void updateKeepsExistingSlugWhenOmitted() {
+        var post = samplePost();
+        var request = new PostRequest(null, "Renamed", "Excerpt", LocalDate.of(2026, 1, 1),
+            5, "工程实践", List.of(), "#000", "01", false, PostStatus.PUBLISHED, "<p>updated</p>", null, null);
+        when(repository.findById(1L)).thenReturn(Optional.of(post));
+
+        var result = service.update(1L, request);
+
+        assertThat(result.slug()).isEqualTo("test-slug");
+        verify(repository, never()).existsBySlugAndIdNot(any(), anyLong());
     }
 
     @Test

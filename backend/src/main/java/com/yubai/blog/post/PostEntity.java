@@ -89,14 +89,14 @@ public class PostEntity {
     protected PostEntity() {
     }
 
-    public static PostEntity create(PostRequest request, PostContentSanitizer sanitizer) {
+    public static PostEntity create(PostRequest request, String slug, PostContentSanitizer sanitizer) {
         var post = new PostEntity();
-        post.update(request, sanitizer);
+        post.update(request, slug, sanitizer);
         return post;
     }
 
-    public void update(PostRequest request, PostContentSanitizer sanitizer) {
-        this.slug = request.slug();
+    public void update(PostRequest request, String slug, PostContentSanitizer sanitizer) {
+        this.slug = slug;
         this.title = request.title();
         this.excerpt = request.excerpt();
         this.date = request.date();

@@ -97,7 +97,8 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
         :disabled="!!runningAction"
         @click="run(action)"
       >
-        {{ runningAction === action.id ? '生成中…' : action.label }}
+        <span v-if="runningAction === action.id" class="chip-spinner" />
+        <span>{{ runningAction === action.id ? '生成中…' : action.label }}</span>
       </button>
       <button v-if="runningAction" type="button" class="ai-chip stop" @click="stop">■ 停止</button>
     </div>
@@ -106,12 +107,18 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
 
     <div v-if="resultAction && (resultText || runningAction)" class="chips-result">
       <header>
-        <span>AI · {{ ACTION_LABELS[resultAction] }}</span>
+        <div class="result-header-title">
+          <span class="ai-badge">✦ AI</span>
+          <strong>{{ ACTION_LABELS[resultAction] }}</strong>
+        </div>
         <small>结果只填入表单，不会自动保存</small>
       </header>
       <pre class="result-text" aria-live="polite">{{ resultText || '…' }}</pre>
       <footer>
-        <button type="button" class="apply-btn" :disabled="!!runningAction || !resultText.trim()" @click="applyResult">填入表单 ↩</button>
+        <button type="button" class="apply-btn" :disabled="!!runningAction || !resultText.trim()" @click="applyResult">
+          <span>填入表单</span>
+          <span class="btn-icon">↩</span>
+        </button>
         <button type="button" class="dismiss-btn" @click="closeResult">关闭</button>
       </footer>
     </div>
@@ -119,74 +126,191 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
 </template>
 
 <style scoped>
-.ai-action-chips { display: flex; flex-direction: column; gap: 10px; }
-.chips-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.ai-chip {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+.ai-action-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
 }
-.ai-chip:hover:not(:disabled) { border-color: var(--accent); }
-.ai-chip:disabled { opacity: 0.55; cursor: default; }
-.ai-chip.running { border-color: var(--accent); color: var(--accent); }
-.ai-chip.stop { border-color: #b4452c; color: #b4452c; opacity: 1; cursor: pointer; }
-.chips-error { margin: 0; font-size: 12px; color: #b4452c; }
+.chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent, #7c3aed) 22%, var(--line-strong, #d1d5db));
+  background: color-mix(in srgb, var(--accent, #7c3aed) 4%, var(--surface, #ffffff));
+  color: var(--ink, #1e293b);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.ai-chip:hover:not(:disabled) {
+  border-color: var(--accent, #7c3aed);
+  background: color-mix(in srgb, var(--accent, #7c3aed) 12%, var(--surface, #ffffff));
+  color: var(--accent, #7c3aed);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent, #7c3aed) 20%, transparent);
+}
+.ai-chip:active:not(:disabled) {
+  transform: translateY(0);
+}
+.ai-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ai-chip.running {
+  border-color: var(--accent, #7c3aed);
+  color: var(--accent, #7c3aed);
+  background: color-mix(in srgb, var(--accent, #7c3aed) 15%, var(--surface, #ffffff));
+  animation: pulse-glow 1.5s infinite ease-in-out;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #7c3aed) 40%, transparent); }
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent); }
+}
+.chip-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.ai-chip.stop {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 8%, var(--surface, #ffffff));
+  opacity: 1;
+  cursor: pointer;
+}
+.ai-chip.stop:hover {
+  background: color-mix(in srgb, #ef4444 18%, var(--surface, #ffffff));
+  box-shadow: 0 3px 10px rgba(239, 68, 68, 0.2);
+}
+.chips-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #ef4444 10%, var(--surface, #ffffff));
+  border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+  font-size: 12px;
+  color: #dc2626;
+}
 .chips-result {
-  border: 1px solid var(--line-strong);
+  border: 1px solid color-mix(in srgb, var(--accent, #7c3aed) 30%, var(--line-strong, #d1d5db));
   border-radius: 12px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface, #ffffff) 95%, transparent);
+  box-shadow: 0 10px 25px -5px color-mix(in srgb, var(--accent, #7c3aed) 15%, transparent);
   overflow: hidden;
+  backdrop-filter: blur(12px);
+  animation: slide-down 0.22s ease-out;
+}
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .chips-result header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  font-size: 12px;
-  color: var(--ink);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+  background: color-mix(in srgb, var(--accent, #7c3aed) 6%, var(--surface, #ffffff));
 }
-.chips-result header small { color: var(--muted); }
+.result-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink, #1e293b);
+}
+.ai-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent, #7c3aed);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.chips-result header small {
+  color: var(--muted, #6b7280);
+  font-size: 11px;
+}
 .result-text {
   margin: 0;
-  padding: 12px;
-  max-height: 220px;
+  padding: 14px;
+  max-height: 240px;
   overflow: auto;
-  font: 13px/1.7 inherit;
+  font: 13px/1.7 Consolas, Monaco, 'Courier New', monospace;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--ink);
+  color: var(--ink, #1e293b);
+  background: var(--surface-solid, #ffffff);
 }
 .chips-result footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
+  padding: 10px 14px;
+  border-top: 1px solid var(--line, #e5e7eb);
+  background: color-mix(in srgb, var(--ink, #000) 2%, var(--surface, #ffffff));
 }
 .apply-btn {
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  height: 32px;
   border-radius: 8px;
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent, #7c3aed);
+  color: #ffffff;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent, #7c3aed) 35%, transparent);
 }
-.apply-btn:disabled { opacity: 0.55; cursor: default; }
+.apply-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.apply-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
 .dismiss-btn {
-  padding: 6px 12px;
+  padding: 6px 14px;
+  height: 32px;
   border-radius: 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong, #d1d5db);
   background: transparent;
-  color: var(--muted);
+  color: var(--muted, #6b7280);
   font-size: 12px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dismiss-btn:hover {
+  background: color-mix(in srgb, var(--ink, #000) 5%, transparent);
+  color: var(--ink, #1e293b);
 }
 </style>

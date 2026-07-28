@@ -221,43 +221,48 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ambient-music-widget {
-  position: fixed;
-  top: 80px;
-  right: 24px;
-  z-index: 1200;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  z-index: 500;
 }
 
-/* 48px Prominent Vinyl Disc Trigger Button */
+/* Header Navbar Music Trigger Button (40px) */
 .ambient-music-trigger {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border-radius: 50%;
-  background: var(--surface-solid);
-  border: 2px solid var(--line-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(14px);
-  transition: transform 0.3s var(--ease), border-color 0.3s, box-shadow 0.3s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .ambient-music-trigger:hover {
-  transform: scale(1.1);
+  transform: translateY(-2px);
   border-color: var(--accent);
-  box-shadow: 0 12px 32px rgba(220, 143, 160, 0.3);
+  background: var(--surface-solid);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.ambient-music-trigger:active {
+  transform: translateY(1px) scale(0.96);
+  box-shadow: none;
 }
 .ambient-music-trigger.playing {
   border-color: var(--accent);
-  box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .vinyl-disc {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: radial-gradient(circle, #2a2829 35%, #181617 70%, #0d0c0d 100%);
   display: flex;
@@ -274,25 +279,25 @@ onBeforeUnmount(() => {
 
 .vinyl-ring {
   position: absolute;
-  inset: 5px;
+  inset: 4px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.15);
   pointer-events: none;
 }
 .vinyl-center {
-  font-size: 16px;
+  font-size: 13px;
 }
 
 /* Dynamic Soundwave Bars badge */
 .sound-wave-bars {
   position: absolute;
-  bottom: -4px;
-  right: -4px;
+  bottom: -3px;
+  right: -3px;
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  height: 14px;
-  padding: 2px 4px;
+  height: 12px;
+  padding: 2px 3px;
   border-radius: 999px;
   background: var(--accent);
 }
@@ -313,9 +318,9 @@ onBeforeUnmount(() => {
 /* Expanded Light Music Control Panel */
 .ambient-music-panel {
   position: absolute;
-  top: 56px;
+  top: calc(100% + 10px);
   right: 0;
-  width: 300px;
+  width: min(310px, 90vw);
   padding: 22px;
   border-radius: 24px;
   background: var(--surface-solid);

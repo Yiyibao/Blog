@@ -46,9 +46,11 @@ public class DishController {
     @GetMapping
     public ApiResponse<PageResponse<DishResponse>> findAll(
         @RequestParam(defaultValue = "0") @Min(0) int page,
-        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
+        @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size,
+        @RequestParam(required = false) String categorySlug,
+        @RequestParam(required = false) String query
     ) {
-        return ApiResponse.ok(service.findPublished(page, size));
+        return ApiResponse.ok(service.findPublished(page, size, categorySlug, query));
     }
 
     @GetMapping("/{slug}")

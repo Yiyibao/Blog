@@ -19,7 +19,7 @@ import jakarta.validation.constraints.Size;
  * HTML 篇要求 content 非空，MARKDOWN 篇要求 markdownContent 非空（content 退化为可选快照）。
  */
 public record PostRequest(
-    @NotBlank @Size(max = 120) @Pattern(regexp = "^[a-z0-9]+(?:-[a-z0-9]+)*$") String slug,
+    @Size(max = 120) @Pattern(regexp = "^\\s*$|^[a-z0-9]+(?:-[a-z0-9]+)*$") String slug,
     @NotBlank @Size(max = 200) String title,
     @NotBlank String excerpt,
     @NotNull LocalDate date,

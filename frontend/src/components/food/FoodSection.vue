@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDish, fetchDishes, fetchDishFavorites, favoriteDish, type DishFavoriteItem } from '../../api/content'
+import { fetchDish, fetchDishes, fetchDishCategories, fetchDishFavorites, favoriteDish, type DishFavoriteItem } from '../../api/content'
 import type { Dish } from '../../data'
 import { createSiteConfig, resolveUrl } from '../../config/site'
 import { usePageMeta, cleanText } from '../../composables/usePageMeta'
@@ -20,11 +20,12 @@ import TodayMenuBoard from './TodayMenuBoard.vue'
 import FoodTimeline from './FoodTimeline.vue'
 const route = useRoute()
 const router = useRouter()
+interface CategoryItem { name: string; slug: string }
 const dishes = ref<Dish[]>([])
 const dishPage = ref(0)
 const dishTotal = ref(0)
 const dishTotalPages = ref(1)
-const dishPageSize = 12
+const dishPageSize = 4
 const selectedCategory = ref('全部')
 const selectedDish = ref<Dish | null>(null)
 const loading = ref(true)
@@ -34,21 +35,7 @@ let lastTrigger: HTMLElement | null = null
 
 const dishQuery = ref('')
 
-const categories = computed(() => ['全部', ...new Set(dishes.value.map((dish) => dish.category))])
-const visibleDishes = computed(() => {
-  let result = selectedCategory.value === '全部'
-    ? dishes.value
-    : dishes.value.filter((dish) => dish.category === selectedCategory.value)
-  const q = dishQuery.value.trim().toLowerCase()
-  if (q) {
-    result = result.filter((d) =>
-      d.name.toLowerCase().includes(q) ||
-      d.summary.toLowerCase().includes(q) ||
-      d.category.toLowerCase().includes(q)
-    )
-  }
-  return result
-})
+const categories = ref<CategoryItem[]>([{ name: '全部', slug: '' }])
 // FD-3：排行榜从"当前页 12 条按后台手填评分排序"换成全站真实点亮数据（后端收藏榜端点）
 const favoriteBoard = ref<DishFavoriteItem[]>([])
 
@@ -150,9 +137,9 @@ watch(() => auth.canKitchen, (can) => {
   else foodStore.stopMenuPolling()
 })
 
-// FD-5：今天吃什么·抽卡（纯前端）；抽选池 = 当前筛选结果（想吃辣就先筛辣再抽），空则回退整页
+// FD-5：今天吃什么·抽卡（纯前端）；抽选池 = 当前筛选结果
 const rouletteOpen = ref(false)
-const roulettePool = computed(() => (visibleDishes.value.length ? visibleDishes.value : dishes.value))
+const roulettePool = computed(() => dishes.value)
 function onRouletteOpen(dish: Dish) {
   rouletteOpen.value = false
   void openDish(dish)
@@ -224,32 +211,69 @@ watch(selectedDish, (dish) => {
   }
 })
 
+let loadRevision = 0
+
 async function load() {
+  const revision = ++loadRevision
   loading.value = true
   loadError.value = ''
   try {
-    // 收藏榜失败不拖垮主列表：榜单整块隐藏即可
-    const [result, favorites] = await Promise.all([
-      fetchDishes(dishPage.value, dishPageSize),
+    const cat = categories.value.find(c => c.name === selectedCategory.value)
+    const categorySlug = selectedCategory.value === '全部' ? undefined : cat?.slug
+    const q = dishQuery.value.trim() || undefined
+    const [result, favorites, remoteCategories] = await Promise.all([
+      fetchDishes(dishPage.value, dishPageSize, categorySlug, q),
       fetchDishFavorites(0, 5).catch(() => null),
+      fetchDishCategories().catch(() => null),
     ])
+    if (revision !== loadRevision) return
+    if (dishPage.value > 0 && dishPage.value >= result.totalPages) {
+      dishPage.value = Math.max(0, result.totalPages - 1)
+      return
+    }
     dishes.value = result.items
     dishTotal.value = result.totalElements
     dishTotalPages.value = Math.max(1, result.totalPages)
     favoriteBoard.value = favorites?.items ?? []
+    if (remoteCategories?.length) {
+      categories.value = [{ name: '全部', slug: '' }, ...remoteCategories.map(c => ({ name: c.name, slug: c.slug }))]
+    }
     seenCategories.value = new Set([...seenCategories.value, ...result.items.map(dish => dish.category)])
     seenFeatured.value = new Set([...seenFeatured.value, ...result.items.filter(dish => dish.featured).map(dish => dish.id)])
     await openRouteDish()
-    // fake timers 下 rAF 不可控，且 nextTick 已足够等到 DOM 就绪
     await nextTick()
     ready.value = true
     refreshReveals()
   } catch {
-    loadError.value = '菜谱暂时没有准备好，请稍后再来看看。'
+    if (revision === loadRevision) {
+      loadError.value = '菜谱暂时没有准备好，请稍后再来看看。'
+    }
   } finally {
-    loading.value = false
+    if (revision === loadRevision) {
+      loading.value = false
+    }
   }
 }
+
+let queryTimer: ReturnType<typeof setTimeout> | undefined
+watch(dishQuery, () => {
+  clearTimeout(queryTimer)
+  queryTimer = setTimeout(() => {
+    if (dishPage.value !== 0) {
+      dishPage.value = 0
+    } else {
+      void load()
+    }
+  }, 300)
+})
+watch(selectedCategory, () => {
+  if (dishPage.value !== 0) {
+    dishPage.value = 0
+  } else {
+    void load()
+  }
+})
+watch(dishPage, () => { void load() })
 
 async function openBySlug(slug: string, event?: Event) {
   let dish = dishes.value.find(item => item.slug === slug)
@@ -318,7 +342,10 @@ onMounted(() => {
   removeLegacyKey('yubai_dish_favorites')
   if (auth.canKitchen) startMenu()
 })
-onBeforeUnmount(() => foodStore.stopMenuPolling())
+onBeforeUnmount(() => {
+  foodStore.stopMenuPolling()
+  clearTimeout(queryTimer)
+})
 </script>
 
 <template>
@@ -354,18 +381,18 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
       </header>
 
       <nav class="food-filter" aria-label="菜谱分类">
-        <strong>{{ visibleDishes.length }}/{{ dishTotal }} 道家常菜</strong>
+        <strong>{{ dishes.length }}/{{ dishTotal }} 道家常菜</strong>
         <label class="food-search">
           <input v-model="dishQuery" type="search" placeholder="搜索菜名、食材或分类…">
         </label>
         <div class="food-filter-tabs">
           <button
-            v-for="category in categories"
-            :key="category"
+            v-for="cat in categories"
+            :key="cat.name"
             type="button"
-            :class="{ active: selectedCategory === category }"
-            @click="selectedCategory = category"
-          >{{ category }}</button>
+            :class="{ active: selectedCategory === cat.name }"
+            @click="selectedCategory = cat.name"
+          >{{ cat.name }}</button>
         </div>
       </nav>
 
@@ -383,14 +410,14 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
             <button type="button" class="roulette-trigger tap-44" @click="rouletteOpen = true"><i aria-hidden="true">✦</i>今天吃什么？抽一道</button>
           </div>
         </header>
-        <div v-if="!visibleDishes.length" class="food-no-result" role="status">
+        <div v-if="!dishes.length" class="food-no-result" role="status">
           <span>NO MATCH</span>
           <p>没有找到{{ dishQuery ? `「${dishQuery}」` : '' }}相关的菜，换个关键词或分类试试？</p>
         </div>
         <Transition v-else name="dish-filter" mode="out-in">
           <div :key="selectedCategory" class="dish-grid">
             <button
-              v-for="(dish, index) in visibleDishes"
+              v-for="(dish, index) in dishes"
               :key="dish.id"
               class="dish-card"
               :class="{ featured: index === 0 && selectedCategory === '全部' }"
@@ -418,7 +445,7 @@ onBeforeUnmount(() => foodStore.stopMenuPolling())
           </div>
         </Transition>
       </template>
-      <nav v-if="dishTotalPages > 1" class="pagination" aria-label="公开菜谱分页"><button type="button" :disabled="dishPage <= 0" @click="dishPage -= 1; load()">上一页</button><span>{{ dishPage + 1 }} / {{ dishTotalPages }}</span><button type="button" :disabled="dishPage >= dishTotalPages - 1" @click="dishPage += 1; load()">下一页</button></nav>
+      <nav v-if="dishTotalPages > 1" class="pagination" aria-label="公开菜谱分页"><button type="button" :disabled="dishPage <= 0" @click="dishPage -= 1">上一页</button><span>{{ dishPage + 1 }} / {{ dishTotalPages }}</span><button type="button" :disabled="dishPage >= dishTotalPages - 1" @click="dishPage += 1">下一页</button></nav>
 
       <section v-if="showRanking" class="food-ranking" aria-labelledby="food-ranking-title">
         <header class="ranking-head">

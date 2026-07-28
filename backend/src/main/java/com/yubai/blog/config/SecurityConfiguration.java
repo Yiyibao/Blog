@@ -52,7 +52,7 @@ public class SecurityConfiguration {
                 // P2-3：文档路径放行但功能默认关闭（SPRINGDOC_ENABLED=false 时如实 404），生产不暴露内容
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 // L-16/D-17：/notes 与 /note-assets 移出公开白名单——学习笔记对游客真隐藏（落入下方 /api/** authenticated）
-                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dishes/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**", "/api/v1/series/**", "/api/v1/tags/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/posts/**", "/api/v1/categories", "/api/v1/categories/**", "/api/v1/dish-categories", "/api/v1/dish-categories/**", "/api/v1/dishes/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**", "/api/v1/series/**", "/api/v1/tags/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/dishes/*/favorite", "/api/v1/posts/*/like", "/api/v1/search").permitAll()
                 // FD-7：kitchen（今日菜单/打卡）为两人私有空间——必须 kitchen:access 权限；
                 // 规则须在 /api/** 通配之前，顺序敏感

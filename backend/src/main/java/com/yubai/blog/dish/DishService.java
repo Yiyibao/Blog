@@ -14,14 +14,41 @@ import com.yubai.blog.common.PageRequests;
 @Transactional(readOnly = true)
 public class DishService {
     private final DishRepository repository;
+    private final DishCategoryService categoryService;
 
-    public DishService(DishRepository repository) {
+    public DishService(DishRepository repository, DishCategoryService categoryService) {
         this.repository = repository;
+        this.categoryService = categoryService;
     }
 
     public PageResponse<DishResponse> findPublished(int page, int size) {
-        return PageResponse.from(repository.findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(PageRequests.of(page, size))
-            .map(DishResponse::from));
+        return findPublished(page, size, null, null);
+    }
+
+    public PageResponse<DishResponse> findPublished(int page, int size, String categorySlug, String query) {
+        var pageable = PageRequests.of(page, size);
+        boolean hasQuery = query != null && !query.isBlank();
+        String categoryName = null;
+        if (categorySlug != null && !categorySlug.isBlank()) {
+            categoryName = categoryService.findNameBySlug(categorySlug);
+            if (categoryName == null) {
+                return PageResponse.from(org.springframework.data.domain.Page.empty(pageable));
+            }
+        }
+
+        if (hasQuery) {
+            var likeQuery = "%" + query.trim().toLowerCase() + "%";
+            if (categoryName != null) {
+                return PageResponse.from(repository.searchPublishedByCategory(categoryName, likeQuery, pageable).map(DishResponse::from));
+            }
+            return PageResponse.from(repository.searchPublishedEntities(likeQuery, pageable).map(DishResponse::from));
+        }
+
+        if (categoryName != null) {
+            return PageResponse.from(repository.findByCategoryAndPublishedTrueOrderByFeaturedDescDisplayOrderAsc(categoryName, pageable).map(DishResponse::from));
+        }
+
+        return PageResponse.from(repository.findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(pageable).map(DishResponse::from));
     }
 
     public DishResponse findPublishedBySlug(String slug) {
@@ -68,6 +95,7 @@ public class DishService {
     @Transactional
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public DishResponse create(DishRequest request) {
+        categoryService.requireExisting(request.category());
         if (repository.existsBySlug(request.slug())) {
             throw new DataIntegrityViolationException("菜品 Slug 已存在");
         }
@@ -78,6 +106,7 @@ public class DishService {
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
     public DishResponse update(long id, DishRequest request) {
         var dish = entity(id);
+        categoryService.requireExisting(request.category());
         if (repository.existsBySlugAndIdNot(request.slug(), id)) {
             throw new DataIntegrityViolationException("菜品 Slug 已存在");
         }

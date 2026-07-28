@@ -50,10 +50,17 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
     List<DishGraphRow> findAllPublishedForGraph();
 
     Page<DishEntity> findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(Pageable pageable);
+    Page<DishEntity> findByCategoryAndPublishedTrueOrderByFeaturedDescDisplayOrderAsc(String category, Pageable pageable);
     Page<DishEntity> findAllByOrderByDisplayOrderAsc(Pageable pageable);
     Optional<DishEntity> findBySlugAndPublishedTrue(String slug);
     boolean existsBySlug(String slug);
     boolean existsBySlugAndIdNot(String slug, long id);
+    long countByCategory(String category);
+    long countByCategoryAndPublishedTrue(String category);
+
+    @Modifying
+    @Query("UPDATE DishEntity d SET d.category = :newName WHERE d.category = :oldName")
+    int updateCategory(@Param("oldName") String oldName, @Param("newName") String newName);
 
     Optional<DishEntity> findBySlug(String slug);
 
@@ -94,4 +101,54 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
             OR LOWER(step) LIKE LOWER(:query))
         """)
     Page<DishSearchRow> searchPublished(@Param("query") String query, Pageable pageable);
+
+    @Query(value = """
+        SELECT DISTINCT d FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        ORDER BY d.featured DESC, d.displayOrder ASC
+        """, countQuery = """
+        SELECT COUNT(DISTINCT d) FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        """)
+    Page<DishEntity> searchPublishedEntities(@Param("query") String query, Pageable pageable);
+
+    @Query(value = """
+        SELECT DISTINCT d FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND d.category = :category
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        ORDER BY d.featured DESC, d.displayOrder ASC
+        """, countQuery = """
+        SELECT COUNT(DISTINCT d) FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND d.category = :category
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        """)
+    Page<DishEntity> searchPublishedByCategory(@Param("category") String category, @Param("query") String query, Pageable pageable);
 }

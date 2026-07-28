@@ -11,6 +11,8 @@ vi.mock('../api/admin', async (importOriginal) => {
     hasValidAdminSession: () => true,
     getAdminSessionName: () => 'TestAdmin',
     fetchAdminPosts: vi.fn().mockResolvedValue({ items: [], totalElements: 0, totalPages: 1 }),
+    fetchAdminCategories: vi.fn().mockResolvedValue([{ id: 1, name: '工程实践', slug: '工程实践', description: '', postCount: 1, publishedPostCount: 1 }]),
+    fetchAdminDishCategories: vi.fn().mockResolvedValue([{ id: 1, name: '十分钟菜', slug: '十分钟菜', description: '', dishCount: 2, publishedDishCount: 2 }]),
     fetchAdminDishes: vi.fn().mockResolvedValue({ items: [], totalElements: 0, totalPages: 1 }),
     fetchNotes: vi.fn().mockResolvedValue({ items: [], totalElements: 0, totalPages: 1 }),
     fetchAdminStats: vi.fn().mockResolvedValue({ posts: 5, dishes: 3, notes: 12 }),
@@ -109,5 +111,56 @@ describe('AdminSidebar Navigation & Highlighting', () => {
 
     expect(router.currentRoute.value.query.section).toBe('posts')
     expect(wrapper.find('.admin-sidebar nav a.active').text()).toContain('文章管理')
+  })
+
+  it('allows a new post slug to be left blank for server-side generation', async () => {
+    const { wrapper } = await mountDashboardAt('/admin?section=posts')
+    await flushPromises()
+
+    await wrapper.find('.admin-content-section header .button.primary').trigger('click')
+    const slugLabel = wrapper.findAll('.editor-card label')
+      .find((label) => label.text().includes('路由别名'))
+    const input = slugLabel?.find('input')
+
+    expect(input?.attributes('required')).toBeUndefined()
+    expect(input?.attributes('placeholder')).toContain('自动生成')
+  })
+
+  it('selects post categories from managed options instead of free text', async () => {
+    const { wrapper } = await mountDashboardAt('/admin?section=posts')
+    await flushPromises()
+
+    await wrapper.find('.admin-content-section header .button.primary').trigger('click')
+    const categoryLabel = wrapper.findAll('.editor-card label')
+      .find((label) => label.text().includes('文章类别'))
+
+    expect(categoryLabel?.find('select').exists()).toBe(true)
+    expect(categoryLabel?.find('option[value="工程实践"]').exists()).toBe(true)
+    expect(categoryLabel?.find('input').exists()).toBe(false)
+  })
+
+  it('opens category management from the posts module', async () => {
+    const { wrapper } = await mountDashboardAt('/admin?section=posts')
+    await flushPromises()
+
+    const manageButton = wrapper.findAll('.content-head-actions button')
+      .find((button) => button.text().includes('分类管理'))
+    await manageButton?.trigger('click')
+
+    expect(wrapper.find('[aria-label="文章类别管理"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('工程实践')
+  })
+
+  it('selects dish categories from managed options instead of free text', async () => {
+    const { wrapper } = await mountDashboardAt('/admin?section=dishes')
+    await flushPromises()
+
+    await wrapper.find('.admin-content-section header .button.primary').trigger('click')
+    const categoryLabel = wrapper.findAll('.editor-card label')
+      .find((label) => label.text().includes('菜品分类'))
+
+    expect(categoryLabel?.find('select').exists()).toBe(true)
+    expect(categoryLabel?.find('option[value="十分钟菜"]').exists()).toBe(true)
+    expect(categoryLabel?.find('input').exists()).toBe(false)
   })
 })

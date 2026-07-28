@@ -9,6 +9,7 @@ const mockFetchDishes = vi.fn()
 const mockFetchDish = vi.fn()
 const mockFavoriteDish = vi.fn()
 const mockFetchDishFavorites = vi.fn()
+const mockFetchDishCategories = vi.fn()
 
 vi.mock('../api/kitchen', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/kitchen')>()
@@ -25,6 +26,7 @@ vi.mock('../api/content', () => ({
   fetchDish: (...args: unknown[]) => mockFetchDish(...args),
   favoriteDish: (...args: unknown[]) => mockFavoriteDish(...args),
   fetchDishFavorites: (...args: unknown[]) => mockFetchDishFavorites(...args),
+  fetchDishCategories: (...args: unknown[]) => mockFetchDishCategories(...args),
 }))
 
 function makeDish(overrides: Partial<Dish> = {}): Dish {
@@ -81,7 +83,9 @@ beforeEach(() => {
   mockFetchDish.mockReset()
   mockFavoriteDish.mockReset()
   mockFetchDishFavorites.mockReset()
+  mockFetchDishCategories.mockReset()
   document.body.innerHTML = ''
+  mockFetchDishCategories.mockResolvedValue([{ name: '家常菜', slug: '家常菜' }])
   mockFetchDishes.mockResolvedValue(pageOf([
     makeDish(),
     makeDish({ id: 2, slug: 'plain-congee', name: '白粥' }),

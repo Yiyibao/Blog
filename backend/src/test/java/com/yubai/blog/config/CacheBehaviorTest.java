@@ -18,6 +18,7 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.graph.GraphService;
 import com.yubai.blog.note.NoteRepository;
+import com.yubai.blog.post.PostCategoryService;
 import com.yubai.blog.post.PostContentSanitizer;
 import com.yubai.blog.post.PostRepository;
 import com.yubai.blog.post.PostRequest;
@@ -52,6 +53,9 @@ class CacheBehaviorTest {
 
     @MockitoBean
     PostRevisionService postRevisionService;
+
+    @MockitoBean
+    PostCategoryService postCategoryService;
 
     @Autowired
     GraphService graphService;

@@ -139,13 +139,19 @@ class BlogApiIntegrationTest {
     @Order(1)
     void publicPostsArePaginatedAndHideDrafts() throws Exception {
         String token = login();
+        mockMvc.perform(get("/api/v1/admin/categories")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[*].name", org.hamcrest.Matchers.hasItems(
+                "工程实践", "设计札记", "日常观察")));
+        createPostCategory(token, "测试");
 
         mockMvc.perform(get("/api/v1/posts").param("page", "0").param("size", "2"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items").isArray())
             .andExpect(jsonPath("$.data.size").value(2))
-            .andExpect(jsonPath("$.data.totalElements").value(5))
-            .andExpect(jsonPath("$.data.totalPages").value(3))
+            .andExpect(jsonPath("$.data.totalElements").value(15))
+            .andExpect(jsonPath("$.data.totalPages").value(8))
             // P1-2：列表为摘要 DTO——保留元数据字段，但绝不携带正文
             .andExpect(jsonPath("$.data.items[0].slug").isNotEmpty())
             .andExpect(jsonPath("$.data.items[0].likeCount").exists())
@@ -183,7 +189,7 @@ class BlogApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/posts").param("page", "0").param("size", "50"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.totalElements").value(5));
+            .andExpect(jsonPath("$.data.totalElements").value(15));
 
         mockMvc.perform(get("/api/v1/admin/posts").param("status", "DRAFT")
                 .header("Authorization", "Bearer " + token))
@@ -274,9 +280,14 @@ class BlogApiIntegrationTest {
     void dishesUseDatabaseAndSupportAdminCrud() throws Exception {
         String token = login();
 
+        mockMvc.perform(get("/api/v1/admin/dish-categories")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(5));
+
         mockMvc.perform(get("/api/v1/dishes"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.totalElements").value(6))
+            .andExpect(jsonPath("$.data.totalElements").value(10))
             .andExpect(jsonPath("$.data.items[0].slug").value("authentic-mapo-tofu"))
             .andExpect(jsonPath("$.data.items[0].ingredients").isArray())
             .andExpect(jsonPath("$.data.items[0].imageCredit").isNotEmpty());
@@ -322,7 +333,7 @@ class BlogApiIntegrationTest {
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.size").value(2))
-            .andExpect(jsonPath("$.data.totalElements").value(7));
+            .andExpect(jsonPath("$.data.totalElements").value(11));
 
         mockMvc.perform(get("/api/v1/dishes/test-scallion-noodles"))
             .andExpect(status().isNotFound());
@@ -664,6 +675,7 @@ class BlogApiIntegrationTest {
     @Order(9)
     void searchIsPublicGroupedLimitedAndExcludesDrafts() throws Exception {
         String token = login();
+        createPostCategory(token, "Tests");
         String draftBody = """
             {
               "slug":"search-hidden-draft",
@@ -712,7 +724,7 @@ class BlogApiIntegrationTest {
             .andExpect(jsonPath("$.data.notes").isArray())
             .andExpect(jsonPath("$.data.dishes").isArray())
             .andExpect(jsonPath("$.data.articles[0].type").value("POST"))
-            .andExpect(jsonPath("$.data.articles[0].url").value("/articles/clarity-by-design"));
+            .andExpect(jsonPath("$.data.articles[*].url", org.hamcrest.Matchers.hasItem("/articles/clarity-by-design")));
 
         // L-16/D-17：游客搜索剔除笔记；登录后（任意角色）笔记命中恢复
         mockMvc.perform(get("/api/v1/search").param("q", "public-note-sentinel"))
@@ -2337,7 +2349,7 @@ class BlogApiIntegrationTest {
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"slug":"fd15-temp-dish","name":"临时炖菜","summary":"回归用","category":"测试",
+                    {"slug":"fd15-temp-dish","name":"临时炖菜","summary":"回归用","category":"十分钟菜",
                      "imageUrl":"/food/x.jpg","imageAlt":"x","imageCredit":"x","imageSourceUrl":"https://example.com",
                      "prepMinutes":10,"difficulty":"简单","rating":4.0,"featured":false,"published":true,
                      "displayOrder":98,"baseServings":2,"ingredients":["水"],"steps":["炖"]}
@@ -2702,24 +2714,23 @@ class BlogApiIntegrationTest {
     void relatedPostsReturnedOnPostDetail() throws Exception {
         // 5D：全链路——详情响应携带 relatedPosts 数组（服务端推荐，覆盖全部已发布文章）
 
-        // 种子数据中 vue-composable-notes（标签: Vue,TypeScript / 工程实践）与
-        // type-safe-content（标签: TypeScript,内容系统 / 工程实践）共享 TypeScript 标签
+        // 新旧内容中有两篇文章与 vue-composable-notes 共享 Vue/TypeScript 标签。
         mockMvc.perform(get("/api/v1/posts/vue-composable-notes"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.relatedPosts").isArray())
-            .andExpect(jsonPath("$.data.relatedPosts.length()").value(1))
-            .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("type-safe-content"))
+            .andExpect(jsonPath("$.data.relatedPosts.length()").value(2))
+            .andExpect(jsonPath("$.data.relatedPosts[*].slug", org.hamcrest.Matchers.hasItems(
+                "vue-composable-contracts", "type-safe-content")))
             .andExpect(jsonPath("$.data.relatedPosts[0].title").isNotEmpty())
             .andExpect(jsonPath("$.data.relatedPosts[0].content").doesNotExist());
 
-        // clarity-by-design（标签: 产品设计,信息架构 / 设计札记）是设计札记分类唯一文章，
-        // 无共享标签也无同分类文章 → 返回空数组
+        // 没有共享标签时回退到同分类文章。
         mockMvc.perform(get("/api/v1/posts/clarity-by-design"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.relatedPosts").isArray())
-            .andExpect(jsonPath("$.data.relatedPosts.length()").value(0));
+            .andExpect(jsonPath("$.data.relatedPosts").isNotEmpty());
 
-        // 推荐不含自身：type-safe-content 的推荐是 vue-composable-notes，非自身
+        // 推荐不含自身，并优先返回日期更新的共享标签文章。
         mockMvc.perform(get("/api/v1/posts/type-safe-content"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.relatedPosts").isArray())
@@ -2728,7 +2739,7 @@ class BlogApiIntegrationTest {
         // 缓存生效（第二次请求相同 postId 应命中缓存）
         mockMvc.perform(get("/api/v1/posts/vue-composable-notes"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("type-safe-content"));
+            .andExpect(jsonPath("$.data.relatedPosts[0].slug").value("vue-composable-contracts"));
     }
 
     // ---- 6C-1: refresh token lifecycle ----
@@ -2904,6 +2915,14 @@ class BlogApiIntegrationTest {
         return "";
     }
 
+
+    private void createPostCategory(String token, String name) throws Exception {
+        mockMvc.perform(post("/api/v1/admin/categories")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(java.util.Map.of("name", name, "description", "集成测试类别"))))
+            .andExpect(status().isCreated());
+    }
 
     private String login() throws Exception {
         return loginAs("admin", "admin-pass-12345");

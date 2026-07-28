@@ -179,8 +179,10 @@ describe('FD-12 foodStore 菜单分片', () => {
 
   it('cross-midnight switches to today when followingToday is true', async () => {
     const store = useFoodStore()
-    const yesterday = '2026-07-27'
-    const today = '2026-07-28'
+    const today = todayISO()
+    const yesterdayDate = new Date()
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+    const yesterday = yesterdayDate.toLocaleDateString('sv-SE')
     mockFetchDailyMenu.mockResolvedValue(menuOf([{ id: 1, title: '昨天的菜' }], { date: yesterday }))
     await store.loadMenu(yesterday)
     expect(store.menuDate).toBe(yesterday)

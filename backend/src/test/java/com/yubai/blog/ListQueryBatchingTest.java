@@ -76,13 +76,14 @@ class ListQueryBatchingTest {
     void postListLoadsTagsInBatches() {
         var sanitizer = new PostContentSanitizer();
         for (int i = 1; i <= SEED; i++) {
+            var slug = "qc-batch-post-" + i;
             postRepository.save(PostEntity.create(new PostRequest(
-                "qc-batch-post-" + i, "批量测试文章 " + i, "摘要 " + i, LocalDate.of(2026, 1, i),
+                slug, "批量测试文章 " + i, "摘要 " + i, LocalDate.of(2026, 1, i),
                 5, "批量测试", List.of("标签A", "标签B", "标签C"), "#112233", "QC-" + i,
                 false, PostStatus.PUBLISHED, "<p>正文 " + i + "</p>", null, null
-            ), sanitizer));
+            ), slug, sanitizer));
         }
-        var service = new com.yubai.blog.post.PostService(postRepository, sanitizer, null);
+        var service = new com.yubai.blog.post.PostService(postRepository, sanitizer, null, null);
         long prepares = measure(() ->
             service.findPublished(0, 50, null, null).items()
                 .forEach(post -> assertThat(post.tags()).isNotEmpty()));

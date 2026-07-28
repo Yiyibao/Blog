@@ -34,12 +34,14 @@ const mockFetchDishes = vi.fn()
 const mockFetchDish = vi.fn()
 const mockFavoriteDish = vi.fn()
 const mockFetchDishFavorites = vi.fn()
+const mockFetchDishCategories = vi.fn()
 
 vi.mock('../api/content', () => ({
   fetchDishes: (...args: unknown[]) => mockFetchDishes(...args),
   fetchDish: (...args: unknown[]) => mockFetchDish(...args),
   favoriteDish: (...args: unknown[]) => mockFavoriteDish(...args),
   fetchDishFavorites: (...args: unknown[]) => mockFetchDishFavorites(...args),
+  fetchDishCategories: (...args: unknown[]) => mockFetchDishCategories(...args),
 }))
 
 function menuOf(items: Partial<DailyMenu['items'][number]>[], overrides: Partial<DailyMenu> = {}): DailyMenu {
@@ -106,6 +108,7 @@ beforeEach(() => {
   mockFetchDish.mockReset()
   mockFavoriteDish.mockReset()
   mockFetchDishFavorites.mockReset().mockResolvedValue({ items: [], page: 0, size: 5, totalElements: 0, totalPages: 1 })
+  mockFetchDishCategories.mockReset().mockResolvedValue([])
 })
 
 describe('FD-13 TodayMenuCard', () => {

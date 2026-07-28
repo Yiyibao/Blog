@@ -48,7 +48,7 @@ function scheduleProgress() {
 }
 
 onMounted(() => {
-  if (!content.contentReady) content.loadRemoteContent()
+  void content.loadRemoteContent()
   updateHeroProgress()
   window.addEventListener('scroll', scheduleProgress, { passive: true })
   void nextTick(updateHeroProgress)

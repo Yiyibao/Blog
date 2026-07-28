@@ -1,5 +1,9 @@
 package com.yubai.blog.post;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -22,15 +26,19 @@ import com.yubai.blog.config.CacheConfig;
 @Service
 @Transactional(readOnly = true)
 public class PostService {
+    private static final int MAX_SLUG_LENGTH = 120;
+
     private final PostRepository repository;
     private final PostContentSanitizer sanitizer;
     private final PostRevisionService revisionService;
+    private final PostCategoryService categoryService;
 
     public PostService(PostRepository repository, PostContentSanitizer sanitizer,
-                       PostRevisionService revisionService) {
+                       PostRevisionService revisionService, PostCategoryService categoryService) {
         this.repository = repository;
         this.sanitizer = sanitizer;
         this.revisionService = revisionService;
+        this.categoryService = categoryService;
     }
 
     /**
@@ -206,16 +214,28 @@ public class PostService {
     @Transactional
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
     public PostResponse create(PostRequest request) {
-        requireUniqueSlug(request.slug(), null);
-        return PostResponse.from(repository.save(PostEntity.create(request, sanitizer)));
+        categoryService.requireExisting(request.category());
+        var slug = normalizedSlug(request.slug());
+        if (slug == null) {
+            slug = generateUniqueSlug(request.title());
+        } else {
+            requireUniqueSlug(slug, null);
+        }
+        return PostResponse.from(repository.save(PostEntity.create(request, slug, sanitizer)));
     }
 
     @Transactional
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
     public PostResponse update(long id, PostRequest request) {
         var post = entity(id);
-        requireUniqueSlug(request.slug(), id);
-        post.update(request, sanitizer);
+        categoryService.requireExisting(request.category());
+        var slug = normalizedSlug(request.slug());
+        if (slug == null) {
+            slug = post.getSlug();
+        } else {
+            requireUniqueSlug(slug, id);
+        }
+        post.update(request, slug, sanitizer);
         return PostResponse.from(post);
     }
 
@@ -255,5 +275,43 @@ public class PostService {
     private void requireUniqueSlug(String slug, Long id) {
         boolean exists = id == null ? repository.existsBySlug(slug) : repository.existsBySlugAndIdNot(slug, id);
         if (exists) throw new DataIntegrityViolationException("文章 Slug 已存在");
+    }
+
+    private String generateUniqueSlug(String title) {
+        var base = slugFromTitle(title);
+        var candidate = base;
+        for (int suffix = 2; repository.existsBySlug(candidate); suffix++) {
+            var tail = "-" + suffix;
+            var prefix = base.substring(0, Math.min(base.length(), MAX_SLUG_LENGTH - tail.length()))
+                .replaceFirst("-+$", "");
+            candidate = prefix + tail;
+        }
+        return candidate;
+    }
+
+    private static String normalizedSlug(String slug) {
+        if (slug == null || slug.isBlank()) return null;
+        return slug.trim();
+    }
+
+    private static String slugFromTitle(String title) {
+        var normalized = Normalizer.normalize(title, Normalizer.Form.NFKD)
+            .toLowerCase(java.util.Locale.ROOT);
+        var slug = normalized.replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("^-+|-+$", "");
+        if (slug.isEmpty()) slug = "post-" + shortHash(title);
+        if (slug.length() > MAX_SLUG_LENGTH) {
+            slug = slug.substring(0, MAX_SLUG_LENGTH).replaceFirst("-+$", "");
+        }
+        return slug;
+    }
+
+    private static String shortHash(String value) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest, 0, 8);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 }

@@ -132,13 +132,15 @@ onBeforeUnmount(() => {
 .roulette-result-copy span { display: -webkit-box; overflow: hidden; color: var(--muted); font-size: .82rem; line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .roulette-status { min-height: 1.2em; margin: 0 0 14px; color: var(--muted); font-size: .82rem; }
 .roulette-actions { display: flex; gap: 10px; }
-.roulette-actions button { flex: 1; padding: 12px 16px; font-size: .92rem; font-weight: 600; border-radius: 999px; cursor: pointer; transition: transform .25s var(--ease), box-shadow .25s, background .25s, color .25s; }
-.roulette-spin, .roulette-open { color: #fff; background: var(--accent); border: 1px solid transparent; box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 38%, transparent); }
-.roulette-spin:hover:not(:disabled), .roulette-open:hover { transform: translateY(-2px); }
-.roulette-spin:disabled { opacity: .6; cursor: default; }
-.roulette-again { color: var(--ink); background: transparent; border: 1px solid var(--line-strong); }
-.roulette-again:hover { border-color: var(--accent); color: var(--accent); }
-.roulette-dialog :focus-visible { outline: 2px solid #0071e3; outline-offset: 3px; }
+.roulette-actions button { flex: 1; padding: 12px 16px; font-size: .92rem; font-weight: 600; border-radius: 999px; cursor: pointer; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.roulette-spin, .roulette-open { color: #fff; background: var(--accent); border: 1px solid transparent; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 35%, transparent); }
+.roulette-spin:hover:not(:disabled), .roulette-open:hover { transform: translateY(-2px); box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 45%, transparent); filter: brightness(1.05); }
+.roulette-spin:active:not(:disabled), .roulette-open:active { transform: translateY(1px) scale(0.97); box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 25%, transparent); }
+.roulette-spin:disabled { opacity: .6; cursor: default; box-shadow: none; transform: none; }
+.roulette-again { color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); }
+.roulette-again:hover { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); transform: translateY(-2px); box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 15%, transparent); }
+.roulette-again:active { transform: translateY(1px) scale(0.97); box-shadow: none; }
+.roulette-dialog :focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
 @keyframes roulette-in { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes reel-spin { from { transform: translateY(0); } to { transform: translateY(-168px); } }
 @keyframes roulette-settle { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }

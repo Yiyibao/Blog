@@ -17,7 +17,30 @@ export interface AdminPost extends Post {
 // P1-2：管理端列表为摘要 DTO（不含 content），编辑前必须经 fetchAdminPost 拉取全文。
 export type AdminPostSummary = PostSummary & { id: number }
 
-export interface PostPayload extends Omit<AdminPost, 'id'> {}
+export type PostPayload = Omit<AdminPost, 'id' | 'slug'> & { slug?: string | null }
+
+export interface AdminPostCategory {
+  id: number
+  name: string
+  slug: string
+  description: string
+  postCount: number
+  publishedPostCount: number
+}
+
+export interface PostCategoryPayload {
+  name: string
+  description: string
+}
+
+export interface AdminDishCategory {
+  id: number
+  name: string
+  slug: string
+  description: string
+  dishCount: number
+  publishedDishCount: number
+}
 
 export interface AdminDish extends Dish {}
 // favoriteCount 只经收藏端点原子自增，管理端编辑不提交也不覆盖（后端 DishRequest 亦无此字段）
@@ -302,6 +325,38 @@ export function updatePost(id: number, payload: PostPayload) {
 
 export function deletePost(id: number) {
   return api.delete(`/admin/posts/${id}`, { headers: tokenHeader() })
+}
+
+export function fetchAdminCategories() {
+  return unwrap<AdminPostCategory[]>(api.get('/admin/categories', { headers: tokenHeader() }))
+}
+
+export function createPostCategory(payload: PostCategoryPayload) {
+  return unwrap<AdminPostCategory>(api.post('/admin/categories', payload, { headers: tokenHeader() }))
+}
+
+export function updatePostCategory(id: number, payload: PostCategoryPayload) {
+  return unwrap<AdminPostCategory>(api.put(`/admin/categories/${id}`, payload, { headers: tokenHeader() }))
+}
+
+export function deletePostCategory(id: number) {
+  return api.delete(`/admin/categories/${id}`, { headers: tokenHeader() })
+}
+
+export function fetchAdminDishCategories() {
+  return unwrap<AdminDishCategory[]>(api.get('/admin/dish-categories', { headers: tokenHeader() }))
+}
+
+export function createDishCategory(payload: PostCategoryPayload) {
+  return unwrap<AdminDishCategory>(api.post('/admin/dish-categories', payload, { headers: tokenHeader() }))
+}
+
+export function updateDishCategory(id: number, payload: PostCategoryPayload) {
+  return unwrap<AdminDishCategory>(api.put(`/admin/dish-categories/${id}`, payload, { headers: tokenHeader() }))
+}
+
+export function deleteDishCategory(id: number) {
+  return api.delete(`/admin/dish-categories/${id}`, { headers: tokenHeader() })
 }
 
 // 4F：曲目与语录管理

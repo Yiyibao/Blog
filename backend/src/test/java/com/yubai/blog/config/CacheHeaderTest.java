@@ -27,7 +27,7 @@ import com.yubai.blog.common.RateLimiter;
 
 /**
  * P1-9：缓存首部回归——验证身份敏感的响应不被标记为公开缓存，
- * 匿名/认证搜索与受保护的笔记端点返回正确的 Cache-Control / Vary。
+ * 动态内容索引、匿名/认证搜索与受保护的笔记端点返回正确的 Cache-Control / Vary。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -90,11 +90,29 @@ class CacheHeaderTest {
     }
 
     @Test
+    void anonymousDishCategoriesReturnsOkAndNoCache() throws Exception {
+        mockMvc.perform(get("/api/v1/dish-categories"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-cache"));
+    }
+
+    @Test
     void anonymousSearchIsPublicCache() throws Exception {
         mockMvc.perform(get("/api/v1/search").param("q", "设计"))
             .andExpect(status().isOk())
             .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("public")))
             .andExpect(header().string("Vary", org.hamcrest.Matchers.containsString("Authorization")));
+    }
+
+    @Test
+    void postAndCategoryIndexesMustRevalidateAfterPublishing() throws Exception {
+        mockMvc.perform(get("/api/v1/posts"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-cache"));
+
+        mockMvc.perform(get("/api/v1/categories"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-cache"));
     }
 
     @Test

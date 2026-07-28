@@ -194,7 +194,8 @@ onBeforeUnmount(() => {
         <RouterLink to="/about"><i>○</i>关于</RouterLink>
       </nav>
       <div class="header-actions">
-        <RouterLink v-if="auth.isAdmin" class="admin-entry-link" to="/admin">进入后台 ↗</RouterLink>
+        <AmbientSound />
+        <RouterLink class="admin-entry-link" :to="auth.isAdmin ? '/admin' : '/login'">进入后台 ↗</RouterLink>
         <button class="icon-button search-trigger" type="button" aria-label="全站搜索" @click="ui.openSearch">⌕ <kbd>⌘K</kbd></button>
         <button class="icon-button" type="button" :aria-label="ui.isDark ? '切换浅色模式' : '切换深色模式'" @click="ui.toggleTheme">{{ ui.isDark ? '☀' : '◐' }}</button>
         <button class="menu-button" type="button" :aria-expanded="menuOpen" aria-label="打开导航" @click="menuOpen = !menuOpen">{{ menuOpen ? '关闭' : '菜单' }}</button>
@@ -209,7 +210,7 @@ onBeforeUnmount(() => {
       <RouterLink to="/recipes">美食 <span>05</span></RouterLink>
       <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记 <span>06</span></RouterLink>
       <RouterLink to="/about">关于 <span>07</span></RouterLink>
-      <RouterLink v-if="auth.isAdmin" to="/admin">进入后台 <span>→</span></RouterLink>
+      <RouterLink :to="auth.isAdmin ? '/admin' : '/login'">进入后台 <span>→</span></RouterLink>
     </nav>
 
     <main>
@@ -248,7 +249,6 @@ onBeforeUnmount(() => {
     </button>
 
     <GlobalSearch :open="ui.searchOpen" @close="ui.closeSearch" />
-    <AmbientSound v-if="!isAdminRoute" />
     <!-- L-16/D-18：入口大屏（组件内部判定：仅根路径 + 无既往选择 + 未登录） -->
     <EntryGate />
     <!-- 4A-4：AI 助手停靠栏——全 /admin 路由可用（组件内部排除 /admin/ai 全屏页） -->
