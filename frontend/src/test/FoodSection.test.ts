@@ -207,7 +207,7 @@ describe('FoodSection baseline', () => {
       .mockImplementation(() => { throw new Error('unexpected extra fetchDishes call') })
     const wrapper = await mountSection()
     expect(mockFetchDishes).toHaveBeenCalledTimes(1)
-    const next = wrapper.findAll('.pagination button')[1]
+    const next = wrapper.get('[aria-label="下一页"]')
     await next.trigger('click')
     await flushPromises()
     expect(mockFetchDishes).toHaveBeenCalledTimes(2)
@@ -269,7 +269,7 @@ describe('FoodSection baseline', () => {
       }))
     const wrapper = await mountSection()
     expect(wrapper.find('.food-stats').text()).toContain('2')
-    const next = wrapper.findAll('.pagination button')[1]
+    const next = wrapper.get('[aria-label="下一页"]')
     await next.trigger('click')
     await flushPromises()
     expect(mockFetchDishes).toHaveBeenLastCalledWith(1, 4, undefined, undefined)

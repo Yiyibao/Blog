@@ -6,6 +6,7 @@ import { fetchTagPosts } from '../api/content'
 import type { PostSummary } from '../data'
 import { useRequestToken } from '../composables/useRequestToken'
 import { usePageMeta } from '../composables/usePageMeta'
+import PaginationNav from '../components/PaginationNav.vue'
 
 /** 5B：标签页——该标签下已发布文章（服务端分页）。 */
 const route = useRoute()
@@ -49,10 +50,8 @@ watch(() => route.params.tag, (raw) => {
   void load()
 }, { immediate: true })
 
-function go(delta: number) {
-  const next = page.value + delta
-  if (next < 0 || next >= totalPages.value) return
-  page.value = next
+function go(pageIndex: number) {
+  page.value = pageIndex
   void load()
 }
 </script>
@@ -85,11 +84,7 @@ function go(delta: number) {
           </span>
         </RouterLink>
       </div>
-      <nav v-if="totalPages > 1" class="tag-pagination" aria-label="标签文章分页">
-        <button type="button" :disabled="page <= 0" @click="go(-1)">上一页</button>
-        <span>{{ page + 1 }} / {{ totalPages }}</span>
-        <button type="button" :disabled="page >= totalPages - 1" @click="go(1)">下一页</button>
-      </nav>
+      <PaginationNav :page="page" :total-pages="totalPages" aria-label="标签文章分页" @change="go" />
     </template>
   </section>
 </template>
@@ -148,22 +143,4 @@ function go(delta: number) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.tag-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 24px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.tag-pagination button {
-  padding: 6px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface-solid);
-  color: var(--ink);
-  cursor: pointer;
-}
-.tag-pagination button:disabled { opacity: 0.4; cursor: default; }
 </style>

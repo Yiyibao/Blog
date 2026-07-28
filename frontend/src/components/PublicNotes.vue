@@ -17,6 +17,7 @@ import type { AdminNoteSummary } from '../api/admin'
 import { usePageMeta, cleanText } from '../composables/usePageMeta'
 import { createSiteConfig, resolveUrl } from '../config/site'
 import { techArticle, breadcrumbList, useStructuredData } from '../composables/useStructuredData'
+import PaginationNav from './PaginationNav.vue'
 
 // P1-2：公开列表为摘要 DTO；正文在选中时经详情接口补齐后回写列表
 type PublicNoteItem = AdminNoteSummary & { markdownContent?: string }
@@ -123,6 +124,11 @@ async function load() {
   finally { loading.value = false }
 }
 
+function changePage(page: number) {
+  notePage.value = page
+  void load()
+}
+
 async function selectRouteNote() {
   const rawId = Array.isArray(route.query.note) ? route.query.note[0] : route.query.note
   const id = Number(rawId)
@@ -160,7 +166,7 @@ onBeforeUnmount(() => editor.value?.destroy())
         <div class="public-note-list">
           <button v-for="note in filtered" :key="note.id" :class="{ active: selected?.id === note.id }" @click="selectedId = note.id"><small>{{ note.folder }} · {{ new Date(note.updatedAt).toLocaleDateString('zh-CN') }}</small><strong>{{ note.title }}</strong><span>{{ note.wordCount }} 字 · {{ note.tags.slice(0, 2).join(' / ') || '学习记录' }}</span></button>
         </div>
-        <nav v-if="noteTotalPages > 1" class="pagination" aria-label="公开笔记分页"><button type="button" :disabled="notePage <= 0" @click="notePage -= 1; load()">上一页</button><span>{{ notePage + 1 }} / {{ noteTotalPages }}</span><button type="button" :disabled="notePage >= noteTotalPages - 1" @click="notePage += 1; load()">下一页</button></nav>
+        <PaginationNav :page="notePage" :total-pages="noteTotalPages" aria-label="公开笔记分页" @change="changePage" />
       </aside>
       <article v-if="selected" class="public-note-paper"><header><p>{{ selected.folder }} / {{ selected.status === 'PUBLISHED' ? '公开笔记' : '' }}</p><h2>{{ selected.title }}</h2><div><span v-for="tag in selected.tags" :key="tag"># {{ tag }}</span></div></header><EditorContent :editor="editor" /></article>
       <div v-else class="public-notes-empty"><span>✦</span><h2>{{ loading ? '正在翻阅笔记…' : '公开笔记正在整理中' }}</h2><p>管理员将笔记状态设为“公开”后，会在这里出现。</p></div>

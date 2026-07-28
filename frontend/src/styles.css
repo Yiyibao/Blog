@@ -842,11 +842,9 @@ a { color: inherit; text-decoration: none; }
 .admin-sidebar nav a, .admin-sidebar nav button { display: grid; grid-template-columns: 25px 1fr auto; align-items: center; width: 100%; min-height: 42px; border: 0; border-radius: 8px; padding: 0 11px; background: transparent; color: #cbd0c8; text-decoration: none; text-align: left; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .2s ease, color .2s ease; }
 .admin-sidebar nav a:hover, .admin-sidebar nav button:hover { background: #30312e; color: white; }
 .admin-sidebar nav a.active, .admin-sidebar nav button.active { background: #373834; color: white; font-weight: 600; }
-.admin-sidebar nav .notes-nav { margin-top: 3px; border: 1px solid #725d49; background: linear-gradient(135deg, #493c31, #302c27); color: #f1d7b8; }
 .admin-sidebar nav i { font-style: normal; font-size: 14px; }
 .admin-sidebar nav span { font-size: 13px; font-weight: 500; }
 .admin-sidebar nav b { min-width: 22px; border-radius: 999px; padding: 3px 7px; background: #454641; color: #d5d6cf; text-align: center; font-size: 11px; font-weight: 600; }
-.admin-sidebar nav .notes-nav b { background: #66513f; color: #fdf1e2; }
 .admin-sidebar > footer { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; margin-top: auto; border-top: 1px solid #3b3c38; padding: 18px 7px 0; }
 .admin-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #d5b28c; color: #252521; font: 600 13px Georgia, serif; }
 .admin-sidebar > footer div:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
@@ -913,7 +911,6 @@ a { color: inherit; text-decoration: none; }
   .admin-brand, .admin-sidebar nav p, .admin-sidebar > footer { display: none; }
   .admin-sidebar nav { grid-template-columns: repeat(5, 1fr); margin: 0; }
   .admin-sidebar nav a, .admin-sidebar nav button { min-height: 47px; }
-  .admin-sidebar nav .notes-nav { margin: 0; }
   .admin-main { padding: 0 15px 85px; }
   .admin-topbar { min-height: 75px; }
   .admin-topbar > div:last-child a { display: none; }

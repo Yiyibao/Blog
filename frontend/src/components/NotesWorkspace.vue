@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import TyporaEditor from './TyporaEditor.vue'
 import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
+import PaginationNav from './PaginationNav.vue'
 import {
   archiveNote, clearAdminSession, createNote, deleteNote, deleteNoteAttachment, exportNote, fetchAdminNote, fetchNoteAttachments,
   fetchNotes, fetchNoteAttachmentContent, hasValidAdminSession, importNote, publishNote, unpublishNote, updateNote, uploadNoteAttachment,
@@ -264,6 +265,11 @@ async function load() {
   }
 }
 
+function changePage(page: number) {
+  notePage.value = page
+  void load()
+}
+
 function handleError(cause: unknown, fallback: string) {
   if (axios.isAxiosError(cause) && cause.response?.status === 401) {
     clearAdminSession()
@@ -474,7 +480,7 @@ onBeforeUnmount(() => {
           <span>{{ note.folder }} · {{ new Date(note.updatedAt).toLocaleDateString('zh-CN') }}</span><strong>{{ note.title }}</strong><small>{{ note.wordCount }} 字 · {{ note.tags.slice(0,2).join(' / ') || '无标签' }}</small>
         </button>
       </div>
-      <nav v-if="noteTotalPages > 1" class="pagination" aria-label="学习笔记分页"><button type="button" :disabled="notePage <= 0" @click="notePage -= 1; load()">上一页</button><span>{{ notePage + 1 }} / {{ noteTotalPages }}</span><button type="button" :disabled="notePage >= noteTotalPages - 1" @click="notePage += 1; load()">下一页</button></nav>
+      <PaginationNav :page="notePage" :total-pages="noteTotalPages" aria-label="学习笔记分页" @change="changePage" />
     </aside>
 
     <main class="note-desk">

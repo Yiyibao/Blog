@@ -3,6 +3,7 @@ import { onMounted, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
 import { useUiStore } from '../stores/uiStore'
+import PaginationNav from '../components/PaginationNav.vue'
 
 const content = useContentStore()
 const ui = useUiStore()
@@ -83,11 +84,7 @@ onMounted(() => {
       <div v-if="!content.archiveLoading && !content.archivePosts.length" class="empty-state"><b>没有找到文章</b><p>换一个关键词，或者查看全部分类。</p><button type="button" @click="content.query = ''; content.category = '全部'">清除筛选</button></div>
     </div>
     <!-- 以总页数而非当前页条数决定是否显示分页：搜索+收藏组合下当前页可能被过滤为空，仍需可翻页 -->
-    <nav v-if="content.archiveTotalPages > 1" class="pagination" aria-label="文章分页">
-      <button type="button" :disabled="content.archivePage <= 0" @click="content.archivePage -= 1">上一页</button>
-      <span>{{ content.archivePage + 1 }} / {{ content.archiveTotalPages }}</span>
-      <button type="button" :disabled="content.archivePage >= content.archiveTotalPages - 1" @click="content.archivePage += 1">下一页</button>
-    </nav>
+    <PaginationNav :page="content.archivePage" :total-pages="content.archiveTotalPages" aria-label="文章分页" @change="content.archivePage = $event" />
   </section>
 </template>
 

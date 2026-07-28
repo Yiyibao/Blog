@@ -54,8 +54,7 @@ function logout() {
         <i>◉</i><span>菜品管理</span><b v-if="dishTotal !== undefined">{{ dishTotal }}</b>
       </RouterLink>
 
-      <p>创作与 AI</p>
-      <RouterLink class="notes-nav" :class="{ active: activeItem === 'notes' }" to="/admin/notes">
+      <RouterLink :class="{ active: activeItem === 'notes' }" to="/admin/notes">
         <i>✎</i><span>学习笔记</span><b v-if="noteTotal !== undefined">{{ noteTotal }}</b>
       </RouterLink>
       <RouterLink class="ai-nav" :class="{ active: activeItem === 'ai' }" to="/admin/ai">

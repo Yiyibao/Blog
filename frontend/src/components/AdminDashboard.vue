@@ -16,6 +16,7 @@ import TyporaEditor from './TyporaEditor.vue'
 import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
 import PostRevisionDrawer from './PostRevisionDrawer.vue'
 import DashboardTrends from './DashboardTrends.vue'
+import PaginationNav from './PaginationNav.vue'
 import type { AdminPost, AdminStats } from '../api/admin'
 import { useContentStore } from '../stores/contentStore'
 
@@ -166,6 +167,16 @@ const dishForm = reactive({
 const contentTitle = computed(() => ({ posts: '文章管理', dishes: '菜品管理' })[tab.value])
 const contentNoun = computed(() => ({ posts: '文章', dishes: '菜品' })[tab.value])
 const editorNoun = computed(() => ({ post: '文章', dish: '菜品' })[editorKind.value])
+
+function changePostPage(page: number) {
+  postPage.value = page
+  void load()
+}
+
+function changeDishPage(page: number) {
+  dishPage.value = page
+  void load()
+}
 
 function handleAuthError(cause: unknown) {
   if (axios.isAxiosError(cause) && cause.response?.status === 401) {
@@ -461,7 +472,7 @@ onMounted(load)
         <DashboardTrends v-if="adminStats" :stats="adminStats" />
       </template>
 
-      <section class="admin-content-section">
+      <section v-if="!isOverview" class="admin-content-section">
         <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><div class="content-head-actions"><button class="button secondary" type="button" @click="tab === 'posts' ? newCategory() : newDishCategory()">分类管理</button><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></div></header>
         <div v-if="tab === 'posts'" class="admin-tabs" style="margin-bottom: 16px">
           <button :class="{ active: postStatusFilter === '' }" @click="postStatusFilter = ''">全部</button>
@@ -473,16 +484,12 @@ onMounted(load)
         <div v-else-if="tab === 'posts'" class="admin-table">
           <div class="admin-table-head"><span>序号</span><span>内容</span><span>状态</span><span>操作</span></div>
           <article v-for="(post, index) in posts" :key="post.id"><span class="admin-index">{{ String(postPage * postPageSize + index + 1).padStart(2, '0') }}</span><div><small>{{ post.category }} · {{ post.date }}</small><strong>{{ post.title }}</strong><p>{{ post.excerpt }}</p></div><span class="admin-status" :class="{ featured: post.featured && post.status !== 'DRAFT' }">{{ postStatusText(post) }}</span><div class="admin-row-actions"><button @click="editPost(post)">编辑</button><button class="danger" @click="remove('post', post.id, post.title)">删除</button></div></article>
-          <nav v-if="postTotalPages > 1" class="pagination" aria-label="后台文章分页">
-            <button type="button" :disabled="postPage <= 0" @click="postPage -= 1; load()">上一页</button>
-            <span>{{ postPage + 1 }} / {{ postTotalPages }}</span>
-            <button type="button" :disabled="postPage >= postTotalPages - 1" @click="postPage += 1; load()">下一页</button>
-          </nav>
+          <PaginationNav :page="postPage" :total-pages="postTotalPages" aria-label="后台文章分页" @change="changePostPage" />
         </div>
         <div v-else class="admin-table admin-dish-table">
           <div class="admin-table-head"><span>序号</span><span>菜品</span><span>状态</span><span>操作</span></div>
           <article v-for="(dish, index) in dishes" :key="dish.id"><span class="admin-index">{{ String(dishPage * contentPageSize + index + 1).padStart(2, '0') }}</span><div class="admin-dish-cell"><img :src="dish.imageUrl" :alt="dish.imageAlt"><div><small>{{ dish.category }} · {{ dish.prepMinutes }} 分钟 · ★ {{ dish.rating.toFixed(1) }}</small><strong>{{ dish.name }}</strong><p>{{ dish.summary }}</p></div></div><span class="admin-status" :class="{ featured: dish.featured && dish.published }">{{ dish.published ? (dish.featured ? '精选' : '已发布') : '草稿' }}</span><div class="admin-row-actions"><button @click="editDish(dish)">编辑</button><button class="danger" @click="remove('dish', dish.id, dish.name)">删除</button></div></article>
-          <nav v-if="dishTotalPages > 1" class="pagination" aria-label="后台菜品分页"><button type="button" :disabled="dishPage <= 0" @click="dishPage -= 1; load()">上一页</button><span>{{ dishPage + 1 }} / {{ dishTotalPages }}</span><button type="button" :disabled="dishPage >= dishTotalPages - 1" @click="dishPage += 1; load()">下一页</button></nav>
+          <PaginationNav :page="dishPage" :total-pages="dishTotalPages" aria-label="后台菜品分页" @change="changeDishPage" />
         </div>
       </section>
     </main>

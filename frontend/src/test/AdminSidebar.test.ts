@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia } from 'pinia'
 import AdminSidebar from '../components/AdminSidebar.vue'
 import AdminDashboard from '../components/AdminDashboard.vue'
 
@@ -15,7 +16,19 @@ vi.mock('../api/admin', async (importOriginal) => {
     fetchAdminDishCategories: vi.fn().mockResolvedValue([{ id: 1, name: '十分钟菜', slug: '十分钟菜', description: '', dishCount: 2, publishedDishCount: 2 }]),
     fetchAdminDishes: vi.fn().mockResolvedValue({ items: [], totalElements: 0, totalPages: 1 }),
     fetchNotes: vi.fn().mockResolvedValue({ items: [], totalElements: 0, totalPages: 1 }),
-    fetchAdminStats: vi.fn().mockResolvedValue({ posts: 5, dishes: 3, notes: 12 }),
+    fetchAdminStats: vi.fn().mockResolvedValue({
+      posts: 5, dishes: 3, notes: 12, publishedPosts: 4, draftPosts: 1,
+      attachmentCount: 2, attachmentBytes: 1024,
+      aiUsage: { requests: 3, tokens: 800 }, viewTrend: [], topPosts: [],
+    }),
+  }
+})
+
+vi.mock('../api/content', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../api/content')>()
+  return {
+    ...mod,
+    fetchDailyQuotes: vi.fn().mockResolvedValue([]),
   }
 })
 
@@ -51,7 +64,7 @@ async function mountDashboardAt(path: string) {
   await router.push(path)
   await router.isReady()
   const wrapper = mount(AdminDashboard, {
-    global: { plugins: [router] },
+    global: { plugins: [router, createPinia()] },
   })
   return { wrapper, router }
 }
@@ -66,6 +79,28 @@ describe('AdminSidebar Navigation & Highlighting', () => {
     const activeLinks = wrapper.findAll('nav a.active')
     expect(activeLinks.length).toBe(1)
     expect(activeLinks[0].text()).toContain('总览')
+    expect(wrapper.findAll('nav a').find(link => link.text().includes('学习笔记'))?.classes()).not.toContain('active')
+  })
+
+  it('keeps all navigation entries in one workspace group', async () => {
+    const { wrapper } = await mountSidebarAt('/admin')
+
+    expect(wrapper.findAll('nav > p')).toHaveLength(1)
+    expect(wrapper.find('nav > p').text()).toBe('工作空间')
+    expect(wrapper.text()).not.toContain('创作与 AI')
+    expect(wrapper.findAll('nav a').find(link => link.text().includes('学习笔记'))?.classes()).not.toContain('notes-nav')
+  })
+
+  it('shows overview content without the article management section on /admin', async () => {
+    const { wrapper } = await mountDashboardAt('/admin')
+    await flushPromises()
+
+    expect(wrapper.find('.admin-stat-grid').exists()).toBe(true)
+    expect(wrapper.find('.admin-content-section').exists()).toBe(false)
+    expect(wrapper.find('.admin-sidebar nav a.active').text()).toContain('总览')
+    expect(wrapper.find('.writing-preview').exists()).toBe(true)
+    expect(wrapper.find('.inspiration-panel').text()).toContain('每日一撕')
+    expect(wrapper.find('.trend-chart-card').exists()).toBe(true)
   })
 
   it('highlights posts management on /admin?section=posts', async () => {

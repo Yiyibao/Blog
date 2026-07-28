@@ -18,6 +18,7 @@ import DishRoulette from './DishRoulette.vue'
 import TodayMenuCard from './TodayMenuCard.vue'
 import TodayMenuBoard from './TodayMenuBoard.vue'
 import FoodTimeline from './FoodTimeline.vue'
+import PaginationNav from '../PaginationNav.vue'
 const route = useRoute()
 const router = useRouter()
 interface CategoryItem { name: string; slug: string }
@@ -445,7 +446,7 @@ onBeforeUnmount(() => {
           </div>
         </Transition>
       </template>
-      <nav v-if="dishTotalPages > 1" class="pagination" aria-label="公开菜谱分页"><button type="button" :disabled="dishPage <= 0" @click="dishPage -= 1">上一页</button><span>{{ dishPage + 1 }} / {{ dishTotalPages }}</span><button type="button" :disabled="dishPage >= dishTotalPages - 1" @click="dishPage += 1">下一页</button></nav>
+      <PaginationNav :page="dishPage" :total-pages="dishTotalPages" aria-label="公开菜谱分页" @change="dishPage = $event" />
 
       <section v-if="showRanking" class="food-ranking" aria-labelledby="food-ranking-title">
         <header class="ranking-head">
