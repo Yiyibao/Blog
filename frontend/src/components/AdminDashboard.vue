@@ -18,6 +18,7 @@ import AiActionChips, { type AiActionKind } from './AiActionChips.vue'
 import PostRevisionDrawer from './PostRevisionDrawer.vue'
 import DashboardTrends from './DashboardTrends.vue'
 import PaginationNav from './PaginationNav.vue'
+import RecipeExtractionModal from './RecipeExtractionModal.vue'
 import type { AdminPost, AdminStats } from '../api/admin'
 import { useContentStore } from '../stores/contentStore'
 
@@ -164,6 +165,18 @@ const importOpen = ref(false)
 const importLoading = ref(false)
 const importError = ref('')
 const importPreview = ref<YrecipePreview | null>(null)
+const extractionOpen = ref(false)
+
+function openExtraction() {
+  extractionOpen.value = true
+}
+
+async function onExtractionDone() {
+  extractionOpen.value = false
+  await load()
+  const contentStore = useContentStore()
+  await contentStore.loadRemoteContent().catch(() => null)
+}
 const importCommitSlug = ref('')
 const importCommitCategory = ref('')
 
@@ -558,7 +571,7 @@ onMounted(load)
       </template>
 
       <section v-if="!isOverview" class="admin-content-section">
-        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><div class="content-head-actions"><button class="button secondary" type="button" @click="tab === 'posts' ? newCategory() : newDishCategory()">分类管理</button><button v-if="tab === 'dishes'" class="button secondary" type="button" @click="openImportFileInput">导入菜谱</button><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></div></header>
+        <header><div><span>CONTENT MANAGEMENT</span><h2>{{ contentTitle }}</h2></div><div class="admin-tabs"><button :class="{ active: tab === 'posts' }" @click="setTab('posts')">文章</button><button :class="{ active: tab === 'dishes' }" @click="setTab('dishes')">菜品</button></div><div class="content-head-actions"><button class="button secondary" type="button" @click="tab === 'posts' ? newCategory() : newDishCategory()">分类管理</button><button v-if="tab === 'dishes'" class="button secondary" type="button" @click="openImportFileInput">导入菜谱</button><button v-if="tab === 'dishes'" class="button secondary" type="button" @click="openExtraction">AI 提取菜谱</button><button class="button primary" type="button" @click="newItem">＋ 新建{{ contentNoun }}</button></div></header>
         <div v-if="tab === 'posts'" class="admin-tabs" style="margin-bottom: 16px">
           <button :class="{ active: postStatusFilter === '' }" @click="postStatusFilter = ''">全部</button>
           <button :class="{ active: postStatusFilter === 'PUBLISHED' }" @click="postStatusFilter = 'PUBLISHED'">已发布</button>
@@ -737,6 +750,9 @@ onMounted(load)
         <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
       </section>
     </div>
+
+    <!-- 7：AI 提取菜谱对话框 -->
+    <RecipeExtractionModal v-if="extractionOpen" @done="onExtractionDone" />
 
     <!-- 6D：菜谱导入预览对话框 -->
     <div v-if="importOpen" class="admin-editor-backdrop" @click.self="cancelImport">

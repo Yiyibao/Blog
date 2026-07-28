@@ -356,6 +356,65 @@ public class DishImportService {
         return staging.getMediaType();
     }
 
+    public DishImportPreviewResponse previewFromBytes(byte[] zipData) {
+        if (zipData.length == 0 || zipData.length > MAX_COMPRESSED_SIZE) {
+            throw new InvalidRecipeException("压缩包不能为空且不能超过 25 MB");
+        }
+        var result = validateAndExtract(zipData);
+        var pkg = result.pkg;
+        if (pkg == null || pkg.recipe() == null) {
+            throw new InvalidRecipeException("菜谱数据不完整");
+        }
+        if (pkg.cover() == null) {
+            throw new InvalidRecipeException("封面信息不能为空");
+        }
+        var coverData = result.coverData;
+        var coverMediaType = result.coverMediaType;
+        var width = result.width;
+        var height = result.height;
+
+        String matchedCategory = findMatchingCategory(pkg.recipe().categoryHint());
+        boolean slugAvailable = pkg.recipe().slug() == null || pkg.recipe().slug().isBlank()
+            || !dishRepository.existsBySlug(pkg.recipe().slug());
+
+        var ext = extensionForMediaType(coverMediaType);
+        var storageKey = "imports/" + UUID.randomUUID() + "/cover" + ext;
+        storageService.store(storageKey, coverData);
+        registerRollbackCleanup(storageKey);
+
+        String recipeJson;
+        try {
+            recipeJson = MAPPER.writeValueAsString(pkg);
+        } catch (IOException e) {
+            deleteQuietly(storageKey);
+            throw new InvalidRecipeException("无法序列化菜谱 JSON");
+        }
+
+        var staging = DishImportStagingEntity.create(recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
+        staging = stagingRepository.save(staging);
+
+        String coverPreviewUrl = "/api/v1/admin/dish-imports/" + staging.getToken() + "/cover";
+
+        List<String> warnings = new ArrayList<>();
+        if (pkg.recipe().slug() != null && !pkg.recipe().slug().isBlank() && slugAvailable) {
+            warnings.add("Slug '" + pkg.recipe().slug() + "' 可用");
+        } else if (pkg.recipe().slug() != null && !pkg.recipe().slug().isBlank()) {
+            warnings.add("Slug '" + pkg.recipe().slug() + "' 已被占用，请修改");
+        }
+        if (pkg.recipe().categoryHint() != null && !pkg.recipe().categoryHint().isBlank()
+            && matchedCategory == null) {
+            warnings.add("未找到匹配的分类 '" + pkg.recipe().categoryHint() + "'，请从现有分类中选择");
+        }
+        if (pkg.generation() != null && pkg.generation().warnings() != null) {
+            warnings.addAll(pkg.generation().warnings());
+        }
+
+        return new DishImportPreviewResponse(
+            staging.getToken(), staging.getExpiresAt(), pkg,
+            warnings, matchedCategory, slugAvailable, coverPreviewUrl
+        );
+    }
+
     private record ExtractResult(YrecipePackage pkg, byte[] coverData,
                                  String coverMediaType, int width, int height) {}
 
