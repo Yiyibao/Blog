@@ -81,16 +81,22 @@ let refreshPromise: Promise<LoginResult | null> | null = null
 function requestRefresh() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
+      const gen = useAuthStore().getGeneration()
       try {
         const base = import.meta.env.VITE_API_BASE_URL || '/api/v1'
         const res = await axios.post<ApiEnvelope<LoginResult>>(
           `${base}/auth/refresh`, null, { withCredentials: true, timeout: 8000 },
         )
         const result = res.data.data
-        useAuthStore().saveSession(result)
-        return result
+        if (useAuthStore().isCurrentGeneration(gen)) {
+          useAuthStore().saveSession(result)
+          return result
+        }
+        return null
       } catch {
-        useAuthStore().clearSession()
+        if (useAuthStore().isCurrentGeneration(gen)) {
+          useAuthStore().clearSession()
+        }
         return null
       } finally {
         refreshPromise = null
@@ -156,8 +162,8 @@ export function logout() {
   useAuthStore().clearSession()
 }
 
-export function saveAdminSession(result: LoginResult, options: { remember?: boolean } = {}) {
-  useAuthStore().saveSession(result, options)
+export function saveAdminSession(result: LoginResult) {
+  useAuthStore().saveSession(result)
 }
 
 export function getAdminSessionName() {
@@ -238,7 +244,7 @@ export function verifyTotp(challengeId: string, code: string) {
   return unwrap<LoginResult>(api.post('/auth/totp/verify', { challengeId, code }))
 }
 
-// FD-9：remember=true 请求 24h 长 token，配合 authStore 的 localStorage 持久化
+// FD-9：remember=true 请求 24h 长 refresh token（HttpOnly cookie），跨会话由 cookie 恢复
 export async function login(
   username: string,
   password: string,

@@ -33,6 +33,7 @@ public class NoteAttachmentService {
     private static final Set<String> SAFE_IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
     private static final int MAX_WIDTH = 1920;
     private static final int MAX_PIXEL_DIMENSION = 8000;
+    private static final long MAX_TOTAL_PIXELS = 20_000_000L;
     private static final float JPEG_QUALITY = 0.85f;
     private final NoteAttachmentRepository attachments;
     private final NoteRepository notes;
@@ -169,9 +170,14 @@ public class NoteAttachmentService {
                 if (width > MAX_PIXEL_DIMENSION || height > MAX_PIXEL_DIMENSION) {
                     throw new InvalidNoteFileException("图片尺寸不能超过 " + MAX_PIXEL_DIMENSION + "×" + MAX_PIXEL_DIMENSION + " 像素");
                 }
+                if ((long) width * height > MAX_TOTAL_PIXELS) {
+                    throw new InvalidNoteFileException("图片总像素不能超过 " + MAX_TOTAL_PIXELS + "（当前 " + ((long) width * height) + "）");
+                }
             } finally {
                 reader.dispose();
             }
+        } catch (InvalidNoteFileException e) {
+            throw e;
         } catch (IOException exception) {
             throw new InvalidNoteFileException("无法读取图片文件");
         }
@@ -189,7 +195,7 @@ public class NoteAttachmentService {
         if (!mimeType.equals("image/jpeg")) return data;
         try {
             var image = ImageIO.read(new java.io.ByteArrayInputStream(data));
-            if (image == null) return data;
+            if (image == null) throw new InvalidNoteFileException("JPEG 解码失败：ImageIO.read 返回 null");
             int w = image.getWidth();
             int h = image.getHeight();
             if (w > MAX_WIDTH) {
@@ -202,7 +208,7 @@ public class NoteAttachmentService {
             g.dispose();
             var out = new ByteArrayOutputStream();
             Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
-            if (!writers.hasNext()) return data;
+            if (!writers.hasNext()) throw new InvalidNoteFileException("没有可用的 JPEG 编码器");
             try (ImageOutputStream ios = ImageIO.createImageOutputStream(out)) {
                 ImageWriter writer = writers.next();
                 ImageWriteParam param = writer.getDefaultWriteParam();
@@ -213,9 +219,10 @@ public class NoteAttachmentService {
                 writer.dispose();
             }
             return out.toByteArray();
+        } catch (InvalidNoteFileException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("Image optimization failed, storing original: {}", e.toString());
-            return data;
+            throw new InvalidNoteFileException("图片优化失败：" + e.getMessage());
         }
     }
 

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -137,12 +138,12 @@ class LocalFileStorageTest {
 
     @Test
     void concurrentWritesUseIndependentTemporaryFiles() throws Exception {
-        try (var executor = Executors.newFixedThreadPool(4)) {
-            var futures = IntStream.range(0, 12)
+        try (var executor = Executors.newFixedThreadPool(8)) {
+            var futures = IntStream.range(0, 24)
                 .mapToObj(value -> executor.submit(() -> storage.store("same/file.bin", new byte[]{(byte) value})))
                 .toList();
             executor.shutdown();
-            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
             for (var future : futures) future.get();
         }
         assertThat(storage.read("same/file.bin")).hasSize(1);
@@ -152,8 +153,62 @@ class LocalFileStorageTest {
     }
 
     @Test
+    void concurrentSameKeyWritesProduceValidContent() throws Exception {
+        var key = "concurrent/content.bin";
+        var threadCount = 16;
+        var marker = new AtomicInteger(0);
+        try (var executor = Executors.newFixedThreadPool(8)) {
+            var futures = IntStream.range(0, threadCount)
+                .mapToObj(i -> executor.submit(() -> {
+                    var id = marker.incrementAndGet();
+                    var data = ("payload-" + id + "-" + System.nanoTime()).getBytes(StandardCharsets.UTF_8);
+                    storage.store(key, data);
+                    return id;
+                }))
+                .toList();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+            for (var future : futures) future.get();
+        }
+        var finalContent = storage.read(key);
+        assertThat(finalContent).isNotEmpty();
+        assertThat(new String(finalContent, StandardCharsets.UTF_8)).startsWith("payload-");
+        try (var files = Files.walk(tempDir)) {
+            assertThat(files.filter(path -> path.getFileName().toString().endsWith(".tmp"))).isEmpty();
+        }
+    }
+
+    @Test
+    void concurrentReadWriteDoesNotCorruptContent() throws Exception {
+        var key = "rw-test/file.bin";
+        storage.store(key, "initial".getBytes(StandardCharsets.UTF_8));
+        try (var executor = Executors.newFixedThreadPool(4)) {
+            var futures = IntStream.range(0, 20)
+                .mapToObj(i -> executor.submit(() -> {
+                    if (i % 2 == 0) {
+                        storage.store(key, ("write-" + i).getBytes(StandardCharsets.UTF_8));
+                    } else {
+                        var data = storage.read(key);
+                        assertThat(data).isNotEmpty();
+                    }
+                    return null;
+                }))
+                .toList();
+            executor.shutdown();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+            for (var future : futures) future.get();
+        }
+        assertThat(storage.read(key)).isNotEmpty();
+        try (var files = Files.walk(tempDir)) {
+            assertThat(files.filter(path -> path.getFileName().toString().endsWith(".tmp"))).isEmpty();
+        }
+    }
+
+    @Test
     void failedMoveCleansTemporaryFile() throws IOException {
-        Files.createDirectory(tempDir.resolve("occupied"));
+        var occupiedDir = tempDir.resolve("occupied");
+        Files.createDirectory(occupiedDir);
+        Files.createFile(occupiedDir.resolve("lock"));
         assertThatThrownBy(() -> storage.store("occupied", new byte[]{1}))
             .isInstanceOf(StorageException.class);
         try (var files = Files.list(tempDir)) {

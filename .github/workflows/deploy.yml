@@ -1,10 +1,14 @@
 name: Deploy
 
-# CD（阶段 2）：tag 或手动触发 + GitHub Environment 人工批准门。
-# 前置（用户操作，未完成前本工作流不可用）：
-#   1. 服务器建 deploy 用户与部署目录（/opt/yubai-blog/{releases,shared}）
-#   2. GitHub 仓库 Settings → Environments 建 "production" 并勾选 Required reviewers
-#   3. Secrets：DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY（私钥）/ DEPLOY_PATH（如 /opt/yubai-blog）
+# CD (Phase 2): tag/manual trigger + GitHub Environment approval gate.
+# Prerequisites:
+#   1. Server: deploy user with sudo (systemctl restart yubai-blog) and write
+#      access to APP_DIR/releases/ and APP_DIR/current.
+#   2. nginx (www-data) needs o+x on APP_DIR and o+rx on releases/ (see
+#      bootstrap-server.sh "minimum safe bootstrap" layout).
+#   3. GitHub repo Settings → Environments → "production" with Required reviewers.
+#   4. Secrets: DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY / DEPLOY_PATH.
+#   5. Repository variable (Settings → Actions → Variables): PRERENDER_API_BASE_URL.
 on:
   push:
     tags: ['v*']
@@ -18,90 +22,161 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Shell syntax checks
+        run: |
+          bash -n deploy/bootstrap-server.sh
+      - name: Structural assertions
+        run: |
+          grep -qF 'ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/current/backend/blog-backend.jar' deploy/yubai-blog.service
+          grep -qF 'ReadWritePaths=/opt/yubai-blog/shared/attachments' deploy/yubai-blog.service
+          grep -qF 'root /opt/yubai-blog/current/frontend;' deploy/hxnf.top.nginx
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Build frontend
+
+      - name: Frontend typecheck
         working-directory: frontend
         run: |
           npm ci
-          npm run build
+          npm run test:typecheck
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm run test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          PRERENDER_REQUIRE_DYNAMIC: 'true'
+          PRERENDER_API_BASE_URL: ${{ vars.PRERENDER_API_BASE_URL }}
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
           cache: maven
-      - name: Build backend jar (tests run in CI workflow)
+
+      - name: Package backend (with tests)
         working-directory: backend
-        run: mvn --batch-mode -DskipTests package
+        run: mvn --batch-mode package
+
+      - name: Stage canonical jar
+        run: |
+          jar=$(ls backend/target/*.jar 2>/dev/null | head -1)
+          if [ -z "$jar" ]; then echo "no jar found" >&2; exit 1; fi
+          mkdir -p backend/target/canonical
+          cp "$jar" backend/target/canonical/blog-backend.jar
+
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist
           retention-days: 7
+
       - uses: actions/upload-artifact@v4
         with:
           name: backend-jar
-          path: backend/target/*.jar
+          path: backend/target/canonical/blog-backend.jar
           retention-days: 7
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    # 人工批准门：Environment 配置 Required reviewers 后，此步会挂起等待批准
+    # Approval gate: Environment "production" with Required reviewers
     environment: production
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: dist/frontend
+
       - uses: actions/download-artifact@v4
         with:
           name: backend-jar
           path: dist/backend
+
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
       - name: Upload release (rsync over SSH)
         run: |
           release="release-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
           echo "RELEASE_DIR=$release" >> "$GITHUB_ENV"
           rsync -az -e "ssh -i ~/.ssh/id_deploy" dist/ \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/releases/$release/"
-      - name: Atomic switch + restart + health check
-        # 远端不继承 runner env——路径与 release 名以位置参数传入
+
+      # Remote script — args passed positionally (runner env vars not inherited by SSH)
+      - name: Atomic switch, restart, health check with rollback
         run: |
           ssh -i ~/.ssh/id_deploy "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             bash -s "$DEPLOY_PATH" "$RELEASE_DIR" <<'EOF'
           set -euo pipefail
           DEPLOY_PATH="$1"
           RELEASE_DIR="$2"
-          cd "${DEPLOY_PATH}"
-          # 原子切换：current 软链指向新 release，失败可指回旧目录回滚
-          ln -sfn "releases/${RELEASE_DIR}" current.next && mv -T current.next current
-          sudo systemctl restart yubai-blog
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"UP"'; then
-              echo "health check passed"; exit 0
+
+          # Ensure nginx (www-data) can traverse and read frontend files
+          find "${DEPLOY_PATH}/releases/${RELEASE_DIR}" -type d -exec chmod o+rx {} +
+          find "${DEPLOY_PATH}/releases/${RELEASE_DIR}" -type f -exec chmod o+r {} +
+
+          OLD_TARGET=$(readlink "${DEPLOY_PATH}/current" 2>/dev/null || echo "")
+
+          ln -sfn "releases/${RELEASE_DIR}" "${DEPLOY_PATH}/current.next" \
+            && mv -T "${DEPLOY_PATH}/current.next" "${DEPLOY_PATH}/current"
+
+          FAILED=false
+          sudo systemctl restart yubai-blog || FAILED=true
+
+          if [ "$FAILED" = false ]; then
+            for i in $(seq 1 30); do
+              if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"UP"'; then
+                echo "health check passed"
+                ls -1t "${DEPLOY_PATH}/releases" | tail -n +6 | xargs -r -I{} rm -rf "${DEPLOY_PATH}/releases/{}"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "health check FAILED after 60s" >&2
+            FAILED=true
+          fi
+
+          # Single rollback path — entered on restart failure or health timeout
+          if [ -n "$OLD_TARGET" ]; then
+            echo "Rolling back to ${OLD_TARGET}..." >&2
+            if ln -sfn "$OLD_TARGET" "${DEPLOY_PATH}/current.next" && mv -T "${DEPLOY_PATH}/current.next" "${DEPLOY_PATH}/current"; then
+              sudo systemctl restart yubai-blog || true
+              sleep 5
+              if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"UP"'; then
+                echo "Rollback succeeded, previous release is running" >&2
+              else
+                echo "Rollback also FAILED — manual intervention required" >&2
+              fi
+            else
+              echo "FATAL: Rollback symlink restoration FAILED — manual intervention required" >&2
             fi
-            sleep 2
-          done
-          echo "health check FAILED after 60s" >&2
+          else
+            echo "No previous current to roll back to" >&2
+          fi
+
           exit 1
           EOF
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           RELEASE_DIR: ${{ env.RELEASE_DIR }}
-      - name: Prune old releases (keep 5)
-        run: |
-          ssh -i ~/.ssh/id_deploy "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd '${{ secrets.DEPLOY_PATH }}/releases' && ls -1t | tail -n +6 | xargs -r rm -rf --"

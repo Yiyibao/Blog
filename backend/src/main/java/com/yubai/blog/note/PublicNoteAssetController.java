@@ -1,10 +1,8 @@
 package com.yubai.blog.note;
 
-import java.time.Duration;
 import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 
-import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -24,10 +22,8 @@ public class PublicNoteAssetController {
     public ResponseEntity<byte[]> read(@PathVariable UUID publicId) {
         var data = service.readPublicContent(publicId);
         var attachment = service.findPublic(publicId);
-        // P1-6：publicId 为不可变 UUID（内容变更即换新 id），允许长缓存避免每次读整段
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(attachment.getMediaType()))
-            .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                 .filename(attachment.getFileName(), StandardCharsets.UTF_8).build().toString())
             .body(data);

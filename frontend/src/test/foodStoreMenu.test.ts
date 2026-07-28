@@ -159,4 +159,50 @@ describe('FD-12 foodStore 菜单分片', () => {
     expect(store.menu?.items[0].id).toBe(7)
     expect(store.menuDate).toBe('2026-08-02')
   })
+
+  it('stale same-date read discarded after mutation (generation guard)', async () => {
+    const store = useFoodStore()
+    mockFetchDailyMenu.mockResolvedValue(menuOf([{ id: 1, title: '初始菜' }]))
+    await store.loadMenu()
+    expect(store.menu?.items).toHaveLength(1)
+    let resolveStale!: (m: DailyMenu) => void
+    mockFetchDailyMenu.mockReturnValueOnce(new Promise((r) => { resolveStale = r }))
+    const staleRead = store.loadMenu()
+    await vi.advanceTimersByTimeAsync(0)
+    mockAppendMenuItem.mockResolvedValue(menuOf([{ id: 1, title: '初始菜' }, { id: 2, title: '新加的菜' }]))
+    await store.append({ title: '新加的菜', mealSlot: 'DINNER' })
+    resolveStale(menuOf([{ id: 1, title: '初始菜' }]))
+    await staleRead
+    expect(store.menu?.items).toHaveLength(2)
+    expect(store.menu?.items[1].title).toBe('新加的菜')
+  })
+
+  it('cross-midnight switches to today when followingToday is true', async () => {
+    const store = useFoodStore()
+    const yesterday = '2026-07-27'
+    const today = '2026-07-28'
+    mockFetchDailyMenu.mockResolvedValue(menuOf([{ id: 1, title: '昨天的菜' }], { date: yesterday }))
+    await store.loadMenu(yesterday)
+    expect(store.menuDate).toBe(yesterday)
+    mockFetchDailyMenu.mockClear()
+    mockFetchDailyMenu.mockResolvedValue(menuOf([{ id: 2, title: '今天的菜' }], { date: today }))
+    store['followingToday'] = true
+    store.onVisibilityChange()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.menuDate).toBe(today)
+    expect(store.menu?.items[0].title).toBe('今天的菜')
+  })
+
+  it('cross-midnight keeps historical date when not followingToday', async () => {
+    const store = useFoodStore()
+    const historical = '2026-07-01'
+    mockFetchDailyMenu.mockResolvedValue(menuOf([{ id: 1, title: '历史菜' }], { date: historical }))
+    await store.loadMenu(historical)
+    expect(store.menuDate).toBe(historical)
+    mockFetchDailyMenu.mockClear()
+    mockFetchDailyMenu.mockResolvedValue(menuOf([{ id: 2, title: '新菜' }], { date: historical }))
+    store.onVisibilityChange()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.menuDate).toBe(historical)
+  })
 })

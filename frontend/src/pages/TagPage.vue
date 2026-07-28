@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { fetchTagPosts } from '../api/content'
 import type { PostSummary } from '../data'
+import { useRequestToken } from '../composables/useRequestToken'
+import { usePageMeta } from '../composables/usePageMeta'
 
 /** 5B：标签页——该标签下已发布文章（服务端分页）。 */
 const route = useRoute()
@@ -14,22 +16,28 @@ const totalPages = ref(1)
 const totalElements = ref(0)
 const loading = ref(true)
 const loadError = ref('')
+const detailToken = useRequestToken()
+const { apply: applyMeta } = usePageMeta()
 
 async function load() {
+  const token = detailToken.next()
   loading.value = true
   loadError.value = ''
   try {
     const result = await fetchTagPosts(tag.value, page.value, 10)
+    if (!detailToken.isCurrent(token)) return
     posts.value = result.items
     totalPages.value = result.totalPages
     totalElements.value = result.totalElements
+    applyMeta({ title: `#${tag.value}`, description: result.totalElements > 0 ? `浏览标签 #${tag.value} 下的 ${result.totalElements} 篇文章` : undefined, canonicalPath: `/tags/${encodeURIComponent(tag.value)}` })
   } catch (cause) {
+    if (!detailToken.isCurrent(token)) return
     posts.value = []
-    loadError.value = axios.isAxiosError(cause) && cause.response?.status === 404
-      ? '该标签下暂无已发布文章。'
-      : '标签内容加载失败，请稍后重试。'
+    const is404 = axios.isAxiosError(cause) && cause.response?.status === 404
+    loadError.value = is404 ? '该标签下暂无已发布文章。' : '标签内容加载失败，请稍后重试。'
+    if (is404) applyMeta({ title: '标签不存在', robots: 'noindex, nofollow' })
   } finally {
-    loading.value = false
+    if (detailToken.isCurrent(token)) loading.value = false
   }
 }
 

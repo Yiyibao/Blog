@@ -75,16 +75,12 @@ public class AdminPostController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<PostResponse> create(@Valid @RequestBody PostRequest request) {
-        var response = service.create(request);
-        revisionService.record(response.id()); // 4C：保存即快照一版
-        return ApiResponse.created(response);
+        return ApiResponse.created(service.createWithRevision(request));
     }
 
     @PutMapping("/{id}")
     public ApiResponse<PostResponse> update(@PathVariable long id, @Valid @RequestBody PostRequest request) {
-        var response = service.update(id, request);
-        revisionService.record(id);
-        return ApiResponse.ok(response);
+        return ApiResponse.ok(service.updateWithRevision(id, request));
     }
 
     // 4C：版本历史——列表/查看/恢复（恢复 = 回写正文字段并产生新版本）

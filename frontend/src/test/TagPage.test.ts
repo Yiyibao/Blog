@@ -55,4 +55,21 @@ describe('TagPage', () => {
 
     expect(wrapper.text()).toContain('该标签下暂无已发布文章')
   })
+
+  it('discards stale out-of-order tag response when route changes', async () => {
+    let resolveFirst!: (v: unknown) => void
+    let resolveSecond!: (v: unknown) => void
+    mockTagPosts
+      .mockReturnValueOnce(new Promise((r) => { resolveFirst = r }))
+      .mockReturnValueOnce(new Promise((r) => { resolveSecond = r }))
+    const wrapper = await mountAt('/tags/vue')
+    await flushPromises()
+    await wrapper.vm.$router.push('/tags/react')
+    await flushPromises()
+    resolveFirst({ items: [{ slug: 'vue-post', title: 'Vue Article', excerpt: '', date: '2026-07-01', readTime: 1, category: '', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED' }], page: 0, size: 10, totalElements: 1, totalPages: 1 })
+    resolveSecond({ items: [{ slug: 'react-post', title: 'React Article', excerpt: '', date: '2026-07-02', readTime: 2, category: '', tags: [], color: '#000', number: '02', featured: false, status: 'PUBLISHED' }], page: 0, size: 10, totalElements: 1, totalPages: 1 })
+    await flushPromises()
+    expect(wrapper.text()).toContain('React Article')
+    expect(wrapper.text()).not.toContain('Vue Article')
+  })
 })

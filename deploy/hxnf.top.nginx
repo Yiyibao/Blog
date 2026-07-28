@@ -28,7 +28,7 @@ server {
     ssl_session_cache shared:SSL:10m;
     ssl_session_tickets off;
 
-    root /var/www/yubai-blog;
+    root /opt/yubai-blog/current/frontend;
     index index.html;
     client_max_body_size 9m;
 

@@ -81,6 +81,26 @@ describe('SeriesDetailPage', () => {
     expect(links[1].attributes('href')).toBe('/articles/compiler')
   })
 
+  it('discards stale out-of-order response from earlier slug', async () => {
+    let resolveFirst!: (v: unknown) => void
+    let resolveSecond!: (v: unknown) => void
+    mockDetail
+      .mockReturnValueOnce(new Promise((r) => { resolveFirst = r }))
+      .mockReturnValueOnce(new Promise((r) => { resolveSecond = r }))
+    const router = buildRouter()
+    await router.push('/series/first')
+    await router.isReady()
+    const wrapper = mount(SeriesDetailPage, { global: { plugins: [router] } })
+    await flushPromises()
+    await router.push('/series/second')
+    await flushPromises()
+    resolveFirst({ slug: 'first', name: 'First', description: '', coverImage: null, publishedAt: null, entries: [] })
+    resolveSecond({ slug: 'second', name: 'Second', description: '', coverImage: null, publishedAt: null, entries: [] })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Second')
+    expect(wrapper.text()).not.toContain('First')
+  })
+
   it('shows not-found message on 404', async () => {
     const axios = await import('axios')
     mockDetail.mockRejectedValue(new axios.AxiosError('nf', undefined, undefined, undefined, {

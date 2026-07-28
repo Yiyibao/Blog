@@ -36,7 +36,7 @@ export function useLoginForm(onSuccess: (result: LoginResult) => void | Promise<
         totpOpen.value = true
         return
       }
-      saveAdminSession(result, { remember: remember.value })
+      saveAdminSession(result)
       await onSuccess(result)
     } catch (cause) {
       if (axios.isAxiosError(cause) && cause.response?.status === 401) {
@@ -62,7 +62,7 @@ export function useLoginForm(onSuccess: (result: LoginResult) => void | Promise<
     try {
       const result = await verifyTotp(totpChallengeId.value, code)
       totpOpen.value = false
-      saveAdminSession(result, { remember: remember.value })
+      saveAdminSession(result)
       await onSuccess(result)
     } catch (cause) {
       if (axios.isAxiosError(cause) && cause.response?.status === 401) {

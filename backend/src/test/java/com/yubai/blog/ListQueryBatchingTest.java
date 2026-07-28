@@ -27,6 +27,7 @@ import com.yubai.blog.post.PostContentSanitizer;
 import com.yubai.blog.post.PostEntity;
 import com.yubai.blog.post.PostRepository;
 import com.yubai.blog.post.PostRequest;
+import com.yubai.blog.post.PostRevisionService;
 import com.yubai.blog.post.PostStatus;
 
 import jakarta.persistence.EntityManager;
@@ -81,7 +82,7 @@ class ListQueryBatchingTest {
                 false, PostStatus.PUBLISHED, "<p>正文 " + i + "</p>", null, null
             ), sanitizer));
         }
-        var service = new com.yubai.blog.post.PostService(postRepository, sanitizer);
+        var service = new com.yubai.blog.post.PostService(postRepository, sanitizer, null);
         long prepares = measure(() ->
             service.findPublished(0, 50, null, null).items()
                 .forEach(post -> assertThat(post.tags()).isNotEmpty()));
@@ -98,7 +99,7 @@ class ListQueryBatchingTest {
                 List.of("标签A", "标签B"), 0L
             )));
         }
-        var service = new com.yubai.blog.note.NoteService(noteRepository);
+        var service = new com.yubai.blog.note.NoteService(noteRepository, null, null);
         long prepares = measure(() ->
             service.findAll(NoteStatus.DRAFT, 0, 50).items()
                 .forEach(note -> assertThat(note.tags()).isNotEmpty()));

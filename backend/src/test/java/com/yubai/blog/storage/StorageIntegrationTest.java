@@ -220,6 +220,39 @@ class StorageIntegrationTest {
             .isZero();
     }
 
+    @Test
+    void deleteNoteRemovesAllAttachmentFiles() throws Exception {
+        var image1 = new MockMultipartFile("file", "a.png", "image/png", PNG_SAMPLE);
+        var r1 = mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                .file(image1).header("Authorization", "Bearer " + token))
+            .andExpect(status().isCreated()).andReturn();
+        var att1 = objectMapper.readTree(r1.getResponse().getContentAsString()).path("data");
+        var id1 = att1.path("id").asLong();
+
+        var image2 = new MockMultipartFile("file", "b.png", "image/png", PNG_SAMPLE);
+        var r2 = mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                .file(image2).header("Authorization", "Bearer " + token))
+            .andExpect(status().isCreated()).andReturn();
+        var att2 = objectMapper.readTree(r2.getResponse().getContentAsString()).path("data");
+        var id2 = att2.path("id").asLong();
+
+        var key1 = jdbc.queryForObject("SELECT storage_key FROM note_attachments WHERE id = ?", String.class, id1);
+        var key2 = jdbc.queryForObject("SELECT storage_key FROM note_attachments WHERE id = ?", String.class, id2);
+        var file1 = localFileStorage.getRootDir().resolve(key1);
+        var file2 = localFileStorage.getRootDir().resolve(key2);
+        assertThat(file1).exists();
+        assertThat(file2).exists();
+
+        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNoContent());
+
+        assertThat(file1).doesNotExist();
+        assertThat(file2).doesNotExist();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM note_attachments WHERE note_id = ?", Integer.class, noteId))
+            .isZero();
+    }
+
     private String login() throws Exception {
         return loginAs("admin", "admin-pass-12345");
     }

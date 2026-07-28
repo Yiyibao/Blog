@@ -19,7 +19,9 @@ SecretId/SecretKey 只由 COSCLI 配置文件管理，不得写入 Git、备份�
 cos://backup/backups/prod/<STAMP>/
 ```
 
-批次包含 PostgreSQL custom dump、附件目录归档和 `SHA256SUMS`。缺少 `backup.env`、附件目录或启用 COS 后缺少 COSCLI 配置都会令 service 失败，避免静默退化为不完整备份。本地文件保留 14 天；COS 通过桶生命周期保留 90 天，脚本不主动删除 COS 对象。
+批次包含 PostgreSQL custom dump、附件目录归档和 `SHA256SUMS`。上传 COS 时先上传 dump 和附件归档，最后上传 `SHA256SUMS` 作为提交标记；不包含清单的 COS 目录视为不完整，恢复操作必须拒绝。缺少 `backup.env`、附件目录或启用 COS 后缺少 COSCLI 配置都会令 service 失败，避免静默退化为不完整备份。本地文件保留 14 天；COS 通过桶生命周期保留 90 天，脚本不主动删除 COS 对象。
+
+> **快照一致性说明：** `pg_dump` 和附件 `tar` 是依次执行的，并非严格的跨资源同一时刻快照。实践上通过将 timer 调度到静默窗口（例如凌晨低峰期）来缩小不一致窗口。如需严格一致性，应先停止应用写入（`systemctl stop yubai-blog`），运行备份，再重启应用并确认健康状态，最后启用或确认 timer。
 
 ## 二、部署文件暂存
 
@@ -79,7 +81,7 @@ sudo install -o root -g root -m 0644 \
 sudo install -o root -g yubai -m 0640 \
   /home/ubuntu/yubai-blog-backup.env.example /etc/yubai-blog/backup.env
 sudo install -d -o yubai -g yubai -m 0750 \
-  /opt/yubai-blog/data/attachments
+  /opt/yubai-blog/shared/attachments
 sudo systemctl daemon-reload
 sudo systemctl is-enabled yubai-blog-backup.timer || true
 sudo grep '^COS_BACKUP_ENABLED=' /etc/yubai-blog/backup.env
@@ -115,7 +117,7 @@ sudo tar --list --gzip \
 
 ## 六、COS 手工上传与下载校验
 
-使用与脚本相同的服务端加密和禁止覆盖选项：
+使用与脚本相同的服务端加密和禁止覆盖选项。先上传 dump 和附件归档，最后上传 `SHA256SUMS` 作为提交标记：
 
 ```bash
 COS_DEST="cos://backup/backups/prod/${STAMP}"
@@ -139,11 +141,16 @@ sudo coscli --config-path /etc/yubai-blog/cos.yaml \
   ls "${COS_DEST}/"
 ```
 
-下载到隔离目录并校验哈希：
+确认清单存在（缺少清单的目录为不完整，必须拒绝恢复），然后下载到隔离目录并校验哈希：
 
 ```bash
 VERIFY_DIR="/var/tmp/yubai-cos-verify-${STAMP}"
 sudo install -d -o root -g postgres -m 0750 "${VERIFY_DIR}"
+
+# Reject incomplete COS directory (no manifest = not committed)
+sudo coscli --config-path /etc/yubai-blog/cos.yaml \
+  ls "${COS_DEST}/" 2>/dev/null | grep -q "SHA256SUMS-${STAMP}"
+
 sudo coscli --config-path /etc/yubai-blog/cos.yaml \
   cp "${COS_DEST}/yubai_blog-${STAMP}.dump" \
   "${VERIFY_DIR}/yubai_blog-${STAMP}.dump"
@@ -216,7 +223,8 @@ sudo systemctl list-timers yubai-blog-backup.timer --all --no-pager
 - 仓库、脚本、service 和 `backup.env` 均不含 SecretId/SecretKey。
 - `backup.env` 使用别名 `backup`、配置 `/etc/yubai-blog/cos.yaml`、前缀 `backups/prod`。
 - 本地测试包含 dump、附件归档和 SHA-256 清单，且哈希与 archive 检查通过。
-- COS 手工上传目标为 `cos://backup/backups/prod/<STAMP>/`。
+- COS 手工上传目标为 `cos://backup/backups/prod/<STAMP>/`，上传顺序为先 dump 和附件归档、最后 `SHA256SUMS` 作为提交标记。
+- COS 目录缺少 `SHA256SUMS` 视为不完整，恢复操作前已通过 `coscli ls` + `grep` 拒绝。
 - 从 COS 下载后的 SHA-256、数据库隔离恢复和附件隔离解包均通过。
 - CAM 子用户不能删除对象、删除桶或修改桶配置。
 - COS 生命周期已设置为 90 天，本地脚本保留 14 天且不删除 COS 对象。

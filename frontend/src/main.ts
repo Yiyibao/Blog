@@ -9,7 +9,9 @@ import './content.css'
 router.beforeEach(async (to) => {
   if (to.name === 'recipes') {
     await import('./recipes.css')
-  } else if (to.path.startsWith('/admin') && to.name !== 'admin-login') {
+  } else if (to.name === 'login' || to.name === 'admin-login') {
+    await import('./admin-login.css')
+  } else if (to.path.startsWith('/admin')) {
     await import('./admin.css')
   }
 })

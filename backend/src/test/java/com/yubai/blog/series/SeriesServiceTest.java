@@ -81,6 +81,20 @@ class SeriesServiceTest {
     }
 
     @Test
+    void updateFlushesBeforeMappingSoVersionMatchesDb() {
+        var entity = series(1L, SeriesStatus.DRAFT);
+        setField(entity, "version", 2L);
+        when(seriesRepository.findById(1L)).thenReturn(Optional.of(entity));
+        when(seriesRepository.existsBySlugAndIdNot("new-slug", 1L)).thenReturn(false);
+        when(entryRepository.findAllBySeriesIdOrderBySortOrderAscIdAsc(1L)).thenReturn(List.of());
+
+        var response = service().update(1L, 2L,
+            new SeriesRequest("新的合集名", "new-slug", "新描述", null, SeriesStatus.PUBLISHED));
+
+        verify(seriesRepository).flush();
+    }
+
+    @Test
     void setEntriesRejectsDuplicatePost() {
         var entity = series(1L, SeriesStatus.DRAFT);
         when(seriesRepository.findById(1L)).thenReturn(Optional.of(entity));

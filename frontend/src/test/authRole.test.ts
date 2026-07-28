@@ -96,11 +96,21 @@ describe('FD-8 authStore 角色感知', () => {
 
   it('FD-6 之前的旧会话（有 token 无 role）在 store 启动时被清理', () => {
     sessionStorage.clear()
+    localStorage.clear()
     sessionStorage.setItem('yubai-admin-token', 'stale-token')
     sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
     const auth = freshStore()
     expect(auth.isAuthenticated).toBe(false)
     expect(sessionStorage.getItem('yubai-admin-token')).toBeNull()
+  })
+
+  it('启动时清理遗留 localStorage 密钥', () => {
+    sessionStorage.clear()
+    localStorage.setItem('yubai-admin-token', 'legacy-token')
+    localStorage.setItem('yubai-admin-role', 'ADMIN')
+    const auth = freshStore()
+    expect(auth.isAuthenticated).toBe(false)
+    expect(localStorage.getItem('yubai-admin-token')).toBeNull()
   })
 
   it('clearSession 连角色与展示名一并清除', () => {

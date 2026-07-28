@@ -8,9 +8,9 @@ Requires=postgresql.service
 Type=simple
 User=yubai
 Group=yubai
-WorkingDirectory=/opt/yubai-blog
+WorkingDirectory=/opt/yubai-blog/current
 EnvironmentFile=/etc/yubai-blog/app.env
-ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/blog-backend.jar
+ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/current/backend/blog-backend.jar
 SuccessExitStatus=143
 Restart=on-failure
 RestartSec=5s
@@ -19,7 +19,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/tmp
+ReadWritePaths=/opt/yubai-blog/shared/attachments
 UMask=0027
 
 [Install]

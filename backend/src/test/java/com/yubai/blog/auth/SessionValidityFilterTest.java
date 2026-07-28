@@ -51,6 +51,7 @@ class SessionValidityFilterTest {
     void rejectsStaleTokenBeforeAccountSecurityEndpoint() throws Exception {
         var user = mock(AdminUserEntity.class);
         when(user.getSessionsValidFrom()).thenReturn(Instant.parse("2026-07-28T00:00:30Z"));
+        when(user.isEnabled()).thenReturn(true);
         when(repository.findByUsername("admin")).thenReturn(Optional.of(user));
         authenticate(Instant.parse("2026-07-28T00:00:00Z"));
         var response = new MockHttpServletResponse();
@@ -64,10 +65,28 @@ class SessionValidityFilterTest {
     }
 
     @Test
+    void rejectsDisabledUser() throws Exception {
+        var user = mock(AdminUserEntity.class);
+        when(user.getSessionsValidFrom()).thenReturn(Instant.parse("2026-07-28T00:00:00Z"));
+        when(user.isEnabled()).thenReturn(false);
+        when(repository.findByUsername("admin")).thenReturn(Optional.of(user));
+        authenticate(Instant.parse("2026-07-28T01:00:00Z"));
+        var response = new MockHttpServletResponse();
+        var chain = mock(FilterChain.class);
+
+        filter.doFilter(request("/api/v1/notes"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getContentAsString()).contains("登录已失效");
+        verify(chain, never()).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void allowsTokenIssuedAtSessionValidityBoundary() throws Exception {
-        var boundary = Instant.parse("2026-07-28T00:00:30.900Z");
+        var         boundary = Instant.parse("2026-07-28T00:00:30.900Z");
         var user = mock(AdminUserEntity.class);
         when(user.getSessionsValidFrom()).thenReturn(boundary);
+        when(user.isEnabled()).thenReturn(true);
         when(repository.findByUsername("admin")).thenReturn(Optional.of(user));
         authenticate(boundary.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
         var response = new MockHttpServletResponse();

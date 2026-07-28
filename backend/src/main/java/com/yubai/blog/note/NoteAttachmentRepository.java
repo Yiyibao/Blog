@@ -37,6 +37,10 @@ public interface NoteAttachmentRepository extends JpaRepository<NoteAttachmentEn
     @Query("UPDATE NoteAttachmentEntity a SET a.storageKey = :storageKey WHERE a.id = :id AND a.storageKey IS NULL")
     int claimStorageKey(long id, String storageKey);
 
+    @Modifying
+    @Query("delete from NoteAttachmentEntity a where a.noteId = :noteId")
+    int deleteByNoteId(long noteId);
+
     /** 4D/4E：总览行与容量聚合——绝不 SELECT content 字节列。 */
     interface AttachmentAdminRow {
         Long getId();

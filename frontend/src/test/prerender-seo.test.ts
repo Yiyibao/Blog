@@ -512,6 +512,29 @@ describe('prerender', () => {
     expect(result.dynamic.tags.length).toBe(0)
   })
 
+  it('fails when PRERENDER_REQUIRE_DYNAMIC is true but no API base', async () => {
+    mod.__setConfig({ apiBase: '', requireDynamic: true })
+    await expect(mod.prerender({ template: TEMPLATE, apiBase: '' }))
+      .rejects.toThrow('PRERENDER_REQUIRE_DYNAMIC')
+    const fetchMock = vi.fn()
+    fetchMock.mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, data: { items: [], page: 0, size: 50, totalElements: 0, totalPages: 0 } }) }))
+    fetchMock.mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, data: [] }) }))
+    fetchMock.mockImplementationOnce(() => Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, data: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(mod.prerender({ template: TEMPLATE, apiBase: 'https://test.example.com/api/v1' }))
+      .resolves.not.toThrow()
+    mod.__setConfig({ apiBase: '', requireDynamic: false })
+    vi.unstubAllGlobals()
+  })
+
+  it('succeeds without dynamic routes when REQUIRE_DYNAMIC is false', async () => {
+    mod.__setConfig({ apiBase: '', requireDynamic: false })
+    const result = await mod.prerender({ template: TEMPLATE, apiBase: '' })
+    expect(result.static.length).toBe(6)
+    expect(result.noindex.length).toBe(2)
+    expect(result.dynamic.articles.length).toBe(0)
+  })
+
   it('fails build on API HTTP error when opted in', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,

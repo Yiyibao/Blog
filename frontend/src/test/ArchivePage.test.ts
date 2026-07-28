@@ -168,4 +168,75 @@ describe('ArchivePage', () => {
 
     expect(wrapper.find('.archive-error').exists()).toBe(true)
   })
+
+  it('fetches all pages when total items exceed single page (>50)', async () => {
+    const manyPosts = Array.from({ length: 55 }, (_, i) => ({
+      slug: `post-${i}`, title: `文章${i}`, excerpt: '', date: '2026-07-01',
+      readTime: 1, category: '测试', tags: [], color: '#000', number: String(i + 1).padStart(2, '0'),
+      featured: false, status: 'PUBLISHED',
+    }))
+    const page0 = manyPosts.slice(0, 50)
+    const page1 = manyPosts.slice(50, 55)
+    mockPosts
+      .mockResolvedValueOnce({ items: page0, page: 0, size: 50, totalElements: 55, totalPages: 2 })
+      .mockResolvedValueOnce({ items: page1, page: 1, size: 50, totalElements: 55, totalPages: 2 })
+    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(mockPosts).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('文章0')
+    expect(wrapper.text()).toContain('文章54')
+    expect(wrapper.text()).toContain('55 条记录')
+  })
+
+  it('fetches pages beyond 19 when totalPages > 20 (no silent cap)', async () => {
+    const pageSize = 50
+    const pageCount = 25
+    for (let p = 0; p < pageCount; p++) {
+      mockPosts.mockResolvedValueOnce({
+        items: [{
+          slug: `p${p}`, title: `第${p}页`, excerpt: '', date: '2026-07-01',
+          readTime: 1, category: '测试', tags: [], color: '#000',
+          number: String(p + 1), featured: false, status: 'PUBLISHED',
+        }],
+        page: p, size: pageSize, totalElements: pageCount * pageSize, totalPages: pageCount,
+      })
+    }
+    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(mockPosts).toHaveBeenCalledTimes(25)
+    expect(wrapper.text()).toContain('第20页')
+    expect(wrapper.text()).toContain('第24页')
+  })
+
+  it('partial failure shows warning banner and still displays successful content', async () => {
+    mockPosts.mockResolvedValue({
+      items: [{ slug: 'ok-post', title: '正常文章', excerpt: '', date: '2026-07-01', readTime: 1, category: '测试', tags: [], color: '#000', number: '01', featured: false, status: 'PUBLISHED' }],
+      page: 0, size: 50, totalElements: 1, totalPages: 1,
+    })
+    mockDishes.mockRejectedValue(new Error('dish fail'))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(wrapper.find('.archive-partial-notice').exists()).toBe(true)
+    expect(wrapper.text()).toContain('菜谱')
+    expect(wrapper.text()).toContain('部分内容')
+    expect(wrapper.text()).toContain('正常文章')
+  })
+
+  it('second page fetch failure does not discard first page results', async () => {
+    const page0 = Array.from({ length: 50 }, (_, i) => ({
+      slug: `p${i}`, title: `文章${i}`, excerpt: '', date: '2026-07-01',
+      readTime: 1, category: '测试', tags: [], color: '#000', number: String(i + 1), featured: false, status: 'PUBLISHED',
+    }))
+    mockPosts
+      .mockResolvedValueOnce({ items: page0, page: 0, size: 50, totalElements: 75, totalPages: 2 })
+      .mockRejectedValueOnce(new Error('page 1 fail'))
+    mockDishes.mockResolvedValue({ items: [], page: 0, size: 12, totalElements: 0, totalPages: 1 })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('文章0')
+    expect(wrapper.text()).toContain('文章49')
+    expect(wrapper.find('.archive-partial-notice').exists()).toBe(true)
+  })
 })

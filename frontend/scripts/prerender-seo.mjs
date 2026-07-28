@@ -25,6 +25,7 @@ let SITE_DESCRIPTION = envStr('VITE_SITE_DESCRIPTION', '记录代码、设计与
 let AUTHOR_NAME = envStr('VITE_AUTHOR_NAME', 'Yubai')
 let SOCIAL_IMAGE = envStr('VITE_SOCIAL_IMAGE', '/og.png')
 let API_BASE = normalizeApiBase(envStr('PRERENDER_API_BASE_URL'))
+let REQUIRE_DYNAMIC = envStr('PRERENDER_REQUIRE_DYNAMIC') === 'true'
 
 export function __resetConfig() {
   SITE_URL = normalizeHttpBase(envStr('VITE_SITE_URL', 'https://hxnf.top'), 'VITE_SITE_URL')
@@ -33,6 +34,7 @@ export function __resetConfig() {
   AUTHOR_NAME = envStr('VITE_AUTHOR_NAME', 'Yubai')
   SOCIAL_IMAGE = envStr('VITE_SOCIAL_IMAGE', '/og.png')
   API_BASE = normalizeApiBase(envStr('PRERENDER_API_BASE_URL'))
+  REQUIRE_DYNAMIC = envStr('PRERENDER_REQUIRE_DYNAMIC') === 'true'
   DIST_CLIENT = defaultDistClient
 }
 
@@ -45,6 +47,7 @@ export function __setConfig(overrides) {
   if (overrides.socialImage !== undefined) SOCIAL_IMAGE = overrides.socialImage
   if (overrides.apiBase !== undefined) API_BASE = normalizeApiBase(overrides.apiBase)
   if (overrides.distClient !== undefined) DIST_CLIENT = overrides.distClient
+  if (overrides.requireDynamic !== undefined) REQUIRE_DYNAMIC = overrides.requireDynamic
 }
 
 export function escapeHtml(str) {
@@ -353,6 +356,12 @@ export async function prerender({ template, apiBase }) {
     results.dynamic.articles = await generateDynamicArticleRoutes(template, apiBase)
     results.dynamic.series = await generateDynamicSeriesRoutes(template, apiBase)
     results.dynamic.tags = await generateDynamicTagRoutes(template, apiBase)
+  } else if (REQUIRE_DYNAMIC) {
+    throw new Error(
+      'PRERENDER_REQUIRE_DYNAMIC is true but PRERENDER_API_BASE_URL is not set. ' +
+      'Set PRERENDER_API_BASE_URL to enable dynamic route prerendering, ' +
+      'or unset PRERENDER_REQUIRE_DYNAMIC for offline/local builds without dynamic routes.'
+    )
   }
   return results
 }

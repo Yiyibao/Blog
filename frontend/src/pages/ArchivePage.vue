@@ -138,30 +138,52 @@ const typeLabel: Record<string, string> = {
   DISH: '菜品',
 }
 
+const ARCHIVE_PAGE_SIZE = 50
+
+async function fetchAllPages<T>(
+  fetcher: (page: number, size: number) => Promise<{ items: T[]; totalPages: number }>
+): Promise<{ items: T[]; error: boolean }> {
+  try {
+    const first = await fetcher(0, ARCHIVE_PAGE_SIZE)
+    const acc = [...(first.items ?? [])]
+    const totalPages = first.totalPages ?? 1
+    let pageError = false
+    if (totalPages > 1) {
+      const pages = []
+      for (let p = 1; p < totalPages; p++) {
+        pages.push(fetcher(p, ARCHIVE_PAGE_SIZE).then(r => r.items ?? []).catch(() => { pageError = true; return [] as T[] }))
+      }
+      const results = await Promise.all(pages)
+      for (const items of results) {
+        acc.push(...items)
+      }
+    }
+    return { items: acc, error: pageError }
+  } catch {
+    return { items: [], error: true }
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
-  let postErr = false
-  let dishErr = false
-  let noteErr = false
   // L-16/D-17：学习笔记接口已收权——游客不请求（也不算失败），登录后时间轴恢复笔记条目
   const includeNotes = useAuthStore().isAuthenticated
-  const [postRes, dishRes, noteRes] = await Promise.all([
-    fetchPosts(0, 50).catch(() => { postErr = true; return { items: [] as PostSummary[] } }),
-    fetchDishes(0, 50).catch(() => { dishErr = true; return { items: [] as Dish[] } }),
+  const [postResult, dishResult, noteResult] = await Promise.all([
+    fetchAllPages<PostSummary>((page, size) => fetchPosts(page, size)),
+    fetchAllPages<Dish>((page, size) => fetchDishes(page, size)),
     includeNotes
-      ? fetchPublishedNotes(0, 50).catch(() => { noteErr = true; return { items: [] as AdminNoteSummary[] } })
-      : Promise.resolve({ items: [] as AdminNoteSummary[] }),
+      ? fetchAllPages<AdminNoteSummary>((page, size) => fetchPublishedNotes(page, size))
+      : Promise.resolve({ items: [] as AdminNoteSummary[], error: false }),
   ])
-  posts.value = postRes.items ?? []
-  dishes.value = dishRes.items ?? []
-  notes.value = noteRes.items ?? []
-  if (postErr && dishErr && (noteErr || !includeNotes)) {
+  posts.value = postResult.items
+  dishes.value = dishResult.items
+  notes.value = noteResult.items
+  if (postResult.error && dishResult.error && (noteResult.error || !includeNotes)) {
     loadError.value = '归档数据暂时无法加载，请稍后重试。'
     partialError.value = ''
   } else {
-    // NF-8：部分失败不再静默——明示缺了哪些类型，列表可能不完整
-    const failed = [postErr ? '文章' : '', dishErr ? '菜谱' : '', noteErr ? '学习笔记' : ''].filter(Boolean)
+    const failed = [postResult.error ? '文章' : '', dishResult.error ? '菜谱' : '', noteResult.error ? '学习笔记' : ''].filter(Boolean)
     partialError.value = failed.length ? `部分内容（${failed.join('、')}）加载失败，以下列表可能不完整。` : ''
   }
   loading.value = false

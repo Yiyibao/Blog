@@ -103,7 +103,7 @@ describe('NF-1 管理端登录态单一事实源', () => {
     expect(auth.isAuthenticated).toBe(true)
     expect(auth.token).toBe('fresh-token')
     expect(getAdminSessionName()).toBe('gxynf')
-    // 持久化仍写 sessionStorage，刷新后可恢复
+    // 持久化写 sessionStorage，刷新后由 refresh cookie 恢复
     expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
   })
 

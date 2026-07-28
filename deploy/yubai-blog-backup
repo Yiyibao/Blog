@@ -5,7 +5,7 @@ BACKUP_DIR="/var/backups/yubai-blog"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TARGET="${BACKUP_DIR}/yubai_blog-${STAMP}.dump"
 TEMP_TARGET="${TARGET}.tmp"
-ATTACHMENT_DIR="${APP_ATTACHMENT_STORAGE_DIR:-/opt/yubai-blog/data/attachments}"
+ATTACHMENT_DIR="${APP_ATTACHMENT_STORAGE_DIR:-/opt/yubai-blog/shared/attachments}"
 ATTACHMENT_TARGET="${BACKUP_DIR}/attachments-${STAMP}.tar.gz"
 TEMP_ATTACHMENT_TARGET="${ATTACHMENT_TARGET}.tmp"
 MANIFEST="${BACKUP_DIR}/SHA256SUMS-${STAMP}"
@@ -52,15 +52,40 @@ if [[ "${COS_BACKUP_ENABLED:-false}" == "true" ]]; then
         exit 1
     }
 
-    for file in "${BACKUP_FILES[@]}" "${MANIFEST}"; do
-        coscli --config-path "${COSCLI_CONFIG_PATH}" \
+    # Upload dump and attachment archive first, then manifest last as commit marker.
+    # Stop after first failed object; an incomplete COS directory (no manifest) is
+    # rejected by restore instructions.  Cleanup still runs so only this batch is
+    # preserved on failure, and the script exits nonzero.
+    for file in "${BACKUP_FILES[@]}"; do
+        if ! coscli --config-path "${COSCLI_CONFIG_PATH}" \
             cp "${file}" "${COS_DESTINATION}/${file##*/}" \
             --forbid-overwrite=true \
             --encryption-type SSE-COS \
-            --server-side-encryption AES256
+            --server-side-encryption AES256; then
+            echo "COS upload failed for ${file}" >&2
+            cos_upload_failed=true
+            break
+        fi
     done
+
+    if [[ "${cos_upload_failed:-false}" != "true" ]]; then
+        if ! coscli --config-path "${COSCLI_CONFIG_PATH}" \
+            cp "${MANIFEST}" "${COS_DESTINATION}/${MANIFEST##*/}" \
+            --forbid-overwrite=true \
+            --encryption-type SSE-COS \
+            --server-side-encryption AES256; then
+            echo "COS upload failed for ${MANIFEST}" >&2
+            cos_upload_failed=true
+        fi
+    fi
 fi
 
+# Local retention cleanup always runs, even when COS upload fails.
+# Exclude current-batch files by STAMP; older batches are removed after 14 days.
 find "${BACKUP_DIR}" -maxdepth 1 -type f \
     \( -name 'yubai_blog-*.dump' -o -name 'attachments-*.tar.gz' -o -name 'SHA256SUMS-*' \) \
-    -mtime +14 -delete
+    ! -name "*${STAMP}*" -mtime +14 -delete
+
+if [[ "${cos_upload_failed:-false}" == "true" ]]; then
+    exit 1
+fi

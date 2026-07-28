@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.yubai.blog.auth.AdminUserRepository;
+
 @Service
 public class RefreshTokenService {
     private static final Logger log = LoggerFactory.getLogger(RefreshTokenService.class);
@@ -21,16 +23,19 @@ public class RefreshTokenService {
     private static final int TOKEN_BYTES = 32;
 
     private final RefreshTokenRepository repository;
+    private final AdminUserRepository userRepository;
     private final Duration ttl;
     private final Duration rememberTtl;
     private final Clock clock;
 
     @Autowired
     public RefreshTokenService(RefreshTokenRepository repository,
-                               @Value("${app.jwt.refresh-ttl:P7D}") Duration ttl,
-                               @Value("${app.jwt.refresh-remember-ttl:P30D}") Duration rememberTtl,
-                               Clock clock) {
+                                AdminUserRepository userRepository,
+                                @Value("${app.jwt.refresh-ttl:P7D}") Duration ttl,
+                                @Value("${app.jwt.refresh-remember-ttl:P30D}") Duration rememberTtl,
+                                Clock clock) {
         this.repository = repository;
+        this.userRepository = userRepository;
         this.ttl = ttl;
         this.rememberTtl = rememberTtl;
         this.clock = clock;
@@ -63,7 +68,7 @@ public class RefreshTokenService {
         return new IssuedToken(raw, entity);
     }
 
-    public record RotateResult(String rawToken, RefreshTokenEntity newEntity) {}
+    public record RotateResult(String rawToken, RefreshTokenEntity newEntity, Instant oldCreatedAt) {}
 
     @Transactional(noRollbackFor = RefreshTokenException.class)
     public RotateResult rotate(String rawToken) {
@@ -74,6 +79,18 @@ public class RefreshTokenService {
         }
         if (entity.getExpiresAt().isBefore(Instant.now(clock))) {
             throw new RefreshTokenException("refresh token expired");
+        }
+
+        // FD-9 / FD-25: validate user eligibility before any persistence mutation
+        var user = userRepository.findById(entity.getUserId()).orElse(null);
+        if (user == null) {
+            throw new RefreshTokenException("user not found");
+        }
+        if (!user.isEnabled()) {
+            throw new RefreshTokenException("账号已被禁用");
+        }
+        if (entity.getCreatedAt().isBefore(user.getSessionsValidFrom())) {
+            throw new RefreshTokenException("session has been invalidated");
         }
 
         var now = Instant.now(clock);
@@ -89,7 +106,7 @@ public class RefreshTokenService {
         var newEntity = new RefreshTokenEntity(newHash, entity.getUserId(), entity.getFamily(),
             entity.getExpiresAt());
         repository.save(newEntity);
-        return new RotateResult(newRaw, newEntity);
+        return new RotateResult(newRaw, newEntity, entity.getCreatedAt());
     }
 
     @Transactional

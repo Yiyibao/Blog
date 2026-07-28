@@ -52,7 +52,7 @@ onMounted(() => {
       <button class="button primary" type="submit" :disabled="submitting">
         {{ submitting ? '正在验证…' : '回到餐桌 ↗' }}
       </button>
-      <small>{{ remember ? '令牌将在本设备保留 24 小时，可随时退出登录。' : '登录令牌仅保存在当前浏览器会话中。' }}</small>
+      <small>{{ remember ? '登录状态将通过 Cookie 保持 24 小时，可随时退出登录。' : '登录令牌仅保存在当前浏览器会话中。' }}</small>
     </form>
     <HumanVerifyModal
       :open="verifyOpen"

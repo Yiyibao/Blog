@@ -3,27 +3,36 @@ import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { fetchSeriesDetail, type SeriesDetail } from '../api/content'
+import { useRequestToken } from '../composables/useRequestToken'
+import { usePageMeta } from '../composables/usePageMeta'
 
 /** 4B：合集详情——按序成员列表，逐篇阅读。 */
 const route = useRoute()
 const detail = ref<SeriesDetail | null>(null)
 const loading = ref(true)
 const loadError = ref('')
+const detailToken = useRequestToken()
+const { apply: applyMeta } = usePageMeta()
 
 watch(() => route.params.slug, async (raw) => {
   const slug = String(raw ?? '')
   if (!slug) return
+  const token = detailToken.next()
   loading.value = true
   loadError.value = ''
   try {
-    detail.value = await fetchSeriesDetail(slug)
+    const result = await fetchSeriesDetail(slug)
+    if (!detailToken.isCurrent(token)) return
+    detail.value = result
+    applyMeta({ title: result.name, description: result.description || undefined, canonicalPath: `/series/${slug}` })
   } catch (cause) {
+    if (!detailToken.isCurrent(token)) return
     detail.value = null
-    loadError.value = axios.isAxiosError(cause) && cause.response?.status === 404
-      ? '合集不存在或尚未发布。'
-      : '合集加载失败，请稍后重试。'
+    const is404 = axios.isAxiosError(cause) && cause.response?.status === 404
+    loadError.value = is404 ? '合集不存在或尚未发布。' : '合集加载失败，请稍后重试。'
+    if (is404) applyMeta({ title: '合集不存在', robots: 'noindex, nofollow' })
   } finally {
-    loading.value = false
+    if (detailToken.isCurrent(token)) loading.value = false
   }
 }, { immediate: true })
 </script>

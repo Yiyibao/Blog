@@ -32,7 +32,12 @@ if ! id "${APP_USER}" >/dev/null 2>&1; then
     useradd --system --home-dir "${APP_DIR}" --shell /usr/sbin/nologin "${APP_USER}"
 fi
 
-install -d -o "${APP_USER}" -g "${APP_USER}" -m 0750 "${APP_DIR}"
+# Minimum safe bootstrap: o+x on APP_DIR lets nginx traverse; o+rx on releases/
+# lets nginx serve frontend files. shared/ and shared/attachments remain non-public.
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0751 "${APP_DIR}"
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 "${APP_DIR}/releases"
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0750 "${APP_DIR}/shared"
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0750 "${APP_DIR}/shared/attachments"
 install -d -o root -g "${APP_USER}" -m 0750 "${CONFIG_DIR}"
 
 sudo -u postgres psql -v ON_ERROR_STOP=1 \
@@ -49,6 +54,7 @@ umask 0077
     printf 'APP_CORS_ALLOWED_ORIGINS=https://hxnf.top,https://www.hxnf.top\n'
     printf 'APP_JWT_SECRET=%s\n' "${JWT_SECRET}"
     printf 'APP_JWT_TTL=PT2H\n'
+    printf 'APP_ATTACHMENT_STORAGE_DIR=%s\n' "${APP_DIR}/shared/attachments"
     printf 'APP_ADMIN_USERNAME=admin\n'
     printf 'APP_ADMIN_PASSWORD=%s\n' "${ADMIN_PASSWORD}"
 } > "${ENV_FILE}"

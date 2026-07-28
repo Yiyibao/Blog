@@ -450,10 +450,13 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/note-assets/" + publicId).header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(result -> {
-                // P1-6：publicId 不可变，公开附件允许长缓存（撤回后服务端仍 404，已缓存副本残留为计划批准的取舍）
                 var cacheControl = result.getResponse().getHeader("Cache-Control");
-                if (cacheControl == null || !cacheControl.contains("max-age=31536000") || !cacheControl.contains("immutable")) {
-                    throw new AssertionError("immutable note attachments should be long-cached, got: " + cacheControl);
+                if (cacheControl == null || !cacheControl.contains("private") || !cacheControl.contains("no-store")) {
+                    throw new AssertionError("note attachments should be private, no-store, got: " + cacheControl);
+                }
+                var vary = result.getResponse().getHeader("Vary");
+                if (vary == null || !vary.contains("Authorization")) {
+                    throw new AssertionError("note attachments should have Vary: Authorization, got: " + vary);
                 }
                 if (result.getResponse().getContentAsByteArray().length != PNG_SAMPLE.length) throw new AssertionError("attachment bytes were not read from database");
             });
@@ -1971,6 +1974,64 @@ class BlogApiIntegrationTest {
         attemptTracker.reset();
         challengeService.reset();
         loginAs("partner", "partner-pass-12345");
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(100)
+    void disabledUserCannotRefresh() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String refreshCookie = extractSetCookie(login.getResponse(), "refresh_token");
+        assertThat(refreshCookie).isNotEmpty();
+
+        jdbcTemplate.update("update admin_users set enabled = false where username = 'admin'");
+        try {
+            mockMvc.perform(post("/api/v1/auth/refresh")
+                    .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("账号已被禁用"));
+        } finally {
+            jdbcTemplate.update("update admin_users set enabled = true where username = 'admin'");
+        }
+
+        // Verify no rotation happened — the same cookie still works after re-enable
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isOk());
+
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(101)
+    void refreshTokenCreatedBeforeSessionsValidFromIsRejected() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginBody("admin", "admin-pass-12345")))
+            .andExpect(status().isOk())
+            .andReturn();
+        String refreshCookie = extractSetCookie(login.getResponse(), "refresh_token");
+        assertThat(refreshCookie).isNotEmpty();
+
+        jdbcTemplate.update("update admin_users set sessions_valid_from = now() + interval '5 minutes' where username = 'admin'");
+        try {
+            mockMvc.perform(post("/api/v1/auth/refresh")
+                    .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("session has been invalidated"));
+        } finally {
+            jdbcTemplate.update("update admin_users set sessions_valid_from = now() - interval '1 hour' where username = 'admin'");
+        }
+
+        // Verify no rotation happened — same cookie still works after sessions_valid_from restored
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", refreshCookie)))
+            .andExpect(status().isOk());
+
         rateLimiter.reset();
     }
 

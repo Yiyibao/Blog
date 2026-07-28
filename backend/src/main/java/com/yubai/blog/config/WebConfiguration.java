@@ -59,6 +59,20 @@ public class WebConfiguration implements WebMvcConfigurer {
                             : CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic()).getHeaderValue());
                     } else if (isCounterEndpoint(path)) {
                         response.setHeader("Cache-Control", CacheControl.noCache().getHeaderValue());
+                    } else if (path.equals("/api/v1/search")) {
+                        addVaryAuthorization(response);
+                        boolean authed = CurrentUser.isAuthenticated();
+                        response.setHeader("Cache-Control", authed
+                            ? CacheControl.noStore().cachePrivate().getHeaderValue()
+                            : CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic().getHeaderValue());
+                    } else if (path.equals("/api/v1/notes") || path.startsWith("/api/v1/notes/")) {
+                        addVaryAuthorization(response);
+                        response.setHeader("Cache-Control",
+                            CacheControl.noStore().cachePrivate().getHeaderValue());
+                    } else if (path.startsWith("/api/v1/note-assets/")) {
+                        addVaryAuthorization(response);
+                        response.setHeader("Cache-Control",
+                            CacheControl.noStore().cachePrivate().getHeaderValue());
                     } else {
                         response.setHeader("Cache-Control",
                             CacheControl.maxAge(Duration.ofMinutes(5)).cachePublic().getHeaderValue());
@@ -67,7 +81,7 @@ public class WebConfiguration implements WebMvcConfigurer {
                 return true;
             }
         // NB-7：/graph、/quotes 纳入可缓存列表，与 P1-5 服务端 Caffeine 5 分钟 TTL 对齐
-        }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**");
+        }).addPathPatterns("/api/v1/posts/**", "/api/v1/dishes/**", "/api/v1/notes/**", "/api/v1/categories/**", "/api/v1/search", "/api/v1/music/**", "/api/v1/graph/**", "/api/v1/quotes/**", "/api/v1/note-assets/**");
 
         // FD-11：kitchen（今日菜单/打卡）是两人私有生活数据——一律 no-store，
         // 任何共享缓存/磁盘副本都不许落（与 NB-7 计数端点的 no-cache 可再验证语义刻意区分）
@@ -82,5 +96,16 @@ public class WebConfiguration implements WebMvcConfigurer {
 
     private static boolean isCounterEndpoint(String path) {
         return path.endsWith("/stats") || path.equals("/api/v1/dishes/favorites");
+    }
+
+    private static void addVaryAuthorization(HttpServletResponse response) {
+        String vary = response.getHeader("Vary");
+        String newVary = "Authorization";
+        if (vary != null && !vary.isBlank() && !vary.contains("Authorization")) {
+            newVary = vary + ", Authorization";
+        } else if (vary != null && vary.contains("Authorization")) {
+            newVary = vary;
+        }
+        response.setHeader("Vary", newVary);
     }
 }

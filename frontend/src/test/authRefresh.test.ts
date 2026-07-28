@@ -152,6 +152,75 @@ describe('6C-1 refresh flow', () => {
     expect(refreshCalls).toBe(1)
   })
 
+  it('logout-vs-refresh race: stale refresh must not resurrect cleared session', async () => {
+    let releaseRefresh!: () => void
+    const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve })
+    http.adapter = async (config) => {
+      if (config.url.endsWith('/auth/refresh')) {
+        await refreshGate
+        return ok(config, { data: REFRESH_RESULT })
+      }
+      throw unauthorized(config)
+    }
+    useAuthStore().saveSession({ ...REFRESH_RESULT, token: 'stale-token' })
+
+    const refreshPromise = admin.refreshSession()
+    await Promise.resolve()
+    useAuthStore().clearSession()
+    expect(useAuthStore().token).toBeNull()
+
+    releaseRefresh()
+    const result = await refreshPromise
+    expect(result).toBe(false)
+    expect(useAuthStore().token).toBeNull()
+  })
+
+  it('stale refresh failure must not clear a newer login session', async () => {
+    let releaseRefresh!: () => void
+    const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve })
+    http.adapter = async (config) => {
+      if (config.url.endsWith('/auth/refresh')) {
+        await refreshGate
+        throw unauthorized(config)
+      }
+      throw unauthorized(config)
+    }
+    useAuthStore().saveSession({ ...REFRESH_RESULT, token: 'stale-token' })
+
+    const refreshPromise = admin.refreshSession()
+    await Promise.resolve()
+    useAuthStore().saveSession({ ...REFRESH_RESULT, token: 'new-login-token' })
+    expect(useAuthStore().token).toBe('new-login-token')
+
+    releaseRefresh()
+    const result = await refreshPromise
+    expect(result).toBe(false)
+    expect(useAuthStore().token).toBe('new-login-token')
+  })
+
+  it('login-vs-refresh race: stale refresh must not overwrite newer manual login', async () => {
+    let releaseRefresh!: () => void
+    const refreshGate = new Promise<void>(resolve => { releaseRefresh = resolve })
+    http.adapter = async (config) => {
+      if (config.url.endsWith('/auth/refresh')) {
+        await refreshGate
+        return ok(config, { data: { ...REFRESH_RESULT, token: 'refresh-token' } })
+      }
+      throw unauthorized(config)
+    }
+    useAuthStore().saveSession({ ...REFRESH_RESULT, token: 'stale-token' })
+
+    const refreshPromise = admin.refreshSession()
+    await Promise.resolve()
+    useAuthStore().saveSession({ ...REFRESH_RESULT, token: 'manual-login-token' })
+    expect(useAuthStore().token).toBe('manual-login-token')
+
+    releaseRefresh()
+    const result = await refreshPromise
+    expect(result).toBe(false)
+    expect(useAuthStore().token).toBe('manual-login-token')
+  })
+
   it('recovers an authenticated route from the refresh cookie on startup', async () => {
     let refreshCalls = 0
     http.adapter = async (config) => {

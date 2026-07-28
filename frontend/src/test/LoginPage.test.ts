@@ -127,24 +127,23 @@ describe('FD-9 通用登录页', () => {
     expect(router.currentRoute.value.path).toBe('/recipes')
   })
 
-  it('勾选保持登录：remember 传给 login 且会话持久化到 localStorage', async () => {
+  it('勾选保持登录：remember 传给 login，令牌仅存 sessionStorage', async () => {
     mockLogin.mockResolvedValue(loginResult('PARTNER'))
     const { wrapper } = await mountPage()
     await fillAndSubmit(wrapper, { remember: true })
     expect(mockLogin).toHaveBeenCalledWith('gf', '红烧肉要少放糖多放辣2026',
       { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined }, true)
-    expect(localStorage.getItem('yubai-admin-token')).toBe('fresh-token')
-    expect(localStorage.getItem('yubai-admin-role')).toBe('PARTNER')
+    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
+    expect(sessionStorage.getItem('yubai-admin-role')).toBe('PARTNER')
   })
 
-  it('不勾选保持登录：不落 localStorage 且清掉历史持久化副本', async () => {
-    localStorage.setItem('yubai-admin-token', 'old-persistent')
+  it('不勾选保持登录：令牌仅存 sessionStorage，localStorage 不受影响', async () => {
     mockLogin.mockResolvedValue(loginResult('PARTNER'))
     const { wrapper } = await mountPage()
     await fillAndSubmit(wrapper)
     expect(mockLogin).toHaveBeenCalledWith('gf', '红烧肉要少放糖多放辣2026',
       { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined }, false)
-    expect(localStorage.getItem('yubai-admin-token')).toBeNull()
+    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
   })
 
   it('已登录访问 /login 直接被送走', async () => {
@@ -155,24 +154,31 @@ describe('FD-9 通用登录页', () => {
   })
 })
 
-describe('FD-9 authStore 保持登录持久化', () => {
-  it('sessionStorage 为空时从 localStorage 兜底恢复会话', () => {
-    localStorage.setItem('yubai-admin-token', 'persisted-token')
-    localStorage.setItem('yubai-admin-name', 'gf')
-    localStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
-    localStorage.setItem('yubai-admin-role', 'PARTNER')
+describe('FD-9 authStore 会话与启动迁移', () => {
+  it('saveSession 写入 sessionStorage，clearSession 清空', () => {
+    const auth = useAuthStore()
+    auth.saveSession(loginResult('PARTNER') as never)
+    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
+    auth.clearSession()
+    expect(sessionStorage.getItem('yubai-admin-token')).toBeNull()
+  })
+
+  it('启动时清理遗留 localStorage 密钥', () => {
+    localStorage.setItem('yubai-admin-token', 'legacy-token')
+    localStorage.setItem('yubai-admin-name', 'legacy')
+    setActivePinia(createPinia())
+    useAuthStore()
+    expect(localStorage.getItem('yubai-admin-token')).toBeNull()
+    expect(localStorage.getItem('yubai-admin-name')).toBeNull()
+  })
+
+  it('sessionStorage 令牌仍可恢复会话', () => {
+    sessionStorage.setItem('yubai-admin-token', 'session-token')
+    sessionStorage.setItem('yubai-admin-name', 'gxynf')
+    sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
+    sessionStorage.setItem('yubai-admin-role', 'ADMIN')
     setActivePinia(createPinia())
     const auth = useAuthStore()
     expect(auth.isAuthenticated).toBe(true)
-    expect(auth.isPartner).toBe(true)
-  })
-
-  it('clearSession 同时清掉 localStorage 持久化副本', () => {
-    const auth = useAuthStore()
-    auth.saveSession(loginResult('PARTNER') as never, { remember: true })
-    expect(localStorage.getItem('yubai-admin-token')).toBe('fresh-token')
-    auth.clearSession()
-    expect(localStorage.getItem('yubai-admin-token')).toBeNull()
-    expect(sessionStorage.getItem('yubai-admin-token')).toBeNull()
   })
 })

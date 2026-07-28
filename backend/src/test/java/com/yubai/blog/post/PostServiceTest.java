@@ -3,7 +3,10 @@ package com.yubai.blog.post;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -18,6 +21,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import java.lang.reflect.Field;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -35,8 +40,21 @@ class PostServiceTest {
     @Mock
     PostContentSanitizer sanitizer;
 
+    @Mock
+    PostRevisionService revisionService;
+
     @InjectMocks
     PostService service;
+
+    private static void setField(Object target, String name, Object value) {
+        try {
+            Field field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private PostEntity samplePost() {
         var post = new PostEntity();
@@ -214,6 +232,69 @@ class PostServiceTest {
         when(repository.existsBySlug("dup-slug")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(request)).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void createWithRevisionRecordsSnapshot() {
+        var post = PostEntity.create(new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null), sanitizer);
+        setField(post, "id", 10L);
+        var request = new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
+        when(repository.existsBySlug("new-slug")).thenReturn(false);
+        when(repository.save(any())).thenReturn(post);
+        when(sanitizer.sanitize(any())).thenReturn("<p>new</p>");
+
+        var result = service.createWithRevision(request);
+        verify(revisionService).record(result.id());
+    }
+
+    @Test
+    void updateWithRevisionRecordsSnapshot() {
+        var post = samplePost();
+        setField(post, "id", 1L);
+        var request = new PostRequest("test-slug", "Updated", "Excerpt", LocalDate.of(2026, 1, 1),
+            5, "工程实践", List.of(), "#000", "01", false, PostStatus.PUBLISHED, "<p>updated</p>", null, null);
+        when(repository.findById(1L)).thenReturn(Optional.of(post));
+        when(repository.existsBySlugAndIdNot("test-slug", 1L)).thenReturn(false);
+        when(sanitizer.sanitize(any())).thenReturn("<p>updated</p>");
+
+        var result = service.updateWithRevision(1L, request);
+        assertThat(result.title()).isEqualTo("Updated");
+        verify(revisionService).record(1L);
+    }
+
+    @Test
+    void createWithRevisionRollsBackOnRevisionFailure() {
+        var post = PostEntity.create(new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null), sanitizer);
+        setField(post, "id", 10L);
+        var request = new PostRequest("new-slug", "New", "Excerpt", LocalDate.of(2026, 1, 1),
+            3, "工程实践", List.of(), "#000", "02", false, PostStatus.DRAFT, "<p>new</p>", null, null);
+        when(repository.existsBySlug("new-slug")).thenReturn(false);
+        when(repository.save(any())).thenReturn(post);
+        when(sanitizer.sanitize(any())).thenReturn("<p>new</p>");
+        doThrow(new RuntimeException("Revision failure")).when(revisionService).record(anyLong());
+
+        assertThatThrownBy(() -> service.createWithRevision(request))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessageContaining("Revision failure");
+    }
+
+    @Test
+    void updateWithRevisionRollsBackOnRevisionFailure() {
+        var post = samplePost();
+        setField(post, "id", 1L);
+        var request = new PostRequest("test-slug", "Updated", "Excerpt", LocalDate.of(2026, 1, 1),
+            5, "工程实践", List.of(), "#000", "01", false, PostStatus.PUBLISHED, "<p>updated</p>", null, null);
+        when(repository.findById(1L)).thenReturn(Optional.of(post));
+        when(repository.existsBySlugAndIdNot("test-slug", 1L)).thenReturn(false);
+        when(sanitizer.sanitize(any())).thenReturn("<p>updated</p>");
+        doThrow(new RuntimeException("Revision failure")).when(revisionService).record(1L);
+
+        assertThatThrownBy(() -> service.updateWithRevision(1L, request))
+            .isInstanceOf(RuntimeException.class)
+            .hasMessageContaining("Revision failure");
     }
 
     @Test

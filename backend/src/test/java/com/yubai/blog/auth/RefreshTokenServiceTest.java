@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +54,9 @@ class RefreshTokenServiceTest {
     @Mock
     private RefreshTokenRepository repository;
 
+    @Mock
+    private AdminUserRepository userRepository;
+
     private MutableClock clock;
     private RefreshTokenService service;
     private static final java.util.function.Function<String, String> HASH = RefreshTokenService::hashToken;
@@ -60,7 +64,7 @@ class RefreshTokenServiceTest {
     @BeforeEach
     void setUp() {
         clock = new MutableClock();
-        service = new RefreshTokenService(repository, Duration.ofDays(7), Duration.ofDays(30), clock);
+        service = new RefreshTokenService(repository, userRepository, Duration.ofDays(7), Duration.ofDays(30), clock);
     }
 
     @Test
@@ -100,8 +104,12 @@ class RefreshTokenServiceTest {
         var oldHash = RefreshTokenService.hashToken("old-raw-token-abc123");
         var oldExpiry = Instant.now(clock).plus(Duration.ofDays(7));
         var oldEntity = new RefreshTokenEntity(oldHash, 1L, UUID.randomUUID(), oldExpiry);
+        var user = mock(AdminUserEntity.class);
 
         when(repository.findByTokenHash(oldHash)).thenReturn(Optional.of(oldEntity));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(user.isEnabled()).thenReturn(true);
+        when(user.getSessionsValidFrom()).thenReturn(Instant.EPOCH);
         when(repository.atomicRevokeAndMarkUsed(eq(oldEntity.getId()), any())).thenAnswer(invocation -> {
             oldEntity.setRevoked(true);
             oldEntity.setLastUsedAt(invocation.getArgument(1));
@@ -113,6 +121,7 @@ class RefreshTokenServiceTest {
         var result = service.rotate("old-raw-token-abc123");
 
         assertThat(result.rawToken()).hasSize(64);
+        assertThat(result.oldCreatedAt()).isNotNull();
         assertThat(result.newEntity().getFamily()).isEqualTo(oldEntity.getFamily());
         assertThat(result.newEntity().getUserId()).isEqualTo(1L);
         assertThat(result.newEntity().isRevoked()).isFalse();
@@ -138,8 +147,12 @@ class RefreshTokenServiceTest {
         var entity = new RefreshTokenEntity(hash, 1L, family,
             Instant.now(clock).plus(Duration.ofDays(7)));
         entity.setRevoked(true);
+        var user = mock(AdminUserEntity.class);
 
         when(repository.findByTokenHash(hash)).thenReturn(Optional.of(entity));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(user.isEnabled()).thenReturn(true);
+        when(user.getSessionsValidFrom()).thenReturn(Instant.EPOCH);
 
         assertThatThrownBy(() -> service.rotate(raw))
             .isInstanceOf(RefreshTokenService.RefreshTokenException.class)
@@ -169,8 +182,12 @@ class RefreshTokenServiceTest {
         var family = UUID.randomUUID();
         var entity = new RefreshTokenEntity(hash, 1L, family,
             Instant.now(clock).plus(Duration.ofDays(7)));
+        var user = mock(AdminUserEntity.class);
         // atomicRevokeAndMarkUsed returns 0 => already used
         when(repository.findByTokenHash(hash)).thenReturn(Optional.of(entity));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(user.isEnabled()).thenReturn(true);
+        when(user.getSessionsValidFrom()).thenReturn(Instant.EPOCH);
         when(repository.atomicRevokeAndMarkUsed(eq(entity.getId()), any())).thenReturn(0);
 
         assertThatThrownBy(() -> service.rotate(raw))
@@ -178,6 +195,49 @@ class RefreshTokenServiceTest {
             .hasMessageContaining("already used");
 
         verify(repository).revokeFamily(family);
+    }
+
+    @Test
+    void rotateRejectsDisabledUser() {
+        var raw = "hash";
+        var hash = HASH.apply(raw);
+        var entity = new RefreshTokenEntity(hash, 1L, UUID.randomUUID(),
+            Instant.now(clock).plus(Duration.ofDays(7)));
+        var user = mock(AdminUserEntity.class);
+
+        when(repository.findByTokenHash(hash)).thenReturn(Optional.of(entity));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(user.isEnabled()).thenReturn(false);
+
+        assertThatThrownBy(() -> service.rotate(raw))
+            .isInstanceOf(RefreshTokenService.RefreshTokenException.class)
+            .hasMessageContaining("禁用");
+
+        verify(repository, never()).atomicRevokeAndMarkUsed(anyLong(), any());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void rotateRejectsSessionInvalidated() {
+        var raw = "hash";
+        var hash = HASH.apply(raw);
+        // entity constructor sets createdAt to Instant.now() (system clock, not mock clock)
+        var entity = new RefreshTokenEntity(hash, 1L, UUID.randomUUID(),
+            Instant.now(clock).plus(Duration.ofDays(7)));
+        var user = mock(AdminUserEntity.class);
+
+        when(repository.findByTokenHash(hash)).thenReturn(Optional.of(entity));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(user.isEnabled()).thenReturn(true);
+        // sessionsValidFrom after entity's real createdAt
+        when(user.getSessionsValidFrom()).thenReturn(Instant.now().plus(Duration.ofDays(1)));
+
+        assertThatThrownBy(() -> service.rotate(raw))
+            .isInstanceOf(RefreshTokenService.RefreshTokenException.class)
+            .hasMessageContaining("invalidated");
+
+        verify(repository, never()).atomicRevokeAndMarkUsed(anyLong(), any());
+        verify(repository, never()).save(any());
     }
 
     @Test

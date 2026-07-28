@@ -38,6 +38,8 @@ export const useFoodStore = defineStore('food', () => {
   let pollTimer: number | undefined
   let pollGeneration = 0
   let visibilityHooked = false
+  let menuGeneration = 0
+  const followingToday = ref(true)
 
   const canEdit = computed(() => auth.canKitchen)
 
@@ -78,18 +80,19 @@ export const useFoodStore = defineStore('food', () => {
 
   async function loadMenu(date = menuDate.value, options: { silent?: boolean } = {}) {
     menuDate.value = date
+    followingToday.value = date === todayISO()
+    const gen = ++menuGeneration
     if (!options.silent) {
       loading.value = true
       error.value = null
     }
     try {
       const fresh = await fetchDailyMenu(date)
-      // 竞态守卫：期间用户切了日期则丢弃
-      if (menuDate.value !== date) return
+      if (gen !== menuGeneration) return
       detectArrivals(fresh)
       menu.value = fresh
     } catch (cause) {
-      if (menuDate.value !== date) return
+      if (gen !== menuGeneration) return
       if (!options.silent) error.value = classifyError(cause)
     } finally {
       if (!options.silent) loading.value = false
@@ -122,6 +125,7 @@ export const useFoodStore = defineStore('food', () => {
     try {
       const fresh = await appendMenuItem(date, draft)
       if (menuDate.value === date) {
+        menuGeneration++
         menu.value = fresh
         markSeen(date)
       }
@@ -140,6 +144,7 @@ export const useFoodStore = defineStore('food', () => {
     try {
       const fresh = await putDailyMenu(date, payload)
       if (menuDate.value === date) {
+        menuGeneration++
         menu.value = fresh
         markSeen(date)
       }
@@ -159,7 +164,10 @@ export const useFoodStore = defineStore('food', () => {
     saving.value = true
     try {
       const fresh = await deleteMenuItem(itemId)
-      if (menuDate.value === date) menu.value = fresh
+      if (menuDate.value === date) {
+        menuGeneration++
+        menu.value = fresh
+      }
     } catch (cause) {
       throw classifyError(cause)
     } finally {
@@ -169,16 +177,13 @@ export const useFoodStore = defineStore('food', () => {
 
   function onVisibilityChange() {
     if (document.visibilityState !== 'visible') return
-    // 跨午夜回来：menuDate 若还是"昨天"且用户没手动翻历史，就跟到新的今天
     const today = todayISO()
-    if (menuDate.value !== today && wasFollowingToday.value) {
+    if (menuDate.value !== today && followingToday.value) {
       void loadMenu(today, { silent: true })
     } else {
       void loadMenu(menuDate.value, { silent: true })
     }
   }
-
-  const wasFollowingToday = computed(() => menuDate.value === todayISO() || menu.value === null)
 
   function startMenuPolling() {
     const generation = ++pollGeneration
@@ -214,5 +219,6 @@ export const useFoodStore = defineStore('food', () => {
     menuDate, menu, loading, saving, error, arrivals, canEdit,
     loadMenu, append, submitMenu, removeItem,
     startMenuPolling, stopMenuPolling, clearArrivals, todayISO,
+    followingToday, onVisibilityChange,
   }
 })

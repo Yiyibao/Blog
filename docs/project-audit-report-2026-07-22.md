@@ -134,6 +134,20 @@
 
 长期仍建议将文章正文迁移为 Markdown 或结构化编辑器 JSON，在统一渲染管线中生成 HTML，减少任意 HTML 输入面。
 
+### 已处理：V8 静默丢弃项目数据——FlywayMigrationStrategy 归档预防护
+
+`V8__remove_projects.sql` 对生产库执行 `DROP TABLE projects / project_stack` 会静默丢弃 V1-V4 期间累积的项目数据。V8 已发布（checksum 不可再变），V1 包含种子数据且生产可能还有自主录入的项目行。
+
+**修复方案（非入侵式）：** 注册 `FlywayMigrationStrategy` Bean（`FlywayMigrationConfig`），在 `flyway.migrate()` 之前调用 `ProjectArchiveService.archive()`：
+- `archive()` 使用 `information_schema.tables` 检查 `projects` 表是否存在（限定 `current_schema`；元数据查询失败直接抛异常，阻止启动和迁移）。
+- 若存在：创建 `projects_archived` / `project_stack_archived` 归档表（`IF NOT EXISTS`），逐行复制数据（`ON CONFLICT DO NOTHING` 幂等）。
+- 若不存在（V8+ 或全新安装）：跳过归档，Flyway 正常执行。
+- 归档表在 V8 之后仍然保留，为审计和未来迁移提供安全网。
+
+**自动化测试：** `FlywayUpgradePathTest` —— 在独立 schema 中执行 V1→V4→归档→V8→V9 全链路，验证归档表存续 3 行 projects + 9 行 project_stack。
+
+**运维命令（部署前预检）：** 见 `docs/migration-preflight.md`。
+
 ### 已处理：本地登录 CORS 与会话兼容性
 
 本地页面使用 `127.0.0.1:5174` 时曾因后端只允许 `localhost:5173` 返回 403；现在已放行本地四种来源，并在浏览器禁用 `sessionStorage` 时使用内存会话回退。管理员登录错误也会区分 401、服务端错误和网络错误。

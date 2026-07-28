@@ -18,12 +18,19 @@ import org.springframework.data.domain.PageImpl;
 
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.common.PageRequests;
+import com.yubai.blog.storage.StorageService;
 
 @ExtendWith(MockitoExtension.class)
 class NoteServiceTest {
 
     @Mock
     NoteRepository repository;
+
+    @Mock
+    NoteAttachmentRepository attachmentRepository;
+
+    @Mock
+    StorageService storageService;
 
     @InjectMocks
     NoteService service;
@@ -202,8 +209,10 @@ class NoteServiceTest {
     void deleteRemovesExistingNote() {
         var note = mockNote(1L, "Draft", "DRAFT", 0);
         when(repository.findById(1L)).thenReturn(Optional.of(note));
+        when(attachmentRepository.findListRowsByNoteId(1L)).thenReturn(List.of());
 
         service.delete(1L);
         verify(repository).delete(note);
+        verify(attachmentRepository).deleteByNoteId(1L);
     }
 }

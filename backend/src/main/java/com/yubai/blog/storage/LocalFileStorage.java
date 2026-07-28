@@ -1,11 +1,14 @@
 package com.yubai.blog.storage;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Component;
 public class LocalFileStorage implements StorageService {
     private static final Logger log = LoggerFactory.getLogger(LocalFileStorage.class);
     private final Path rootDir;
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     public LocalFileStorage(@Value("${app.attachment.storage.dir}") String dir) {
         var resolved = Path.of(dir).normalize().toAbsolutePath();
@@ -38,8 +42,17 @@ public class LocalFileStorage implements StorageService {
             rejectSymbolicLink(path, storageKey);
             tmp = Files.createTempFile(parent, ".upload-", ".tmp");
             Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
-            synchronized (this) {
-                Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            rwLock.writeLock().lock();
+            try {
+                try {
+                    Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+                } catch (AccessDeniedException e) {
+                    moveWithRetry(tmp, path);
+                }
+            } finally {
+                rwLock.writeLock().unlock();
             }
             tmp = null;
         } catch (IOException e) {
@@ -55,23 +68,29 @@ public class LocalFileStorage implements StorageService {
     @Override
     public byte[] read(String storageKey) {
         var path = resolvePath(storageKey);
+        rwLock.readLock().lock();
         try {
             verifyExistingPath(path, storageKey);
             return Files.readAllBytes(path);
         } catch (IOException e) {
             throw new StorageException("Failed to read: " + storageKey, e);
+        } finally {
+            rwLock.readLock().unlock();
         }
     }
 
     @Override
     public void delete(String storageKey) {
         var path = resolvePath(storageKey);
+        rwLock.writeLock().lock();
         try {
             if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
             verifyExistingPath(path, storageKey);
             Files.deleteIfExists(path);
         } catch (IOException e) {
             throw new StorageException("Failed to delete: " + storageKey, e);
+        } finally {
+            rwLock.writeLock().unlock();
         }
     }
 
@@ -133,6 +152,29 @@ public class LocalFileStorage implements StorageService {
     private static void rejectSymbolicLink(Path path, String storageKey) {
         if (Files.isSymbolicLink(path)) {
             throw new StorageException("Storage key targets a symlink: " + storageKey);
+        }
+    }
+
+    private static void moveWithRetry(Path tmp, Path path) throws IOException {
+        var maxAttempts = 3;
+        var delayMs = 50;
+        for (int i = 0; i < maxAttempts; i++) {
+            try {
+                Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                return;
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
+                return;
+            } catch (AccessDeniedException e) {
+                if (i == maxAttempts - 1) throw e;
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                delayMs *= 2;
+            }
         }
     }
 

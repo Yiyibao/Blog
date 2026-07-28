@@ -84,6 +84,7 @@ public class SeriesService {
             throw new DataIntegrityViolationException("合集 slug 已存在");
         }
         series.update(request);
+        seriesRepository.flush(); // @Version 在 flush 时递增，响应必须返回可供下一次编辑使用的新版本
         var entries = entryRepository.findAllBySeriesIdOrderBySortOrderAscIdAsc(id);
         return toAdmin(series, entries, postRefs(entries));
     }

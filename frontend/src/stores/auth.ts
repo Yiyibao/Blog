@@ -30,32 +30,8 @@ function removeSessionValue(key: string) {
   }
 }
 
-// FD-9："保持登录"用 localStorage 跨会话持久化；隐私模式全部 try/catch 降级
-function readPersistentValue(key: string) {
-  try {
-    return window.localStorage?.getItem(key) ?? null
-  } catch {
-    return null
-  }
-}
-
-function writePersistentValue(key: string, value: string) {
-  try {
-    window.localStorage?.setItem(key, value)
-  } catch {
-    // 存不了就退化为仅本会话
-  }
-}
-
-function removePersistentValue(key: string) {
-  try {
-    window.localStorage?.removeItem(key)
-  } catch {
-    // 忽略
-  }
-}
-
 const SESSION_KEYS = ['yubai-admin-token', 'yubai-admin-name', 'yubai-admin-expiry', 'yubai-admin-role', 'yubai-admin-display', 'yubai-admin-capabilities'] as const
+const LEGACY_LOCAL_KEYS = ['yubai-admin-token', 'yubai-admin-name', 'yubai-admin-expiry', 'yubai-admin-role', 'yubai-admin-display', 'yubai-admin-capabilities']
 const KNOWN_CAPABILITIES = new Set<Capability>(Object.values(Capabilities))
 
 function normalizeCapabilities(values: unknown): Capability[] {
@@ -73,6 +49,18 @@ function restoreCapabilities(serialized: string | null, role: string | null): Ca
   }
 }
 
+/** 启动时清理所有遗留 localStorage 密钥。访问令牌仅通过 sessionStorage 暂存，
+ * 跨会话恢复依赖 HttpOnly refresh cookie 经 /auth/refresh 端点获取新令牌。 */
+function migrateLegacyLocalKeys() {
+  try {
+    for (const key of LEGACY_LOCAL_KEYS) {
+      window.localStorage?.removeItem(key)
+    }
+  } catch {
+    // 隐私模式或 localStorage 不可用，静默忽略
+  }
+}
+
 export interface LoginResult {
   token: string
   tokenType: string
@@ -85,15 +73,20 @@ export interface LoginResult {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  // 会话优先，localStorage（保持登录）兜底
-  const readValue = (key: string) => readSessionValue(key) ?? readPersistentValue(key)
-  const token = ref(readValue('yubai-admin-token'))
-  const username = ref(readValue('yubai-admin-name'))
-  const expiresAt = ref(readValue('yubai-admin-expiry'))
-  const role = ref(readValue('yubai-admin-role'))
-  const displayName = ref(readValue('yubai-admin-display'))
-  const storedCapabilities = readValue('yubai-admin-capabilities')
+  migrateLegacyLocalKeys()
+  const token = ref(readSessionValue('yubai-admin-token'))
+  const username = ref(readSessionValue('yubai-admin-name'))
+  const expiresAt = ref(readSessionValue('yubai-admin-expiry'))
+  const role = ref(readSessionValue('yubai-admin-role'))
+  const displayName = ref(readSessionValue('yubai-admin-display'))
+  const storedCapabilities = readSessionValue('yubai-admin-capabilities')
   const capabilities = ref<Capability[]>(restoreCapabilities(storedCapabilities, role.value))
+
+  // FD-4 generation guard: every saveSession or clearSession advances the generation,
+  // so stale async responses (refresh after logout, refresh after manual login) are discarded.
+  let generation = 0
+  function getGeneration(): number { return generation }
+  function isCurrentGeneration(gen: number): boolean { return gen === generation }
 
   const isAuthenticated = computed(() => {
     if (!token.value) return false
@@ -112,7 +105,8 @@ export const useAuthStore = defineStore('auth', () => {
     return isAuthenticated.value && capabilities.value.includes(capability)
   }
 
-  function saveSession(result: LoginResult, options: { remember?: boolean } = {}) {
+  function saveSession(result: LoginResult) {
+    generation += 1
     token.value = result.token
     username.value = result.username
     expiresAt.value = result.expiresAt
@@ -133,13 +127,11 @@ export const useAuthStore = defineStore('auth', () => {
       const value = values[key]
       if (value) writeSessionValue(key, value)
       else removeSessionValue(key)
-      // FD-9：勾选保持登录才落 localStorage；未勾选的登录顺带清掉历史持久化副本
-      if (options.remember && value) writePersistentValue(key, value)
-      else removePersistentValue(key)
     }
   }
 
   function clearSession() {
+    generation += 1
     token.value = null
     username.value = null
     expiresAt.value = null
@@ -148,7 +140,6 @@ export const useAuthStore = defineStore('auth', () => {
     capabilities.value = []
     for (const key of SESSION_KEYS) {
       removeSessionValue(key)
-      removePersistentValue(key)
     }
   }
 
@@ -157,5 +148,5 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession()
   }
 
-  return { token, username, expiresAt, role, displayName, capabilities, isAuthenticated, isAdmin, isPartner, canKitchen, can, saveSession, clearSession }
+  return { token, username, expiresAt, role, displayName, capabilities, isAuthenticated, isAdmin, isPartner, canKitchen, can, saveSession, clearSession, getGeneration, isCurrentGeneration }
 })

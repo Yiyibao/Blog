@@ -24,10 +24,13 @@ import com.yubai.blog.config.CacheConfig;
 public class PostService {
     private final PostRepository repository;
     private final PostContentSanitizer sanitizer;
+    private final PostRevisionService revisionService;
 
-    public PostService(PostRepository repository, PostContentSanitizer sanitizer) {
+    public PostService(PostRepository repository, PostContentSanitizer sanitizer,
+                       PostRevisionService revisionService) {
         this.repository = repository;
         this.sanitizer = sanitizer;
+        this.revisionService = revisionService;
     }
 
     /**
@@ -214,6 +217,22 @@ public class PostService {
         requireUniqueSlug(request.slug(), id);
         post.update(request, sanitizer);
         return PostResponse.from(post);
+    }
+
+    @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
+    public PostResponse createWithRevision(PostRequest request) {
+        var response = create(request);
+        revisionService.record(response.id());
+        return response;
+    }
+
+    @Transactional
+    @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP, CacheConfig.RSS, CacheConfig.RELATED_POSTS}, allEntries = true)
+    public PostResponse updateWithRevision(long id, PostRequest request) {
+        var response = update(id, request);
+        revisionService.record(id);
+        return response;
     }
 
     @Transactional

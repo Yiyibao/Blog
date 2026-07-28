@@ -7,25 +7,38 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.common.PageRequests;
 import com.yubai.blog.config.CacheConfig;
+import com.yubai.blog.storage.StorageService;
 
 @Service
 @Transactional(readOnly = true)
 public class NoteService {
+    private static final Logger log = LoggerFactory.getLogger(NoteService.class);
     private static final int MAX_IMPORT_BYTES = 2_000_000;
     private static final Pattern FIRST_HEADING = Pattern.compile("(?m)^#\\s+(.+?)\\s*$");
     private final NoteRepository repository;
+    private final NoteAttachmentRepository attachmentRepository;
+    private final StorageService storageService;
 
-    public NoteService(NoteRepository repository) { this.repository = repository; }
+    public NoteService(NoteRepository repository, NoteAttachmentRepository attachmentRepository,
+                       StorageService storageService) {
+        this.repository = repository;
+        this.attachmentRepository = attachmentRepository;
+        this.storageService = storageService;
+    }
 
     /** P1-2：列表只出摘要（不含正文），正文由 findOne / findPublishedOne 返回。 */
     public PageResponse<NoteSummary> findAll(NoteStatus status, int page, int size) {
@@ -119,7 +132,29 @@ public class NoteService {
 
     @Transactional
     @CacheEvict(cacheNames = {CacheConfig.GRAPH, CacheConfig.SITEMAP}, allEntries = true)
-    public void delete(long id) { repository.delete(entity(id)); }
+    public void delete(long id) {
+        var note = entity(id);
+        var storageKeys = attachmentRepository.findListRowsByNoteId(id).stream()
+            .map(NoteAttachmentRepository.AttachmentListRow::getStorageKey)
+            .filter(key -> key != null)
+            .toList();
+        attachmentRepository.deleteByNoteId(id);
+        repository.delete(note);
+        if (!storageKeys.isEmpty() && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    for (var key : storageKeys) {
+                        try {
+                            storageService.delete(key);
+                        } catch (Exception e) {
+                            log.warn("Failed to delete storage file {} after note deletion: {}", key, e.toString());
+                        }
+                    }
+                }
+            });
+        }
+    }
 
     private NoteResponse changeStatus(long id, long version, NoteStatus status) {
         var note = entity(id);

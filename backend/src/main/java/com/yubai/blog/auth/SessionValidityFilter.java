@@ -56,7 +56,7 @@ public class SessionValidityFilter extends OncePerRequestFilter {
             var issuedAt = jwt.getIssuedAt();
             var user = repository.findByUsername(jwt.getSubject()).orElse(null);
             // iat 序列化为秒级，比较前把 valid_from 向下取整到秒，避免同秒签发的新 token 被误杀
-            if (user == null || issuedAt == null
+            if (user == null || !user.isEnabled() || issuedAt == null
                 || issuedAt.isBefore(user.getSessionsValidFrom().truncatedTo(ChronoUnit.SECONDS))) {
                 reject(response);
                 return;

@@ -21,6 +21,7 @@ import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostContentSanitizer;
 import com.yubai.blog.post.PostRepository;
 import com.yubai.blog.post.PostRequest;
+import com.yubai.blog.post.PostRevisionService;
 import com.yubai.blog.post.PostService;
 import com.yubai.blog.post.PostStatus;
 import com.yubai.blog.series.SeriesService;
@@ -48,6 +49,9 @@ class CacheBehaviorTest {
     // 4B：GraphService 新增依赖——未打桩默认空 Map，构图不出 SERIES 节点
     @MockitoBean
     SeriesService seriesService;
+
+    @MockitoBean
+    PostRevisionService postRevisionService;
 
     @Autowired
     GraphService graphService;

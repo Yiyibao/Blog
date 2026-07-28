@@ -96,9 +96,15 @@ watch(() => route.fullPath, () => {
       description: '请求的页面不存在，可能链接已失效。',
       robots: 'noindex, nofollow',
     })
-  } else if (name.startsWith('admin') || name.startsWith('admin-')) {
+  } else if (name.startsWith('admin') || name.startsWith('admin-') || name === 'login' || name === 'account') {
+    const titles: Record<string, string> = {
+      'admin-login': '管理员登录',
+      'admin-notes': '学习笔记',
+      'login': '登录',
+      'account': '个人账户',
+    }
     apply({
-      title: ({ 'admin-login': '管理员登录', 'admin-notes': '学习笔记' } as Record<string, string>)[name] || '内容工作台',
+      title: titles[name] || '内容工作台',
       robots: 'noindex, nofollow',
     })
   } else {
@@ -107,6 +113,9 @@ watch(() => route.fullPath, () => {
       articles: { title: '文章', description: '阅读所有技术文章与日常随笔', canonicalPath: '/articles' },
       article: { title: '文章', description: '', canonicalPath: '' },
       notes: { title: '学习笔记', description: '公开学习笔记，持续更新的认知地图', canonicalPath: '/notes' },
+      series: { title: '系列', description: '按系列浏览文章，追踪完整的知识脉络', canonicalPath: '/series' },
+      'series-detail': { title: '合集详情', description: '', canonicalPath: '' },
+      tag: { title: '标签', description: '', canonicalPath: '' },
       recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
       about: { title: '关于', description: '关于作者和这个博客', canonicalPath: '/about' },
       archive: { title: '内容归档', description: '按时间浏览所有公开的文章、学习笔记和菜谱', canonicalPath: '/archive' },
