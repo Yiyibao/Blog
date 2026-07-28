@@ -36,7 +36,7 @@ import org.springframework.web.client.RestClientException;
  * 系统提示词后端固化，前端不可控。
  */
 @Component
-public class OpenAiCompatibleClient {
+public class OpenAiCompatibleClient implements AiClient {
     /** 出网加固上限：既防异常上游拖垮内存，又给长流式回复（SSE 帧有 JSON 包裹开销）留足余量。 */
     static final int MAX_RESPONSE_BYTES = 8_000_000;
     private static final String SYSTEM_PROMPT =

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/deepseek-v4-flash",
+  "enabled_providers": ["opencode-go"],
+  "snapshot": false,
+  "share": "disabled",
+  "autoupdate": false,
+  "formatter": false,
+  "lsp": false,
+  "permission": "deny",
+  "agent": {
+    "blog-ai": {
+      "description": "Text-only assistant for the Yubai Blog AI endpoint",
+      "mode": "primary",
+      "model": "opencode-go/deepseek-v4-flash",
+      "prompt": "You are a strict blog AI assistant. Answer only in plain text. Do not include markdown, formatting, or code fences. Do not ask follow-up questions. Keep responses concise and direct.",
+      "steps": 1,
+      "permission": "deny"
+    }
+  }
+}

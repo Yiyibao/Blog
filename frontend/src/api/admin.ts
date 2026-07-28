@@ -616,6 +616,8 @@ export function fetchAttachmentOverview() {
   return unwrap<AttachmentOverview>(api.get('/admin/attachments', { headers: tokenHeader() }))
 }
 
+export type AiProviderType = 'OPENAI_COMPATIBLE' | 'OPENCODE_SERVER'
+
 export type AiChatRole = 'user' | 'assistant'
 
 export interface AiChatMessage {
@@ -770,6 +772,7 @@ export interface AiProvider {
   id: number
   name: string
   baseUrl: string
+  providerType: AiProviderType
   models: string[]
   defaultModel: string
   enabled: boolean
@@ -785,6 +788,7 @@ export interface AiProvider {
 export interface AiProviderPayload {
   name: string
   baseUrl: string
+  providerType: AiProviderType
   /** 新建可留空（无鉴权端点）；编辑时省略或留空表示保留原密钥。 */
   apiKey?: string
   models: string[]

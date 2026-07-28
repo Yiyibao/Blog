@@ -29,12 +29,12 @@ class AiProviderServiceTest {
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         client = mock(OpenAiCompatibleClient.class);
         service = new AiProviderService(repository, new AiCrypto(properties),
-            new AiBaseUrlValidator(properties), client, properties);
+            new AiBaseUrlValidator(properties), client, mock(OpenCodeServerClient.class), properties);
     }
 
     private static AiProviderRequest request(String name, String baseUrl, String apiKey) {
         return new AiProviderRequest(name, baseUrl, apiKey,
-            List.of("model-a", "model-b"), "model-a", true, null, null);
+            List.of("model-a", "model-b"), "model-a", true, null, null, null);
     }
 
     @Test
@@ -93,11 +93,11 @@ class AiProviderServiceTest {
     void updateWithBlankKeyKeepsExistingSecret() {
         build(MASTER_KEY, false, false, null);
         var entity = AiProviderEntity.create("p", "https://93.184.216.34", "v1:existing-cipher",
-            "model-a", "model-a", true, 200, 200_000);
+            "model-a", "model-a", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         when(repository.findById(1L)).thenReturn(Optional.of(entity));
 
         service.update(1L, new AiProviderRequest("p", "https://93.184.216.34", "  ",
-            List.of("model-a"), "model-a", true, null, null));
+            List.of("model-a"), "model-a", true, null, null, null));
 
         assertEquals("v1:existing-cipher", entity.getApiKeyEncrypted());
     }
@@ -106,7 +106,7 @@ class AiProviderServiceTest {
     void setDefaultRejectsDisabledProvider() {
         build(MASTER_KEY, false, false, null);
         var entity = AiProviderEntity.create("p", "https://93.184.216.34", null,
-            "", "model-a", false, 200, 200_000);
+            "", "model-a", false, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         when(repository.findById(1L)).thenReturn(Optional.of(entity));
         var e = assertThrows(AiServiceException.class, () -> service.setDefault(1L));
         assertEquals(400, e.getStatus().value());
@@ -115,9 +115,9 @@ class AiProviderServiceTest {
     @Test
     void deletingDefaultPromotesNextEnabledProvider() {
         build(MASTER_KEY, false, false, null);
-        var deleted = AiProviderEntity.create("a", "https://93.184.216.34", null, "", "m", true, 200, 200_000);
+        var deleted = AiProviderEntity.create("a", "https://93.184.216.34", null, "", "m", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         deleted.markDefault(true);
-        var next = AiProviderEntity.create("b", "https://93.184.216.34", null, "", "m", true, 200, 200_000);
+        var next = AiProviderEntity.create("b", "https://93.184.216.34", null, "", "m", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         when(repository.findById(1L)).thenReturn(Optional.of(deleted));
         when(repository.findFirstByEnabledTrueOrderByIdAsc()).thenReturn(Optional.of(next));
 
@@ -158,7 +158,7 @@ class AiProviderServiceTest {
     @Test
     void testConnectionReturnsFailureAsResultInsteadOfThrowing() {
         build(MASTER_KEY, false, false, null);
-        var entity = AiProviderEntity.create("p", "https://93.184.216.34", null, "", "m", true, 200, 200_000);
+        var entity = AiProviderEntity.create("p", "https://93.184.216.34", null, "", "m", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         when(repository.findById(1L)).thenReturn(Optional.of(entity));
         when(client.listModels(any())).thenThrow(
             new AiServiceException(org.springframework.http.HttpStatus.BAD_GATEWAY, "Unable to reach AI service"));

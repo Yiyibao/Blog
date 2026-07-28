@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   logout as apiLogout, createAiProvider, deleteAiProvider, fetchAiProviders,
   hasValidAdminSession, setDefaultAiProvider, testAiProvider, updateAiProvider,
-  type AiProvider, type AiProviderPayload, type AiProviderTestResult,
+  type AiProvider, type AiProviderPayload, type AiProviderTestResult, type AiProviderType,
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
 
@@ -27,6 +27,7 @@ const testResults = reactive<Record<number, AiProviderTestResult>>({})
 const form = reactive({
   name: '',
   baseUrl: '',
+  providerType: 'OPENAI_COMPATIBLE' as AiProviderType,
   apiKey: '',
   models: '',
   defaultModel: '',
@@ -34,6 +35,8 @@ const form = reactive({
   dailyRequestLimit: 200,
   dailyTokenLimit: 200000,
 })
+
+watch(() => form.providerType, () => { form.apiKey = '' })
 
 function handleAuthError(cause: unknown) {
   if (axios.isAxiosError(cause) && cause.response?.status === 401) {
@@ -70,6 +73,7 @@ async function load() {
 }
 
 function keyDisplay(provider: AiProvider) {
+  if (provider.providerType === 'OPENCODE_SERVER') return '凭据来自环境变量'
   if (!provider.hasKey) return '未设置密钥'
   return provider.keyTail ? `密钥 ····${provider.keyTail}` : '密钥已设置'
 }
@@ -79,7 +83,7 @@ function newProvider() {
   editingKeyTail.value = null
   error.value = ''
   Object.assign(form, {
-    name: '', baseUrl: '', apiKey: '', models: '', defaultModel: '',
+    name: '', baseUrl: '', providerType: 'OPENAI_COMPATIBLE' as AiProviderType, apiKey: '', models: '', defaultModel: '',
     enabled: true, dailyRequestLimit: 200, dailyTokenLimit: 200000,
   })
   editorOpen.value = true
@@ -92,6 +96,7 @@ function editProvider(provider: AiProvider) {
   Object.assign(form, {
     name: provider.name,
     baseUrl: provider.baseUrl,
+    providerType: provider.providerType,
     apiKey: '',
     models: provider.models.join('\n'),
     defaultModel: provider.defaultModel,
@@ -116,11 +121,13 @@ function parsedModels() {
 
 function providerPayload(): AiProviderPayload {
   const apiKey = form.apiKey.trim()
+  const isOpenCode = form.providerType === 'OPENCODE_SERVER'
   return {
     name: form.name.trim(),
     baseUrl: form.baseUrl.trim(),
-    // 留空不携带字段：新建即无密钥端点，编辑即保留原密钥
-    ...(apiKey ? { apiKey } : {}),
+    providerType: form.providerType,
+    // OPENCODE_SERVER 永不携带密钥（来自服务端环境变量）；其他类型留空即保留/无密钥
+    ...(!isOpenCode && apiKey ? { apiKey } : {}),
     models: parsedModels(),
     defaultModel: form.defaultModel.trim(),
     enabled: form.enabled,
@@ -146,7 +153,9 @@ async function save() {
     await load()
   } catch (cause) {
     if (!handleAuthError(cause)) {
-      error.value = apiErrorMessage(cause, '保存失败，请检查必填项和字段格式（base_url 需为 https 且非内网地址）。')
+      error.value = apiErrorMessage(cause, form.providerType === 'OPENCODE_SERVER'
+        ? '保存失败，请检查必填项和字段格式（base_url 需为环回地址根路径）。'
+        : '保存失败，请检查必填项和字段格式（base_url 需为 https 且非内网地址）。')
     }
   } finally {
     saving.value = false
@@ -162,6 +171,7 @@ async function toggleEnabled(provider: AiProvider) {
     await updateAiProvider(provider.id, {
       name: provider.name,
       baseUrl: provider.baseUrl,
+      providerType: provider.providerType,
       models: provider.models,
       defaultModel: provider.defaultModel,
       enabled: !provider.enabled,
@@ -260,7 +270,7 @@ onMounted(load)
 
         <div v-if="loading" class="admin-empty">正在读取供应商列表…</div>
         <div v-else-if="!providers.length" class="admin-empty">
-          还没有配置任何 AI 供应商。点击「新建供应商」注册第一个 OpenAI 兼容端点。
+          还没有配置任何 AI 供应商。点击「新建供应商」注册 OpenAI 兼容或 OpenCode Server 端点。
         </div>
         <div v-else class="admin-table provider-table">
           <div class="admin-table-head"><span>供应商</span><span>模型</span><span>状态</span><span>操作</span></div>
@@ -273,6 +283,7 @@ onMounted(load)
                 </small>
                 <strong>
                   {{ provider.name }}
+                  <span class="provider-protocol-chip" :title="provider.providerType === 'OPENCODE_SERVER' ? 'OpenCode Server 协议' : 'OpenAI 兼容协议'">{{ provider.providerType === 'OPENCODE_SERVER' ? 'OpenCode' : 'OpenAI' }}</span>
                   <em v-if="provider.isDefault" class="provider-default-chip">默认</em>
                 </strong>
                 <p>日限额 {{ provider.dailyRequestLimit.toLocaleString() }} 次 / {{ provider.dailyTokenLimit.toLocaleString() }} tokens</p>
@@ -338,9 +349,20 @@ onMounted(load)
 
         <div class="admin-form-grid">
           <label>名称<input v-model="form.name" required maxlength="60" placeholder="deepseek"></label>
-          <label>Base URL<input v-model="form.baseUrl" type="url" required maxlength="500" placeholder="https://api.deepseek.com"></label>
+          <label>Base URL<input v-model="form.baseUrl" type="url" required maxlength="500" :placeholder="form.providerType === 'OPENCODE_SERVER' ? 'http://127.0.0.1:4096' : 'https://api.deepseek.com'"></label>
         </div>
-        <label>
+        <label>协议类型</label>
+        <div class="admin-type-group">
+          <label class="admin-type-radio">
+            <input type="radio" v-model="form.providerType" value="OPENAI_COMPATIBLE">
+            <span>OpenAI 兼容</span>
+          </label>
+          <label class="admin-type-radio">
+            <input type="radio" v-model="form.providerType" value="OPENCODE_SERVER">
+            <span>OpenCode Server（内建）</span>
+          </label>
+        </div>
+        <label v-if="form.providerType === 'OPENAI_COMPATIBLE'">
           API 密钥{{ editingId ? '（只写不回显）' : '' }}
           <input
             v-model="form.apiKey"
@@ -352,6 +374,11 @@ onMounted(load)
               : '本地无鉴权端点可留空'"
           >
         </label>
+        <div v-else class="provider-guidance">
+          <p>Base URL 必须填写本地回环地址根路径，例如 <code>http://127.0.0.1:4096</code>。</p>
+          <p>供应商/模型 ID 使用已配置的 OpenCode sidecar。</p>
+          <p>凭据来自服务端环境变量 <code>APP_AI_OPENCODE_USERNAME</code> 与 <code>APP_AI_OPENCODE_PASSWORD</code>，不存入数据库。</p>
+        </div>
         <label>
           模型列表（每行一个，留空则不限制）
           <textarea v-model="form.models" rows="4" placeholder="deepseek-chat&#10;deepseek-reasoner" />
@@ -474,6 +501,55 @@ onMounted(load)
   border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
   border-radius: 999px;
   font: 11px/1.6 ui-monospace, Consolas, monospace;
+}
+
+.provider-protocol-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--line, #d9d6cf);
+  border-radius: 999px;
+  color: var(--console-muted, #7f7e77);
+  font: 500 10px/1.6 inherit;
+  letter-spacing: .06em;
+  vertical-align: 3px;
+}
+.admin-type-group {
+  display: flex;
+  gap: 24px;
+  margin: 6px 0 14px;
+}
+.admin-type-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.admin-type-radio input {
+  width: auto;
+  margin: 0;
+}
+.provider-guidance {
+  margin: 6px 0 14px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--line, #d9d6cf) 15%, transparent);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.provider-guidance code {
+  font-family: ui-monospace, Consolas, monospace;
+  background: color-mix(in srgb, var(--line, #d9d6cf) 25%, transparent);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.provider-guidance p {
+  margin: 0 0 4px;
+}
+.provider-guidance p:last-child {
+  margin-bottom: 0;
 }
 
 @media (max-width: 1080px) {

@@ -17,6 +17,10 @@ public class AiProperties {
     private String masterKey;
     /** 4A-1：是否允许 base_url 指向本地/私网端点（如 Ollama）；只能改 env 重启生效。 */
     private boolean allowLocalEndpoints;
+    private String opencodeUsername;
+    private String opencodePassword;
+    private String opencodeAgent = "blog-ai";
+    private String opencodeProviderId = "opencode-go";
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -40,4 +44,12 @@ public class AiProperties {
     public void setMasterKey(String masterKey) { this.masterKey = masterKey; }
     public boolean isAllowLocalEndpoints() { return allowLocalEndpoints; }
     public void setAllowLocalEndpoints(boolean allowLocalEndpoints) { this.allowLocalEndpoints = allowLocalEndpoints; }
+    public String getOpencodeUsername() { return opencodeUsername; }
+    public void setOpencodeUsername(String opencodeUsername) { this.opencodeUsername = opencodeUsername; }
+    public String getOpencodePassword() { return opencodePassword; }
+    public void setOpencodePassword(String opencodePassword) { this.opencodePassword = opencodePassword; }
+    public String getOpencodeAgent() { return opencodeAgent; }
+    public void setOpencodeAgent(String opencodeAgent) { this.opencodeAgent = opencodeAgent; }
+    public String getOpencodeProviderId() { return opencodeProviderId; }
+    public void setOpencodeProviderId(String opencodeProviderId) { this.opencodeProviderId = opencodeProviderId; }
 }

@@ -35,6 +35,7 @@ const deepseekProvider: adminApi.AiProvider = {
   id: 1,
   name: 'deepseek',
   baseUrl: 'https://api.deepseek.com',
+  providerType: 'OPENAI_COMPATIBLE',
   models: ['deepseek-chat', 'deepseek-reasoner'],
   defaultModel: 'deepseek-chat',
   enabled: true,
@@ -162,6 +163,7 @@ describe('AdminAiProviders Component', () => {
     expect(mockCreateAiProvider).toHaveBeenCalledWith({
       name: 'glm',
       baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      providerType: 'OPENAI_COMPATIBLE',
       apiKey: 'glm-secret-key',
       models: ['glm-4.7', 'glm-4.7-air', 'glm-4-flash'],
       defaultModel: 'glm-4.7',
@@ -193,6 +195,7 @@ describe('AdminAiProviders Component', () => {
     const [id, payload] = mockUpdateAiProvider.mock.calls[0]
     expect(id).toBe(1)
     expect(payload).not.toHaveProperty('apiKey')
+    expect(payload.providerType).toBe('OPENAI_COMPATIBLE')
     expect(payload.name).toBe('deepseek')
     expect(payload.models).toEqual(['deepseek-chat', 'deepseek-reasoner'])
   })
@@ -206,6 +209,7 @@ describe('AdminAiProviders Component', () => {
     const [id, payload] = mockUpdateAiProvider.mock.calls[0]
     expect(id).toBe(1)
     expect(payload.enabled).toBe(false)
+    expect(payload.providerType).toBe('OPENAI_COMPATIBLE')
     expect(payload).not.toHaveProperty('apiKey')
   })
 
@@ -362,6 +366,158 @@ describe('AdminAiProviders Component', () => {
     const activeLinks = wrapper.findAll('.admin-sidebar nav a.active')
     expect(activeLinks).toHaveLength(1)
     expect(activeLinks[0].text()).toContain('AI 供应商')
+  })
+
+  it('shows protocol labels on provider rows', async () => {
+    const wrapper = await mountComponent()
+    const chips = wrapper.findAll('.provider-protocol-chip')
+    expect(chips).toHaveLength(3)
+    chips.forEach((chip) => expect(chip.text()).toBe('OpenAI'))
+  })
+
+  it('shows env-only credential label for OPENCODE_SERVER', async () => {
+    const ocsProvider = { ...deepseekProvider, id: 5, name: 'ocs', baseUrl: 'http://127.0.0.1:4096', providerType: 'OPENCODE_SERVER' as const, hasKey: false, keyTail: null }
+    mockFetchAiProviders.mockResolvedValue([deepseekProvider, ocsProvider])
+    const wrapper = await mountComponent()
+    expect(wrapper.text()).toContain('凭据来自环境变量')
+    expect(wrapper.text()).not.toContain('未设置密钥')
+  })
+
+  it('creates a provider with OPENCODE_SERVER type and omits apiKey from payload', async () => {
+    mockCreateAiProvider.mockResolvedValue({ ...deepseekProvider, id: 4, name: 'ocs', providerType: 'OPENCODE_SERVER' })
+    const wrapper = await mountComponent()
+    await wrapper.find('.provider-section > header button.primary').trigger('click')
+
+    await wrapper.find('input[placeholder="deepseek"]').setValue('ocs')
+    await wrapper.find('input[type="url"]').setValue('http://127.0.0.1:4096')
+    await wrapper.find('input[type="radio"][value="OPENCODE_SERVER"]').setValue(true)
+    await wrapper.find('.admin-editor textarea').setValue('opencode-sidecar')
+    await wrapper.find('input[list="provider-model-options"]').setValue('opencode-sidecar')
+    await wrapper.find('form.admin-editor').trigger('submit')
+    await flushPromises()
+
+    expect(mockCreateAiProvider).toHaveBeenCalledWith({
+      name: 'ocs',
+      baseUrl: 'http://127.0.0.1:4096',
+      providerType: 'OPENCODE_SERVER',
+      models: ['opencode-sidecar'],
+      defaultModel: 'opencode-sidecar',
+      enabled: true,
+      dailyRequestLimit: 200,
+      dailyTokenLimit: 200000,
+    })
+    expect(mockCreateAiProvider.mock.calls[0][0]).not.toHaveProperty('apiKey')
+  })
+
+  it('hides api key input and shows guidance when OPENCODE_SERVER is selected', async () => {
+    const wrapper = await mountComponent()
+    await wrapper.find('.provider-section > header button.primary').trigger('click')
+
+    // initially OPENAI_COMPATIBLE: api key input visible, no guidance
+    expect(wrapper.find('input[type="password"]').exists()).toBe(true)
+    expect(wrapper.find('.provider-guidance').exists()).toBe(false)
+
+    // switch to OPENCODE_SERVER
+    await wrapper.find('input[type="radio"][value="OPENCODE_SERVER"]').setValue(true)
+    await flushPromises()
+
+    expect(wrapper.find('input[type="password"]').exists()).toBe(false)
+    expect(wrapper.find('.provider-guidance').exists()).toBe(true)
+    expect(wrapper.find('.provider-guidance').text()).toContain('127.0.0.1:4096')
+    expect(wrapper.find('.provider-guidance').text()).toContain('APP_AI_OPENCODE_USERNAME')
+    expect(wrapper.find('.provider-guidance').text()).toContain('APP_AI_OPENCODE_PASSWORD')
+  })
+
+  it('switching provider type clears unsaved apiKey from the form', async () => {
+    let resolveSave!: (value: adminApi.AiProvider) => void
+    mockCreateAiProvider.mockImplementation(() => new Promise((resolve) => { resolveSave = resolve }))
+    const wrapper = await mountComponent()
+    await wrapper.find('.provider-section > header button.primary').trigger('click')
+
+    // type apiKey, then switch type
+    await wrapper.find('input[type="password"]').setValue('secret-123')
+    expect((wrapper.find('input[type="password"]').element as HTMLInputElement).value).toBe('secret-123')
+
+    await wrapper.find('input[type="radio"][value="OPENCODE_SERVER"]').setValue(true)
+    await flushPromises()
+
+    // apiKey cleared
+    await wrapper.find('input[type="radio"][value="OPENAI_COMPATIBLE"]').setValue(true)
+    await flushPromises()
+    expect((wrapper.find('input[type="password"]').element as HTMLInputElement).value).toBe('')
+
+    // save must not contain apiKey
+    await wrapper.find('input[placeholder="deepseek"]').setValue('test-provider')
+    await wrapper.find('input[type="url"]').setValue('https://api.test.com')
+    await wrapper.find('input[list="provider-model-options"]').setValue('test-model')
+    await wrapper.find('form.admin-editor').trigger('submit')
+    await flushPromises()
+
+    resolveSave(deepseekProvider)
+    await flushPromises()
+
+    // 切换会清除 apiKey，切换回 OpenAI 兼容后未重新输入，故 payload 不含 apiKey
+    expect(mockCreateAiProvider.mock.calls[0][0]).not.toHaveProperty('apiKey')
+    expect(mockCreateAiProvider.mock.calls[0][0].providerType).toBe('OPENAI_COMPATIBLE')
+  })
+
+  it('shows conditional base URL placeholder in drawer', async () => {
+    const wrapper = await mountComponent()
+    await wrapper.find('.provider-section > header button.primary').trigger('click')
+
+    // default OPENAI_COMPATIBLE
+    const urlInput = wrapper.find('input[type="url"]')
+    expect(urlInput.attributes('placeholder')).toBe('https://api.deepseek.com')
+
+    // switch to OPENCODE_SERVER
+    await wrapper.find('input[type="radio"][value="OPENCODE_SERVER"]').setValue(true)
+    await flushPromises()
+    expect(urlInput.attributes('placeholder')).toBe('http://127.0.0.1:4096')
+  })
+
+  it('shows empty state mentioning both protocol types', async () => {
+    mockFetchAiProviders.mockResolvedValue([])
+    const wrapper = await mountComponent()
+    expect(wrapper.text()).toContain('OpenAI 兼容')
+    expect(wrapper.text()).toContain('OpenCode Server')
+  })
+
+  it('preserves providerType when editing an OPENCODE_SERVER provider', async () => {
+    const ocsProvider = { ...deepseekProvider, id: 5, name: 'ocs', baseUrl: 'http://127.0.0.1:4096', providerType: 'OPENCODE_SERVER' as const }
+    mockFetchAiProviders.mockResolvedValue([deepseekProvider, ocsProvider])
+    const wrapper = await mountComponent()
+
+    await wrapper.findAll('.provider-table article')[1]
+      .findAll('.provider-actions button')
+      .find((btn) => btn.text() === '编辑')!
+      .trigger('click')
+
+    // ensure OPENCODE_SERVER is selected
+    const ocsRadio = wrapper.find('input[type="radio"][value="OPENCODE_SERVER"]')
+    expect((ocsRadio.element as HTMLInputElement).checked).toBe(true)
+
+    // save without typing apiKey
+    await wrapper.find('form.admin-editor').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdateAiProvider).toHaveBeenCalled()
+    const payload = mockUpdateAiProvider.mock.calls[0][1]
+    expect(payload.providerType).toBe('OPENCODE_SERVER')
+    expect(payload).not.toHaveProperty('apiKey')
+  })
+
+  it('preserves providerType when toggling enabled on an OPENCODE_SERVER provider', async () => {
+    const ocsProvider = { ...deepseekProvider, id: 5, name: 'ocs', baseUrl: 'http://127.0.0.1:4096', providerType: 'OPENCODE_SERVER' as const }
+    mockFetchAiProviders.mockResolvedValue([deepseekProvider, ocsProvider])
+    const wrapper = await mountComponent()
+
+    await wrapper.findAll('.provider-table article')[1].find('.provider-toggle').trigger('click')
+    await flushPromises()
+
+    expect(mockUpdateAiProvider).toHaveBeenCalledTimes(1)
+    const payload = mockUpdateAiProvider.mock.calls[0][1]
+    expect(payload.providerType).toBe('OPENCODE_SERVER')
+    expect(payload).not.toHaveProperty('apiKey')
   })
 })
 

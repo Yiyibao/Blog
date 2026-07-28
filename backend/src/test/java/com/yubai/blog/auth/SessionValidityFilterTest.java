@@ -83,12 +83,12 @@ class SessionValidityFilterTest {
 
     @Test
     void allowsTokenIssuedAtSessionValidityBoundary() throws Exception {
-        var         boundary = Instant.parse("2026-07-28T00:00:30.900Z");
+        var boundary = Instant.parse("2026-07-28T00:00:30.900Z");
         var user = mock(AdminUserEntity.class);
         when(user.getSessionsValidFrom()).thenReturn(boundary);
         when(user.isEnabled()).thenReturn(true);
         when(repository.findByUsername("admin")).thenReturn(Optional.of(user));
-        authenticate(boundary.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+        authenticateWithSvf(boundary);
         var response = new MockHttpServletResponse();
         var chain = mock(FilterChain.class);
         var request = request("/api/v1/notes");
@@ -108,6 +108,18 @@ class SessionValidityFilterTest {
             .subject("admin")
             .issuedAt(issuedAt)
             .expiresAt(issuedAt.plusSeconds(900))
+            .claim("svf", issuedAt.toEpochMilli())
+            .build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
+    }
+
+    private static void authenticateWithSvf(Instant sessionsValidFrom) {
+        var jwt = Jwt.withTokenValue("token")
+            .header("alg", "none")
+            .subject("admin")
+            .issuedAt(sessionsValidFrom.truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+            .expiresAt(sessionsValidFrom.plusSeconds(900))
+            .claim("svf", sessionsValidFrom.toEpochMilli())
             .build();
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
     }

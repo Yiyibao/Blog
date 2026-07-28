@@ -28,8 +28,8 @@ class AiUsageServiceTest {
     }
 
     private static AiEndpoint registryEndpoint(int requestLimit, int tokenLimit) {
-        return new AiEndpoint(7L, "https://api.example.com", "key", "deepseek-v4-flash", 60, 2048,
-            requestLimit, tokenLimit);
+        return new AiEndpoint(7L, AiProviderType.OPENAI_COMPATIBLE, "https://api.example.com", "key", "deepseek-v4-flash", 60, 2048,
+            requestLimit, tokenLimit, null, null, null, null);
     }
 
     @BeforeEach

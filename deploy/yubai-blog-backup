@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This backup intentionally omits /var/lib/opencode (OpenCode sidecar auth/state).
+# That directory contains local persistent sidecar state but is outside this
+# database-and-attachments backup scope.
+# After a full host restore, the OpenCode sidecar must be re-authenticated
+# manually via `sudo -u opencode HOME=/var/lib/opencode opencode auth login`.
+
 BACKUP_DIR="/var/backups/yubai-blog"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 TARGET="${BACKUP_DIR}/yubai_blog-${STAMP}.dump"

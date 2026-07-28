@@ -22,16 +22,18 @@ public class AiProviderService {
     private final AiProviderRepository repository;
     private final AiCrypto crypto;
     private final AiBaseUrlValidator baseUrlValidator;
-    private final OpenAiCompatibleClient client;
+    private final OpenAiCompatibleClient openaiClient;
+    private final OpenCodeServerClient opencodeClient;
     private final AiProperties properties;
 
     public AiProviderService(AiProviderRepository repository, AiCrypto crypto,
-                             AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient client,
-                             AiProperties properties) {
+                             AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient openaiClient,
+                             OpenCodeServerClient opencodeClient, AiProperties properties) {
         this.repository = repository;
         this.crypto = crypto;
         this.baseUrlValidator = baseUrlValidator;
-        this.client = client;
+        this.openaiClient = openaiClient;
+        this.opencodeClient = opencodeClient;
         this.properties = properties;
     }
 
@@ -47,9 +49,13 @@ public class AiProviderService {
         if (repository.existsByNameIgnoreCase(request.name().trim())) {
             throw new AiServiceException(HttpStatus.CONFLICT, "同名供应商已存在");
         }
-        var baseUrl = baseUrlValidator.validate(request.baseUrl());
+        var providerType = request.providerTypeOrDefault();
+        var baseUrl = providerType == AiProviderType.OPENCODE_SERVER
+            ? baseUrlValidator.validateForOpenCodeServer(request.baseUrl())
+            : baseUrlValidator.validate(request.baseUrl());
+        // OPENCODE_SERVER 不需要 DB apiKey（使用 env Basic password）
         String encryptedKey = null;
-        if (hasText(request.apiKey())) {
+        if (providerType != AiProviderType.OPENCODE_SERVER && hasText(request.apiKey())) {
             encryptedKey = crypto.encrypt(request.apiKey().trim());
         }
         var entity = AiProviderEntity.create(
@@ -60,7 +66,8 @@ public class AiProviderService {
             request.defaultModel().trim(),
             request.enabledOrDefault(),
             request.dailyRequestLimitOrDefault(),
-            request.dailyTokenLimitOrDefault());
+            request.dailyTokenLimitOrDefault(),
+            request.providerTypeOrDefault());
         if (repository.count() == 0) {
             entity.markDefault(true);
         }
@@ -76,11 +83,17 @@ public class AiProviderService {
         if (!entity.getName().equalsIgnoreCase(newName) && repository.existsByNameIgnoreCase(newName)) {
             throw new AiServiceException(HttpStatus.CONFLICT, "同名供应商已存在");
         }
-        var baseUrl = baseUrlValidator.validate(request.baseUrl());
+        var providerType = request.providerTypeOrDefault();
+        var baseUrl = providerType == AiProviderType.OPENCODE_SERVER
+            ? baseUrlValidator.validateForOpenCodeServer(request.baseUrl())
+            : baseUrlValidator.validate(request.baseUrl());
         entity.update(newName, baseUrl, joinModels(request.models()), request.defaultModel().trim(),
-            request.enabledOrDefault(), request.dailyRequestLimitOrDefault(), request.dailyTokenLimitOrDefault());
-        // 密钥留空表示保留原值——界面上密钥只写不回显。
-        if (hasText(request.apiKey())) {
+            request.enabledOrDefault(), request.dailyRequestLimitOrDefault(), request.dailyTokenLimitOrDefault(),
+            providerType);
+        // OPENCODE_SERVER 忽略/清除 DB apiKey（使用 env Basic password）
+        if (providerType == AiProviderType.OPENCODE_SERVER) {
+            entity.replaceApiKey(null);
+        } else if (hasText(request.apiKey())) {
             entity.replaceApiKey(crypto.encrypt(request.apiKey().trim()));
         }
         var saved = repository.save(entity);
@@ -123,7 +136,8 @@ public class AiProviderService {
     }
 
     /**
-     * 连通性测试：以该供应商配置请求 /models；失败作为结果返回而非抛错，便于界面展示。
+     * 连通性测试：按供应商类型调用对应客户端的 listModels。
+     * 失败作为结果返回而非抛错，便于界面展示。
      * 刻意不加 @Transactional——外部 HTTP 最长阻塞 requestTimeout 秒，
      * 包在事务里会长时间占用连接池连接，几次并发点击即可耗尽 HikariCP。
      */
@@ -132,6 +146,7 @@ public class AiProviderService {
             .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
         try {
             var endpoint = toEndpoint(entity, entity.getDefaultModel());
+            var client = entity.getProviderType() == AiProviderType.OPENCODE_SERVER ? opencodeClient : openaiClient;
             var models = client.listModels(endpoint);
             return new AiProviderTestResult(true, "连接成功", models);
         } catch (AiServiceException exception) {
@@ -185,7 +200,8 @@ public class AiProviderService {
             properties.getModel(),
             true,
             200,
-            200_000);
+            200_000,
+            AiProviderType.OPENAI_COMPATIBLE);
         entity.markDefault(true);
         repository.save(entity);
         log.info("AI 供应商注册表为空，已从环境变量配置生成默认供应商 deepseek");
@@ -204,13 +220,16 @@ public class AiProviderService {
 
     private AiEndpoint toEndpoint(AiProviderEntity entity, String model) {
         String apiKey = null;
-        if (entity.getApiKeyEncrypted() != null && !entity.getApiKeyEncrypted().isBlank()) {
+        if (entity.getProviderType() != AiProviderType.OPENCODE_SERVER
+            && entity.getApiKeyEncrypted() != null && !entity.getApiKeyEncrypted().isBlank()) {
             apiKey = crypto.decrypt(entity.getApiKeyEncrypted());
         }
         // 4A-6：providerId 与日限额随端点携带，供用量审计与预算检查
-        return new AiEndpoint(entity.getId(), entity.getBaseUrl(), apiKey, model,
+        return new AiEndpoint(entity.getId(), entity.getProviderType(), entity.getBaseUrl(), apiKey, model,
             properties.getRequestTimeout(), properties.getMaxOutputTokens(),
-            entity.getDailyRequestLimit(), entity.getDailyTokenLimit());
+            entity.getDailyRequestLimit(), entity.getDailyTokenLimit(),
+            properties.getOpencodeUsername(), properties.getOpencodePassword(),
+            properties.getOpencodeAgent(), properties.getOpencodeProviderId());
     }
 
     private String keyTail(AiProviderEntity entity) {

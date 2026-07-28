@@ -1953,7 +1953,8 @@ class BlogApiIntegrationTest {
             .andExpect(status().isNoContent());
 
         // 旧 token 已被 sessions_valid_from 踢掉
-        mockMvc.perform(get("/api/v1/kitchen/menus").header("Authorization", "Bearer " + oldToken))
+        mockMvc.perform(get("/api/v1/kitchen/menus").param("date", "2026-07-28")
+                .header("Authorization", "Bearer " + oldToken))
             .andExpect(status().isUnauthorized());
         // 6C-1：旧 refresh cookie 也不再生效
         mockMvc.perform(post("/api/v1/auth/refresh")

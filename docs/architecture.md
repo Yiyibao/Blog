@@ -453,6 +453,147 @@ HTML escaping and script safety, path traversal rejection, dynamic API
 pagination and data mapping, and SPA asset tag preservation. Integration
 tests use a temporary directory and mock `fetch`.
 
+## OpenCode sidecar
+
+An **OpenCode** sidecar process runs alongside the Spring Boot backend to
+provide a local AI chat inference endpoint (`OPENCODE_SERVER` provider type).
+The sidecar is deployed as a standalone systemd unit (`yubai-blog-opencode.service`)
+on the same host, accepting requests only on the loopback interface.
+
+Outbound HTTPS access to the OpenCode provider API is required — the sidecar
+makes external connections to the model provider (`opencode-go`). Inbound is
+restricted to loopback; outbound is not artificially denied.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│  Host                                            │
+│  ┌─────────────┐    loopback     ┌────────────┐  │
+│  │  Spring Boot │  ──────────▶   │  opencode   │  │
+│  │  backend     │  HTTP :4096    │  serve     │  │
+│  │  :8080       │                │  :4096      │  │
+│  └─────────────┘                └────────────┘  │
+│         │                         │               │
+│         ▼                         ▼  outbound     │
+│  ┌─────────────┐       HTTPS provider API        │
+│  │  PostgreSQL  │                                 │
+│  │  :5432       │                                 │
+│  └─────────────┘                                  │
+└──────────────────────────────────────────────────┘
+```
+
+- The sidecar is co-located on the same VM. The backend sends chat requests to
+  `http://127.0.0.1:4096` via HTTP Basic auth.
+- The sidecar proxies model inference to the configured OpenCode provider
+  (`opencode-go/deepseek-v4-flash`) over outbound HTTPS.
+- Configuration and secrets are split across two files: one for the backend
+  (`/etc/yubai-blog/app.env`) and one for the sidecar
+  (`/etc/yubai-blog-opencode/opencode.env`).
+- A persistent state directory (`/var/lib/opencode`) is writable by the sidecar
+  for agent sessions and auth tokens. The isolated workspace is empty and all
+  agent tool permissions are denied.
+
+### Security boundaries
+
+| Layer | Measure |
+|-------|---------|
+| Inbound | Loopback-only via `--hostname 127.0.0.1` (no `IPAddressAllow`) |
+| Outbound | Required — outbound HTTPS to OpenCode provider; not artificially blocked |
+| Capabilities | `CapabilityBoundingSet=` + `AmbientCapabilities=` — zero capabilities |
+| Privilege escalation | `NoNewPrivileges=true` |
+| Filesystem | `ProtectSystem=strict` + `ProtectHome=true`; `ReadWritePaths=/var/lib/opencode` |
+| OS user | Dedicated `opencode` system user, no login shell |
+| Auth | HTTP Basic on every request; password in `/etc/yubai-blog-opencode/opencode.env` |
+| Tools | All tool permissions denied (`permission": "deny"` globally and per-agent in `opencode.json`) |
+
+### Configuration
+
+The backend and sidecar read from separate env files so the sidecar cannot read
+the database password, JWT secret, or administrator bootstrap password:
+
+**`/etc/yubai-blog/app.env`** (backend, root:yubai 0640):
+
+| Variable | Purpose |
+|----------|---------|
+| `APP_AI_OPENCODE_USERNAME` | HTTP Basic username |
+| `APP_AI_OPENCODE_PASSWORD` | HTTP Basic password (plain text) |
+| `APP_AI_OPENCODE_AGENT` | Agent name sent to OpenCode (`blog-ai`) |
+| `APP_AI_OPENCODE_PROVIDER_ID` | Provider ID (`opencode-go`) |
+
+**`/etc/yubai-blog-opencode/opencode.env`** (sidecar, root:opencode 0640):
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENCODE_SERVER_USERNAME` | HTTP Basic username for sidecar admin API |
+| `OPENCODE_SERVER_PASSWORD` | HTTP Basic password for sidecar admin API |
+| `OPENCODE_CONFIG` | Path to `opencode.json` (`/etc/yubai-blog-opencode/opencode.json`) |
+
+**`/etc/yubai-blog-opencode/opencode.json`** (root:opencode 0640):
+
+| Field | Value |
+|-------|-------|
+| model | `opencode-go/deepseek-v4-flash` |
+| enabled_providers | `["opencode-go"]` |
+| permission | `"deny"` (global default) |
+| agent | `blog-ai` with `steps: 1`, `permission: "deny"`, strict text-only prompt |
+
+### Database provider row
+
+The backend's `AiProviderEntity` row for the sidecar must be configured with:
+
+| Column | Value |
+|--------|-------|
+| `base_url` | `http://127.0.0.1:4096` |
+| `provider_type` | `OPENCODE_SERVER` |
+| `models` | Includes `deepseek-v4-flash` |
+| `default_model` | `deepseek-v4-flash` |
+
+The OpenCode provider ID is not stored in this row. It comes from
+`APP_AI_OPENCODE_PROVIDER_ID=opencode-go` in the backend environment.
+
+### Lifecycle
+
+- `yubai-blog.service` has `Wants=yubai-blog-opencode.service` and
+  `After=yubai-blog-opencode.service`, so starting the backend also starts the
+  sidecar first. The units remain independently stoppable.
+- No database dependency — the sidecar can be restarted independently.
+- `/var/lib/opencode` is intentionally outside backup scope (see `deploy/yubai-blog-backup`).
+  Auth/state are local-only persistent data; a host restore requires
+  re-authentication.
+
+### Bootstrap
+
+`deploy/bootstrap-server.sh` runs these steps for the sidecar:
+
+1. Precondition check: `/usr/bin/opencode` must exist and be executable.
+2. Create `opencode` system user and directories.
+3. Generate a single OpenCode password and write both env files.
+4. Install `opencode.json` and both systemd units.
+5. `systemctl daemon-reload` and `systemctl enable yubai-blog-opencode.service`
+   (not started — the admin must start it explicitly or reboot the host).
+
+First-time auth (manual, after service is running):
+
+```
+sudo -u opencode HOME=/var/lib/opencode opencode auth login
+```
+
+Then start both services and create the provider row through the admin UI:
+
+```
+systemctl start yubai-blog-opencode.service
+systemctl restart yubai-blog.service
+```
+
+### Key files
+
+- `deploy/opencode.json` — OpenCode agent and provider configuration
+- `deploy/yubai-blog-opencode.service` — systemd unit for the sidecar
+- `deploy/bootstrap-server.sh` — user creation, env generation, config/unit install
+- `backend/src/main/java/com/yubai/blog/config/AiProperties.java` — `APP_AI_OPENCODE_*` config mapping
+- `backend/src/main/java/com/yubai/blog/admin/ai/OpenCodeServerClient.java` — HTTP client for the sidecar API
+
 ## Article Categories
 
 **本轮分类公开浏览仅覆盖文章分类，不包含菜品分类。**

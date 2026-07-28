@@ -2,6 +2,8 @@ package com.yubai.blog.admin.ai;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -46,6 +48,10 @@ public class AiProviderEntity {
     @Column(name = "daily_token_limit", nullable = false)
     private int dailyTokenLimit = 200_000;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider_type", nullable = false, length = 30)
+    private AiProviderType providerType = AiProviderType.OPENAI_COMPATIBLE;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -56,8 +62,9 @@ public class AiProviderEntity {
     }
 
     public static AiProviderEntity create(String name, String baseUrl, String apiKeyEncrypted,
-                                          String models, String defaultModel, boolean enabled,
-                                          int dailyRequestLimit, int dailyTokenLimit) {
+                                           String models, String defaultModel, boolean enabled,
+                                           int dailyRequestLimit, int dailyTokenLimit,
+                                           AiProviderType providerType) {
         var entity = new AiProviderEntity();
         entity.name = name;
         entity.baseUrl = baseUrl;
@@ -67,11 +74,13 @@ public class AiProviderEntity {
         entity.enabled = enabled;
         entity.dailyRequestLimit = dailyRequestLimit;
         entity.dailyTokenLimit = dailyTokenLimit;
+        entity.providerType = providerType;
         return entity;
     }
 
     public void update(String name, String baseUrl, String models, String defaultModel,
-                       boolean enabled, int dailyRequestLimit, int dailyTokenLimit) {
+                       boolean enabled, int dailyRequestLimit, int dailyTokenLimit,
+                       AiProviderType providerType) {
         this.name = name;
         this.baseUrl = baseUrl;
         this.models = models == null ? "" : models;
@@ -79,6 +88,7 @@ public class AiProviderEntity {
         this.enabled = enabled;
         this.dailyRequestLimit = dailyRequestLimit;
         this.dailyTokenLimit = dailyTokenLimit;
+        this.providerType = providerType;
     }
 
     public void replaceApiKey(String apiKeyEncrypted) {
@@ -110,6 +120,7 @@ public class AiProviderEntity {
     public boolean isDefault() { return isDefault; }
     public int getDailyRequestLimit() { return dailyRequestLimit; }
     public int getDailyTokenLimit() { return dailyTokenLimit; }
+    public AiProviderType getProviderType() { return providerType; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

@@ -19,6 +19,7 @@ public record AiProviderResponse(
     String keyTail,
     int dailyRequestLimit,
     int dailyTokenLimit,
+    AiProviderType providerType,
     Instant createdAt,
     Instant updatedAt
 ) {
@@ -35,6 +36,7 @@ public record AiProviderResponse(
             keyTail,
             entity.getDailyRequestLimit(),
             entity.getDailyTokenLimit(),
+            entity.getProviderType(),
             entity.getCreatedAt(),
             entity.getUpdatedAt()
         );

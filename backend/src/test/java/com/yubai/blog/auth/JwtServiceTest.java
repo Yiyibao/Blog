@@ -44,6 +44,7 @@ class JwtServiceTest {
         when(entity.getUsername()).thenReturn(username);
         when(entity.getRole()).thenReturn(role);
         when(entity.getDisplayName()).thenReturn(displayName);
+        when(entity.getSessionsValidFrom()).thenReturn(Instant.now());
         return entity;
     }
 

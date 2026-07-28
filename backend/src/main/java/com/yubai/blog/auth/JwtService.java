@@ -44,6 +44,7 @@ public class JwtService {
             .claim("authorities", permissions.stream().sorted().toList())
             .claim("uid", user.getId())
             .claim("name", user.getDisplayName())
+            .claim("svf", user.getSessionsValidFrom().toEpochMilli())
             .build();
         var header = JwsHeader.with(MacAlgorithm.HS256).build();
         var token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

@@ -9,8 +9,33 @@ CREDENTIALS_FILE="/home/ubuntu/yubai-blog-credentials.txt"
 DB_NAME="yubai_blog"
 DB_USER="yubai_app"
 
+OPENCODE_BIN="/usr/bin/opencode"
+OPENCODE_USER="opencode"
+OPENCODE_HOME="/var/lib/opencode"
+OPENCODE_CONFIG_DIR="/etc/yubai-blog-opencode"
+OPENCODE_ENV_FILE="${OPENCODE_CONFIG_DIR}/opencode.env"
+OPENCODE_SERVICE="yubai-blog-opencode.service"
+SERVICE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ ! -x "${OPENCODE_BIN}" ]]; then
+    echo "Prerequisite not met: ${OPENCODE_BIN} is missing or not executable" >&2
+    exit 1
+fi
+
+for source_file in opencode.json yubai-blog-opencode.service yubai-blog.service; do
+    if [[ ! -f "${SERVICE_DIR}/${source_file}" ]]; then
+        echo "Deployment source is missing: ${SERVICE_DIR}/${source_file}" >&2
+        exit 1
+    fi
+done
+
 if [[ -e "${ENV_FILE}" ]]; then
     echo "Refusing to replace existing production configuration: ${ENV_FILE}" >&2
+    exit 1
+fi
+
+if [[ -e "${OPENCODE_ENV_FILE}" ]]; then
+    echo "Refusing to replace existing sidecar configuration: ${OPENCODE_ENV_FILE}" >&2
     exit 1
 fi
 
@@ -32,6 +57,12 @@ if ! id "${APP_USER}" >/dev/null 2>&1; then
     useradd --system --home-dir "${APP_DIR}" --shell /usr/sbin/nologin "${APP_USER}"
 fi
 
+if ! id "${OPENCODE_USER}" >/dev/null 2>&1; then
+    useradd --system --home-dir "${OPENCODE_HOME}" --shell /usr/sbin/nologin "${OPENCODE_USER}"
+fi
+install -d -o "${OPENCODE_USER}" -g "${OPENCODE_USER}" -m 0750 "${OPENCODE_HOME}/workspace"
+install -d -o root -g "${OPENCODE_USER}" -m 0750 "${OPENCODE_CONFIG_DIR}"
+
 # Minimum safe bootstrap: o+x on APP_DIR lets nginx traverse; o+rx on releases/
 # lets nginx serve frontend files. shared/ and shared/attachments remain non-public.
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0751 "${APP_DIR}"
@@ -43,6 +74,8 @@ install -d -o root -g "${APP_USER}" -m 0750 "${CONFIG_DIR}"
 sudo -u postgres psql -v ON_ERROR_STOP=1 \
     -c "CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASSWORD}'"
 sudo -u postgres createdb --owner="${DB_USER}" --encoding=UTF8 "${DB_NAME}"
+
+OPENCODE_PASSWORD="$(openssl rand -hex 18)"
 
 umask 0077
 {
@@ -57,9 +90,22 @@ umask 0077
     printf 'APP_ATTACHMENT_STORAGE_DIR=%s\n' "${APP_DIR}/shared/attachments"
     printf 'APP_ADMIN_USERNAME=admin\n'
     printf 'APP_ADMIN_PASSWORD=%s\n' "${ADMIN_PASSWORD}"
+    printf 'APP_AI_OPENCODE_USERNAME=opencode\n'
+    printf 'APP_AI_OPENCODE_PASSWORD=%s\n' "${OPENCODE_PASSWORD}"
+    printf 'APP_AI_OPENCODE_AGENT=blog-ai\n'
+    printf 'APP_AI_OPENCODE_PROVIDER_ID=opencode-go\n'
 } > "${ENV_FILE}"
+
 chown root:"${APP_USER}" "${ENV_FILE}"
 chmod 0640 "${ENV_FILE}"
+
+{
+    printf 'OPENCODE_SERVER_USERNAME=opencode\n'
+    printf 'OPENCODE_SERVER_PASSWORD=%s\n' "${OPENCODE_PASSWORD}"
+    printf 'OPENCODE_CONFIG=%s/opencode.json\n' "${OPENCODE_CONFIG_DIR}"
+} > "${OPENCODE_ENV_FILE}"
+chown root:"${OPENCODE_USER}" "${OPENCODE_ENV_FILE}"
+chmod 0640 "${OPENCODE_ENV_FILE}"
 
 {
     printf 'Blog admin URL: https://hxnf.top/admin/login\n'
@@ -68,6 +114,13 @@ chmod 0640 "${ENV_FILE}"
 } > "${CREDENTIALS_FILE}"
 chown ubuntu:ubuntu "${CREDENTIALS_FILE}"
 chmod 0600 "${CREDENTIALS_FILE}"
+
+install -m 0640 "${SERVICE_DIR}/opencode.json" "${OPENCODE_CONFIG_DIR}/opencode.json"
+chown root:"${OPENCODE_USER}" "${OPENCODE_CONFIG_DIR}/opencode.json"
+install -m 0644 "${SERVICE_DIR}/yubai-blog-opencode.service" /etc/systemd/system/
+install -m 0644 "${SERVICE_DIR}/yubai-blog.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable "${OPENCODE_SERVICE}"
 
 echo "Production database and secrets created successfully."
 echo "Download ${CREDENTIALS_FILE} and store it securely."

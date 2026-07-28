@@ -1,0 +1,36 @@
+[Unit]
+Description=OpenCode AI sidecar for Yubai Blog
+Documentation=https://opencode.ai
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opencode
+Group=opencode
+WorkingDirectory=/var/lib/opencode/workspace
+Environment=HOME=/var/lib/opencode
+EnvironmentFile=/etc/yubai-blog-opencode/opencode.env
+ExecStart=/usr/bin/opencode serve --pure --port 4096 --hostname 127.0.0.1
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/opencode
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+PrivateDevices=true
+RestrictRealtime=true
+LockPersonality=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

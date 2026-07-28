@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -44,6 +45,7 @@ class JwtServiceRejectionTest {
         when(entity.getUsername()).thenReturn("boss");
         when(entity.getRole()).thenReturn(AdminUserRole.ADMIN);
         when(entity.getDisplayName()).thenReturn("站长");
+        when(entity.getSessionsValidFrom()).thenReturn(Instant.now());
         return entity;
     }
 

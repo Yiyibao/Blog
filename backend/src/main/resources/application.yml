@@ -101,3 +101,7 @@ app:
     max-history-messages: ${AI_MAX_HISTORY_MESSAGES:20}
     max-total-chars: ${AI_MAX_TOTAL_CHARS:40000}
     max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:2048}
+    opencode-username: ${APP_AI_OPENCODE_USERNAME:}
+    opencode-password: ${APP_AI_OPENCODE_PASSWORD:}
+    opencode-agent: ${APP_AI_OPENCODE_AGENT:blog-ai}
+    opencode-provider-id: ${APP_AI_OPENCODE_PROVIDER_ID:opencode-go}

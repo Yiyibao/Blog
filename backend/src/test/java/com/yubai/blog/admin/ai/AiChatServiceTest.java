@@ -22,6 +22,7 @@ class AiChatServiceTest {
     private AiProperties properties;
     private AiProviderRepository repository;
     private OpenAiCompatibleClient client;
+    private OpenCodeServerClient opencodeClient;
     private AiChatService service;
     private AiCrypto crypto;
     private AiUsageService usageService;
@@ -37,12 +38,13 @@ class AiChatServiceTest {
         properties.setMasterKey(masterKey);
         repository = mock(AiProviderRepository.class);
         client = mock(OpenAiCompatibleClient.class);
+        opencodeClient = mock(OpenCodeServerClient.class);
         crypto = new AiCrypto(properties);
         var providerService = new AiProviderService(
-            repository, crypto, new AiBaseUrlValidator(properties), client, properties);
+            repository, crypto, new AiBaseUrlValidator(properties), client, opencodeClient, properties);
         // 4A-6：用量服务以 mock 注入——预算/审计逻辑由 AiUsageServiceTest 独立覆盖
         usageService = mock(AiUsageService.class);
-        service = new AiChatService(properties, providerService, client, usageService);
+        service = new AiChatService(properties, providerService, client, opencodeClient, usageService);
     }
 
     private static ChatRequest request(String content) {
@@ -131,7 +133,7 @@ class AiChatServiceTest {
     void registryProviderPreferredOverEnvAndKeyDecrypted() {
         build(true, "env-key", MASTER_KEY);
         var entity = AiProviderEntity.create("kimi", "https://api.moonshot.cn/v1",
-            crypto.encrypt("sk-registry-key"), "kimi-k2", "kimi-k2", true, 200, 200_000);
+            crypto.encrypt("sk-registry-key"), "kimi-k2", "kimi-k2", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         entity.markDefault(true);
         when(repository.findFirstByIsDefaultTrueAndEnabledTrue()).thenReturn(Optional.of(entity));
         when(client.chat(any(), anyList())).thenReturn(new ChatResponse("ok", "kimi-k2", null));
@@ -149,7 +151,7 @@ class AiChatServiceTest {
     void explicitProviderIdResolvedWithRequestedModel() {
         build(false, null, MASTER_KEY);
         var entity = AiProviderEntity.create("glm", "https://open.bigmodel.cn/api/paas/v4",
-            crypto.encrypt("sk-glm"), "glm-4-flash,glm-4-plus", "glm-4-flash", true, 200, 200_000);
+            crypto.encrypt("sk-glm"), "glm-4-flash,glm-4-plus", "glm-4-flash", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         when(repository.findById(7L)).thenReturn(Optional.of(entity));
         when(client.chat(any(), anyList())).thenReturn(new ChatResponse("ok", "glm-4-plus", null));
 
@@ -164,7 +166,7 @@ class AiChatServiceTest {
     void modelOutsideAllowListRejected() {
         build(false, null, MASTER_KEY);
         var entity = AiProviderEntity.create("glm", "https://open.bigmodel.cn/api/paas/v4",
-            crypto.encrypt("sk-glm"), "glm-4-flash", "glm-4-flash", true, 200, 200_000);
+            crypto.encrypt("sk-glm"), "glm-4-flash", "glm-4-flash", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         when(repository.findById(7L)).thenReturn(Optional.of(entity));
 
         var e = assertThrows(AiServiceException.class,
@@ -187,7 +189,7 @@ class AiChatServiceTest {
         build(false, null, MASTER_KEY);
         var encrypted = crypto.encrypt("sk-x");
         var entity = AiProviderEntity.create("p", "https://api.deepseek.com",
-            encrypted, "m", "m", true, 200, 200_000);
+            encrypted, "m", "m", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
         entity.markDefault(true);
         // 重新构建为无主密钥环境：DB 里有密文但无法解密 → 503 而非明文降级
         build(false, null, null);

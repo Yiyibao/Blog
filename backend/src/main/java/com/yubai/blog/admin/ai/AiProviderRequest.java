@@ -15,7 +15,8 @@ public record AiProviderRequest(
     @NotBlank @Size(max = 120) String defaultModel,
     Boolean enabled,
     @Min(1) @Max(100_000) Integer dailyRequestLimit,
-    @Min(1000) @Max(100_000_000) Integer dailyTokenLimit
+    @Min(1000) @Max(100_000_000) Integer dailyTokenLimit,
+    AiProviderType providerType
 ) {
     public boolean enabledOrDefault() {
         return enabled == null || enabled;
@@ -27,5 +28,9 @@ public record AiProviderRequest(
 
     public int dailyTokenLimitOrDefault() {
         return dailyTokenLimit == null ? 200_000 : dailyTokenLimit;
+    }
+
+    public AiProviderType providerTypeOrDefault() {
+        return providerType != null ? providerType : AiProviderType.OPENAI_COMPATIBLE;
     }
 }

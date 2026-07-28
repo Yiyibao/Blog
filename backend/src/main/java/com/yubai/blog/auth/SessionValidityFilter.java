@@ -2,7 +2,6 @@ package com.yubai.blog.auth;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Set;
 
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,11 +52,14 @@ public class SessionValidityFilter extends OncePerRequestFilter {
         throws ServletException, IOException {
         if (SecurityContextHolder.getContext().getAuthentication() instanceof JwtAuthenticationToken jwtAuth) {
             var jwt = jwtAuth.getToken();
-            var issuedAt = jwt.getIssuedAt();
             var user = repository.findByUsername(jwt.getSubject()).orElse(null);
-            // iat 序列化为秒级，比较前把 valid_from 向下取整到秒，避免同秒签发的新 token 被误杀
-            if (user == null || !user.isEnabled() || issuedAt == null
-                || issuedAt.isBefore(user.getSessionsValidFrom().truncatedTo(ChronoUnit.SECONDS))) {
+            var raw = jwt.getClaim("svf");
+            var svf = raw instanceof Number ? ((Number) raw).longValue() : null;
+            // FD-25：每个 token 携带签发时的 sessionsValidFrom（毫秒精度 svf）。
+            // 改密/踢下线后 DB 的 sessionsValidFrom 推进；token 的 svf 早于它则 401。
+            // 毫秒精度消除了同一秒内新/旧 token 的时序竞争。
+            if (user == null || !user.isEnabled() || svf == null
+                || svf < user.getSessionsValidFrom().toEpochMilli()) {
                 reject(response);
                 return;
             }
