@@ -52,6 +52,7 @@ public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
         Long getId();
         String getTitle();
         String getFolder();
+        Instant getUpdatedAt();
     }
 
     /** NB-5：搜索命中投影——摘要源用 SUBSTRING 截前 400 字符，不捞全文。 */
@@ -70,7 +71,7 @@ public interface NoteRepository extends JpaRepository<NoteEntity, Long> {
     List<Object[]> findTagRows(@Param("ids") java.util.Collection<Long> ids);
 
     /** NB-5：图谱节点行（不载正文）。 */
-    @Query("SELECT n.id as id, n.title as title, n.folder as folder FROM NoteEntity n WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
+    @Query("SELECT n.id as id, n.title as title, n.folder as folder, n.updatedAt as updatedAt FROM NoteEntity n WHERE n.status = com.yubai.blog.note.NoteStatus.PUBLISHED")
     List<NoteGraphRow> findPublishedGraphRows();
 
     /** NB-5：图谱标签边（[noteId, tag]，仅已发布）。 */

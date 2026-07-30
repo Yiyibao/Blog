@@ -3,8 +3,10 @@ package com.yubai.blog.graph;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -41,14 +43,35 @@ import com.yubai.blog.series.SeriesService;
 @Transactional(readOnly = true)
 public class GraphService {
 
+    private static final String TYPE_ROOT = "ROOT";
     private static final String TYPE_POST = "POST";
     private static final String TYPE_NOTE = "NOTE";
     private static final String TYPE_DISH = "DISH";
     private static final String TYPE_TAG = "TAG";
     private static final String TYPE_SERIES = "SERIES";
+    private static final int LARGE_GRAPH_THRESHOLD = 300;
+
+    private static final Map<String, String> TYPE_LABELS = Map.of(
+        TYPE_POST, "文章",
+        TYPE_NOTE, "学习笔记",
+        TYPE_DISH, "美食菜谱",
+        TYPE_SERIES, "合集",
+        TYPE_TAG, "标签"
+    );
+
+    private static final Map<String, String> TYPE_COLORS = Map.of(
+        TYPE_ROOT, "#F58CAB",
+        TYPE_POST, "#4A9AF7",
+        TYPE_NOTE, "#67C890",
+        TYPE_DISH, "#F4AA54",
+        TYPE_SERIES, "#EF6C9A",
+        TYPE_TAG, "#9B63E7"
+    );
 
     /** TAG nodes are emitted first so they survive any frontend node cap and stay layout hubs. */
     private static final List<String> TYPE_ORDER = List.of(TYPE_TAG, TYPE_SERIES, TYPE_POST, TYPE_NOTE, TYPE_DISH);
+    private static final List<String> PRESENTATION_TYPE_ORDER =
+        List.of(TYPE_POST, TYPE_NOTE, TYPE_DISH, TYPE_SERIES, TYPE_TAG);
 
     private static final Comparator<GraphNode> NODE_ORDER =
         Comparator.<GraphNode>comparingInt(node -> TYPE_ORDER.indexOf(node.type()))
@@ -88,7 +111,11 @@ public class GraphService {
                 continue;
             }
             String nodeId = "p-" + post.getId();
-            contentNodes.add(new GraphNode(nodeId, post.getTitle(), TYPE_POST, "/articles/" + post.getSlug()));
+            var updatedAt = post.getDate() == null
+                ? null
+                : post.getDate().atStartOfDay().toInstant(ZoneOffset.UTC);
+            contentNodes.add(new GraphNode(nodeId, post.getTitle(), TYPE_POST,
+                "/articles/" + post.getSlug(), post.getCategory(), null, updatedAt));
             linkTags(nodeId, postTags.get(post.getId()), tagLabels, edges);
             linkTag(nodeId, post.getCategory(), tagLabels, edges);
         }
@@ -100,7 +127,8 @@ public class GraphService {
                     continue;
                 }
                 String nodeId = "n-" + note.getId();
-                contentNodes.add(new GraphNode(nodeId, note.getTitle(), TYPE_NOTE, "/notes?note=" + note.getId()));
+                contentNodes.add(new GraphNode(nodeId, note.getTitle(), TYPE_NOTE,
+                    "/notes?note=" + note.getId(), note.getFolder(), null, note.getUpdatedAt()));
                 linkTags(nodeId, noteTags.get(note.getId()), tagLabels, edges);
                 linkTag(nodeId, note.getFolder(), tagLabels, edges);
             }
@@ -109,7 +137,8 @@ public class GraphService {
         // 4B：SERIES 节点——已发布合集连向其已发布成员文章
         seriesService.publishedGraphMembers().forEach((series, memberPostIds) -> {
             String nodeId = "s-" + series.getId();
-            contentNodes.add(new GraphNode(nodeId, series.getName(), TYPE_SERIES, "/series/" + series.getSlug()));
+            contentNodes.add(new GraphNode(nodeId, series.getName(), TYPE_SERIES,
+                "/series/" + series.getSlug(), "合集", series.getCoverImage(), series.getUpdatedAt()));
             for (var postId : memberPostIds) {
                 edges.add(new GraphEdge(nodeId, "p-" + postId));
             }
@@ -120,7 +149,8 @@ public class GraphService {
                 continue;
             }
             String nodeId = "d-" + dish.getId();
-            contentNodes.add(new GraphNode(nodeId, dish.getName(), TYPE_DISH, "/recipes?dish=" + dish.getSlug()));
+            contentNodes.add(new GraphNode(nodeId, dish.getName(), TYPE_DISH,
+                "/recipes?dish=" + dish.getSlug(), dish.getCategory(), dish.getImageUrl(), dish.getUpdatedAt()));
             linkTag(nodeId, dish.getCategory(), tagLabels, edges);
         }
 
@@ -134,6 +164,102 @@ public class GraphService {
         sortedEdges.sort(EDGE_ORDER);
 
         return new GraphResponse(List.copyOf(nodes), List.copyOf(sortedEdges));
+    }
+
+    /**
+     * Converts the semantic graph into a presentation-ready clustered graph.
+     * ROOT/GROUP edges describe layout hierarchy only; RELATION edges remain the real knowledge links.
+     */
+    public static GraphOverviewResponse toOverview(GraphResponse graph) {
+        Map<String, Integer> degrees = new HashMap<>();
+        for (var edge : graph.edges()) {
+            degrees.merge(edge.source(), 1, Integer::sum);
+            degrees.merge(edge.target(), 1, Integer::sum);
+        }
+
+        Map<String, Integer> counts = new HashMap<>();
+        for (var node : graph.nodes()) {
+            counts.merge(node.type(), 1, Integer::sum);
+        }
+
+        var visualNodes = new ArrayList<GraphOverviewResponse.VisualNode>();
+        var visualEdges = new ArrayList<GraphOverviewResponse.VisualEdge>();
+        visualNodes.add(new GraphOverviewResponse.VisualNode(
+            "root-knowledge", "全站知识", TYPE_ROOT, "ROOT", null, null,
+            "知识在连接中生长", null, null, graph.nodes().size(), 100
+        ));
+
+        for (var type : PRESENTATION_TYPE_ORDER) {
+            int count = counts.getOrDefault(type, 0);
+            if (count == 0) {
+                continue;
+            }
+            String hubId = hubId(type);
+            visualNodes.add(new GraphOverviewResponse.VisualNode(
+                hubId, TYPE_LABELS.get(type), type, "GROUP", "root-knowledge", null,
+                count + " 个节点", null, null, count, 60 + Math.min(count, 30)
+            ));
+            visualEdges.add(new GraphOverviewResponse.VisualEdge(
+                "root-knowledge", hubId, "STRUCTURE", 1.0
+            ));
+        }
+
+        for (var node : graph.nodes()) {
+            int degree = degrees.getOrDefault(node.id(), 0);
+            String groupId = hubId(node.type());
+            visualNodes.add(new GraphOverviewResponse.VisualNode(
+                node.id(), node.label(), node.type(), "CONTENT", groupId, node.url(),
+                node.subtitle(), node.imageUrl(), node.updatedAt(), degree,
+                10 + Math.min(degree, 12) * 3
+            ));
+            visualEdges.add(new GraphOverviewResponse.VisualEdge(
+                groupId, node.id(), "STRUCTURE", 0.72
+            ));
+        }
+
+        for (var edge : graph.edges()) {
+            visualEdges.add(new GraphOverviewResponse.VisualEdge(
+                edge.source(), edge.target(), "RELATION", 0.42
+            ));
+        }
+
+        var legend = PRESENTATION_TYPE_ORDER.stream()
+            .filter(type -> counts.getOrDefault(type, 0) > 0)
+            .map(type -> new GraphOverviewResponse.LegendItem(
+                type, TYPE_LABELS.get(type), TYPE_COLORS.get(type), counts.get(type)
+            ))
+            .toList();
+
+        var lastUpdated = graph.nodes().stream()
+            .map(GraphNode::updatedAt)
+            .filter(java.util.Objects::nonNull)
+            .max(Comparator.naturalOrder())
+            .orElse(null);
+
+        String recommendedCenter = graph.nodes().stream()
+            .max(Comparator
+                .comparingInt((GraphNode node) -> degrees.getOrDefault(node.id(), 0))
+                .thenComparingInt(node -> TYPE_TAG.equals(node.type()) ? 1 : 0)
+                .thenComparing(GraphNode::id, Comparator.reverseOrder()))
+            .map(GraphNode::id)
+            .orElse("root-knowledge");
+
+        var stats = new GraphOverviewResponse.Stats(
+            graph.nodes().size(),
+            visualNodes.size(),
+            graph.edges().size(),
+            lastUpdated,
+            recommendedCenter,
+            graph.nodes().size() > LARGE_GRAPH_THRESHOLD
+        );
+
+        return new GraphOverviewResponse(
+            "2.0",
+            stats,
+            legend,
+            List.copyOf(visualNodes),
+            List.copyOf(visualEdges)
+        );
     }
 
     /**
@@ -225,6 +351,10 @@ public class GraphService {
             id.append(Character.forDigit(digest[i] & 0xF, 16));
         }
         return id.toString();
+    }
+
+    private static String hubId(String type) {
+        return "hub-" + type.toLowerCase(Locale.ROOT);
     }
 
     private static byte[] sha256(byte[] input) {

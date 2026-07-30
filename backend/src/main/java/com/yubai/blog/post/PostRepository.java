@@ -42,6 +42,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
         String getTitle();
         String getSlug();
         String getCategory();
+        LocalDate getDate();
     }
 
     /** NB-5：搜索命中只取展示所需列，不再为拼 URL/摘要捞整实体（含全文）。L-8：补 date/readTime。5A：补加权分。 */
@@ -87,7 +88,7 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
     List<Object[]> findTagRows(@Param("ids") java.util.Collection<Long> ids);
 
     /** NB-5：图谱节点行（不载正文）。 */
-    @Query("SELECT p.id as id, p.title as title, p.slug as slug, p.category as category FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
+    @Query("SELECT p.id as id, p.title as title, p.slug as slug, p.category as category, p.date as date FROM PostEntity p WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED")
     List<PostGraphRow> findPublishedGraphRows();
 
     /** NB-5：图谱标签边（[postId, tag]，仅已发布）。 */

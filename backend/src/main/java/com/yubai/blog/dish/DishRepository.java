@@ -35,6 +35,8 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
         String getName();
         String getSlug();
         String getCategory();
+        String getImageUrl();
+        Instant getUpdatedAt();
     }
 
     /** NB-5：搜索命中投影。 */
@@ -46,7 +48,7 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
         String getSlug();
     }
 
-    @Query("SELECT d.id as id, d.name as name, d.slug as slug, d.category as category FROM DishEntity d WHERE d.published = true ORDER BY d.featured DESC, d.displayOrder ASC")
+    @Query("SELECT d.id as id, d.name as name, d.slug as slug, d.category as category, d.imageUrl as imageUrl, d.updatedAt as updatedAt FROM DishEntity d WHERE d.published = true ORDER BY d.featured DESC, d.displayOrder ASC")
     List<DishGraphRow> findAllPublishedForGraph();
 
     Page<DishEntity> findAllByPublishedTrueOrderByFeaturedDescDisplayOrderAsc(Pageable pageable);

@@ -49,6 +49,7 @@ class GraphServiceTest {
             @Override public String getTitle() { return p.title(); }
             @Override public String getSlug() { return p.slug(); }
             @Override public String getCategory() { return p.category(); }
+            @Override public java.time.LocalDate getDate() { return java.time.LocalDate.of(2026, 7, 31); }
         };
     }
 
@@ -57,6 +58,7 @@ class GraphServiceTest {
             @Override public Long getId() { return n.id(); }
             @Override public String getTitle() { return n.title(); }
             @Override public String getFolder() { return n.folder(); }
+            @Override public java.time.Instant getUpdatedAt() { return java.time.Instant.parse("2026-07-31T00:00:00Z"); }
         };
     }
 
@@ -66,6 +68,8 @@ class GraphServiceTest {
             @Override public String getName() { return d.name(); }
             @Override public String getSlug() { return d.slug(); }
             @Override public String getCategory() { return d.category(); }
+            @Override public String getImageUrl() { return "/api/v1/dish-assets/d-" + d.id(); }
+            @Override public java.time.Instant getUpdatedAt() { return java.time.Instant.parse("2026-07-30T00:00:00Z"); }
         };
     }
 
@@ -391,5 +395,58 @@ class GraphServiceTest {
 
         assertThat(result.nodes()).isEmpty();
         assertThat(result.edges()).isEmpty();
+    }
+
+    @Test
+    void overviewAddsRootGroupBranchesAndPresentationMetadata() {
+        stubAll(
+            List.of(new P(1L, "Article", "article", "Engineering", List.of("Java"))),
+            List.of(new N(1L, "Note", "Backend", List.of("Java"))),
+            List.of(new D(1L, "Dish", "dish", "Home cooking"))
+        );
+
+        var overview = GraphService.toOverview(service.buildGraph(true));
+
+        assertThat(overview.schemaVersion()).isEqualTo("2.0");
+        assertThat(overview.nodes()).anySatisfy(node -> {
+            assertThat(node.id()).isEqualTo("root-knowledge");
+            assertThat(node.kind()).isEqualTo("ROOT");
+        });
+        assertThat(overview.nodes()).filteredOn(node -> node.kind().equals("GROUP"))
+            .extracting(GraphOverviewResponse.VisualNode::id)
+            .contains("hub-post", "hub-note", "hub-dish", "hub-tag");
+        assertThat(overview.edges()).anySatisfy(edge -> {
+            assertThat(edge.source()).isEqualTo("root-knowledge");
+            assertThat(edge.target()).isEqualTo("hub-post");
+            assertThat(edge.kind()).isEqualTo("STRUCTURE");
+        });
+        assertThat(overview.edges()).filteredOn(edge -> edge.kind().equals("RELATION"))
+            .hasSize(overview.stats().relationCount());
+        assertThat(overview.legend()).extracting(GraphOverviewResponse.LegendItem::label)
+            .contains("文章", "学习笔记", "美食菜谱", "标签");
+        assertThat(overview.stats().contentNodeCount()).isGreaterThan(3);
+        assertThat(overview.stats().visualNodeCount()).isEqualTo(overview.nodes().size());
+        assertThat(overview.stats().lastUpdatedAt()).isEqualTo(java.time.Instant.parse("2026-07-31T00:00:00Z"));
+        assertThat(overview.stats().recommendedCenterId()).startsWith("t-");
+        assertThat(overview.stats().localModeRecommended()).isFalse();
+
+        var dish = overview.nodes().stream().filter(node -> node.id().equals("d-1")).findFirst().orElseThrow();
+        assertThat(dish.subtitle()).isEqualTo("Home cooking");
+        assertThat(dish.imageUrl()).isEqualTo("/api/v1/dish-assets/d-1");
+        assertThat(dish.degree()).isPositive();
+    }
+
+    @Test
+    void guestOverviewDoesNotExposeNoteGroup() {
+        when(postRepository.findPublishedGraphRows())
+            .thenReturn(List.of(row(new P(1L, "Article", "article", "Engineering", List.of()))));
+        when(postRepository.findPublishedTagRows()).thenReturn(List.of());
+        when(dishRepository.findAllPublishedForGraph()).thenReturn(List.of());
+
+        var overview = GraphService.toOverview(service.buildGraph(false));
+
+        assertThat(overview.legend()).noneMatch(item -> item.type().equals("NOTE"));
+        assertThat(overview.nodes()).noneMatch(node ->
+            node.id().equals("hub-note") || node.type().equals("NOTE"));
     }
 }
