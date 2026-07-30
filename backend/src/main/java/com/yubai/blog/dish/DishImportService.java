@@ -232,7 +232,7 @@ public class DishImportService {
                 slug, recipe.name(), recipe.summary(), request.category(),
                 imageUrl, imageAlt, imageCredit, imageSourceUrl,
                 recipe.prepMinutes(), difficulty,
-                java.math.BigDecimal.ZERO, false, false, displayOrder, baseServings,
+                java.math.BigDecimal.ZERO, false, request.published(), displayOrder, baseServings,
                 recipe.ingredients(), recipe.steps()
             ));
 
@@ -255,7 +255,7 @@ public class DishImportService {
                 slug, recipe.name(), recipe.summary(), request.category(),
                 "", imageAlt, imageCredit, imageSourceUrl,
                 recipe.prepMinutes(), difficulty,
-                java.math.BigDecimal.ZERO, false, false, displayOrder, baseServings,
+                java.math.BigDecimal.ZERO, false, request.published(), displayOrder, baseServings,
                 recipe.ingredients(), recipe.steps()
             ));
         }
@@ -330,6 +330,41 @@ public class DishImportService {
         var filename = dish.slug() + ".yrecipe";
         var headers = new HttpHeaders();
         headers.setContentDisposition(ContentDisposition.attachment().filename(filename, java.nio.charset.StandardCharsets.UTF_8).build());
+        headers.setContentType(MediaType.parseMediaType("application/vnd.yubai.recipe+zip"));
+        headers.setCacheControl("private, no-store");
+        return new ResponseEntity<>(zipBytes, headers, HttpStatus.OK);
+    }
+
+    public ResponseEntity<byte[]> downloadStaged(UUID token) {
+        var staging = stagingRepository.findByToken(token)
+            .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        if (staging.getExpiresAt().isBefore(Instant.now()) || staging.isCancelled()) {
+            throw new NotFoundException("导入会话已过期");
+        }
+        if (staging.getStorageKey() == null) {
+            throw new NotFoundException("菜谱封面不存在");
+        }
+
+        final YrecipePackage pkg;
+        try {
+            pkg = MAPPER.readValue(staging.getRecipeJson(), YrecipePackage.class);
+        } catch (IOException exception) {
+            throw new InvalidRecipeException("菜谱数据损坏");
+        }
+        var coverData = storageService.read(staging.getStorageKey());
+        final byte[] zipBytes;
+        try {
+            zipBytes = buildExportZip(pkg, coverData, extensionForMediaType(staging.getMediaType()));
+        } catch (IOException exception) {
+            throw new InvalidRecipeException("生成菜谱包失败: " + exception.getMessage());
+        }
+
+        var baseName = pkg.recipe() != null && pkg.recipe().slug() != null
+            && pkg.recipe().slug().matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+            ? pkg.recipe().slug() : "generated-recipe";
+        var headers = new HttpHeaders();
+        headers.setContentDisposition(ContentDisposition.attachment()
+            .filename(baseName + ".yrecipe", java.nio.charset.StandardCharsets.UTF_8).build());
         headers.setContentType(MediaType.parseMediaType("application/vnd.yubai.recipe+zip"));
         headers.setCacheControl("private, no-store");
         return new ResponseEntity<>(zipBytes, headers, HttpStatus.OK);

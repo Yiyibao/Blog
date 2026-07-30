@@ -15,7 +15,7 @@ import jakarta.persistence.Version;
 @Entity
 @Table(name = "recipe_extraction_jobs")
 public class RecipeExtractionJobEntity {
-    public enum SourceType { TEXT, WEB_URL }
+    public enum SourceType { TEXT, WEB_URL, VIDEO_URL }
     public enum Status { QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED }
 
     @Id

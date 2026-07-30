@@ -1232,6 +1232,23 @@ class DishImportServiceTest {
     }
 
     @Test
+    void commit_canPublishImportedDishForMenuSelection() throws IOException {
+        var token = UUID.randomUUID();
+        var staging = DishImportStagingEntity.create(
+            MAPPER.writeValueAsString(validPackage()), null, null,
+            Instant.now().plusSeconds(3600));
+        when(stagingRepository.findByToken(token)).thenReturn(Optional.of(staging));
+        when(dishRepository.maxDisplayOrder()).thenReturn(0);
+        when(dishService.create(any())).thenReturn(mock(DishResponse.class));
+
+        var captor = ArgumentCaptor.forClass(DishRequest.class);
+        importService.commit(token, new DishImportCommitRequest("川菜", null, true));
+        verify(dishService).create(captor.capture());
+
+        assertThat(captor.getValue().published()).isTrue();
+    }
+
+    @Test
     void commit_expiredTokenThrows() {
         var token = UUID.randomUUID();
         var staging = DishImportStagingEntity.create("{}", null, null, Instant.now().minusSeconds(60));

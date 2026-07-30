@@ -15,6 +15,8 @@ OPENCODE_HOME="/var/lib/opencode"
 OPENCODE_CONFIG_DIR="/etc/yubai-blog-opencode"
 OPENCODE_ENV_FILE="${OPENCODE_CONFIG_DIR}/opencode.env"
 OPENCODE_SERVICE="yubai-blog-opencode.service"
+YT_DLP_BIN="/usr/local/bin/yt-dlp"
+YT_DLP_PACKAGE_DIR="/opt/yt-dlp/2026.7.4"
 SERVICE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -x "${OPENCODE_BIN}" ]]; then
@@ -22,12 +24,19 @@ if [[ ! -x "${OPENCODE_BIN}" ]]; then
     exit 1
 fi
 
-for source_file in opencode.json yubai-blog-opencode.service yubai-blog.service; do
+if [[ ! -f "${YT_DLP_PACKAGE_DIR}/yt_dlp/__main__.py" ]]; then
+    echo "Prerequisite not met: yt-dlp package is missing from ${YT_DLP_PACKAGE_DIR}" >&2
+    exit 1
+fi
+
+for source_file in opencode.json yt-dlp yubai-blog-opencode.service yubai-blog.service; do
     if [[ ! -f "${SERVICE_DIR}/${source_file}" ]]; then
         echo "Deployment source is missing: ${SERVICE_DIR}/${source_file}" >&2
         exit 1
     fi
 done
+
+install -o root -g root -m 0755 "${SERVICE_DIR}/yt-dlp" "${YT_DLP_BIN}"
 
 if [[ -e "${ENV_FILE}" ]]; then
     echo "Refusing to replace existing production configuration: ${ENV_FILE}" >&2
@@ -94,6 +103,8 @@ umask 0077
     printf 'APP_AI_OPENCODE_PASSWORD=%s\n' "${OPENCODE_PASSWORD}"
     printf 'APP_AI_OPENCODE_AGENT=blog-ai\n'
     printf 'APP_AI_OPENCODE_PROVIDER_ID=opencode-go\n'
+    printf 'APP_RECIPE_VIDEO_ENABLED=true\n'
+    printf 'APP_RECIPE_YT_DLP_PATH=%s\n' "${YT_DLP_BIN}"
 } > "${ENV_FILE}"
 
 chown root:"${APP_USER}" "${ENV_FILE}"

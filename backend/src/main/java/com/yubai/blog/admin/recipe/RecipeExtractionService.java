@@ -26,11 +26,11 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yubai.blog.admin.ai.AiChatService;
-import com.yubai.blog.admin.ai.AiProviderService;
 import com.yubai.blog.admin.ai.AiServiceException;
 import com.yubai.blog.admin.ai.ChatMessage;
 import com.yubai.blog.admin.ai.ChatRequest;
 import com.yubai.blog.common.NotFoundException;
+import com.yubai.blog.config.AiProperties;
 import com.yubai.blog.dish.DishImportPreviewResponse;
 import com.yubai.blog.dish.DishImportService;
 import com.yubai.blog.dish.InvalidRecipeException;
@@ -52,13 +52,22 @@ public class RecipeExtractionService {
     private final RecipeExtractionJobRepository jobRepository;
     private final AiChatService chatService;
     private final DishImportService dishImportService;
+    private final RecipeUrlValidator urlValidator;
+    private final VideoRecipeSourceExtractor videoExtractor;
+    private final AiProperties aiProperties;
 
     public RecipeExtractionService(RecipeExtractionJobRepository jobRepository,
                                    AiChatService chatService,
-                                   DishImportService dishImportService) {
+                                   DishImportService dishImportService,
+                                   RecipeUrlValidator urlValidator,
+                                   VideoRecipeSourceExtractor videoExtractor,
+                                   AiProperties aiProperties) {
         this.jobRepository = jobRepository;
         this.chatService = chatService;
         this.dishImportService = dishImportService;
+        this.urlValidator = urlValidator;
+        this.videoExtractor = videoExtractor;
+        this.aiProperties = aiProperties;
     }
 
     @Transactional
@@ -75,25 +84,31 @@ public class RecipeExtractionService {
             entity.updateStage("正在获取内容…", 10);
             jobRepository.save(entity);
 
-            String sourceText = request.sourceContent();
-            if ("WEB_URL".equals(request.sourceType())) {
-                sourceText = fetchWebContent(request.sourceContent());
-            }
+            var source = switch (request.sourceType()) {
+                case "WEB_URL" -> new SourceMaterial(
+                    fetchWebContent(request.sourceContent()), request.sourceContent(), null, null, null, null);
+                case "VIDEO_URL" -> {
+                    var video = videoExtractor.extract(request.sourceContent());
+                    yield new SourceMaterial(video.text(), video.sourceUrl(), video.title(), video.creator(),
+                        video.coverBytes(), video.coverMediaType());
+                }
+                default -> new SourceMaterial(request.sourceContent(), null, null, null, null, null);
+            };
 
             entity.updateStage("正在调用 AI 提取菜谱…", 30);
             jobRepository.save(entity);
 
-            var aiResult = callAiForRecipe(entity, sourceText);
+            var aiResult = callAiForRecipe(entity, source.text());
 
             entity.updateStage("正在验证结果…", 70);
             jobRepository.save(entity);
 
-            var yrecipe = parseAndValidate(aiResult, entity);
+            var yrecipe = parseAndValidate(aiResult, entity, source);
 
             entity.updateStage("正在生成导入包…", 85);
             jobRepository.save(entity);
 
-            importPreview = storeAsYrecipe(yrecipe);
+            importPreview = storeAsYrecipe(yrecipe, source.coverBytes(), source.coverMediaType());
 
             entity.succeed(importPreview.token());
             jobRepository.save(entity);
@@ -138,15 +153,7 @@ public class RecipeExtractionService {
         if (url == null || url.isBlank() || url.length() > MAX_URL_LENGTH) {
             throw new InvalidRecipeException("URL 不合法");
         }
-        URI uri;
-        try {
-            uri = URI.create(url);
-            if (!"https".equals(uri.getScheme())) {
-                throw new InvalidRecipeException("仅支持 HTTPS 链接");
-            }
-        } catch (Exception e) {
-            throw new InvalidRecipeException("URL 格式不合法");
-        }
+        URI uri = urlValidator.validatePublicHttps(url);
 
         String html;
         try {
@@ -366,7 +373,8 @@ public class RecipeExtractionService {
     }
 
     private String buildPrompt(String sourceText) {
-        var truncated = sourceText.length() > 25000 ? sourceText.substring(0, 25000) : sourceText;
+        var sourceLimit = Math.max(1000, aiProperties.getMaxInputChars() - 1500);
+        var truncated = sourceText.length() > sourceLimit ? sourceText.substring(0, sourceLimit) : sourceText;
         return """
 你是一个专业的菜谱提取助手。请从以下文本中提取菜谱信息，**只返回符合 JSON 格式的菜谱数据**，不要包含任何其他文字、代码块标记或说明。
 
@@ -400,7 +408,8 @@ public class RecipeExtractionService {
 ---""".formatted(truncated);
     }
 
-    private YrecipePackage parseAndValidate(String aiResponse, RecipeExtractionJobEntity entity) {
+    private YrecipePackage parseAndValidate(String aiResponse, RecipeExtractionJobEntity entity,
+                                            SourceMaterial source) {
         String json = aiResponse.trim();
         if (json.startsWith("```")) {
             int start = json.indexOf('\n');
@@ -465,14 +474,16 @@ public class RecipeExtractionService {
         );
 
         var packageId = UUID.randomUUID().toString();
+        var coverPath = "assets/cover." + coverExtension(source.coverMediaType());
+        var sourceType = source.sourceUrl() == null ? "ai" : "website";
         return new YrecipePackage(
             "1.0", "yubai.recipe", packageId,
             recipeContent,
             new YrecipePackage.YrecipeCover(
-                "assets/cover.jpg", name.asText(), "", ""
+                coverPath, name.asText(), source.creator(), null
             ),
             new YrecipePackage.YrecipeSource(
-                "ai", null, null, null,
+                sourceType, source.sourceUrl(), source.title(), source.creator(),
                 Instant.now().getEpochSecond()
             ),
             new YrecipePackage.YrecipeGeneration(
@@ -486,7 +497,8 @@ public class RecipeExtractionService {
         );
     }
 
-    private DishImportPreviewResponse storeAsYrecipe(YrecipePackage yrecipe) {
+    private DishImportPreviewResponse storeAsYrecipe(YrecipePackage yrecipe, byte[] coverBytes,
+                                                      String coverMediaType) {
         try {
             var baos = new ByteArrayOutputStream();
             try (var zos = new ZipOutputStream(baos, java.nio.charset.StandardCharsets.UTF_8)) {
@@ -497,10 +509,11 @@ public class RecipeExtractionService {
                 zos.write(jsonBytes);
                 zos.closeEntry();
 
-                var coverEntry = new ZipEntry("assets/cover.jpg");
-                coverEntry.setSize(ONE_PX_JPEG.length);
+                var actualCover = coverBytes == null || coverBytes.length == 0 ? ONE_PX_JPEG : coverBytes;
+                var coverEntry = new ZipEntry(yrecipe.cover().path());
+                coverEntry.setSize(actualCover.length);
                 zos.putNextEntry(coverEntry);
-                zos.write(ONE_PX_JPEG);
+                zos.write(actualCover);
                 zos.closeEntry();
             }
             var zipData = baos.toByteArray();
@@ -509,4 +522,19 @@ public class RecipeExtractionService {
             throw new InvalidRecipeException("生成菜谱包失败: " + e.getMessage());
         }
     }
+
+    private static String coverExtension(String mediaType) {
+        if ("image/png".equals(mediaType)) return "png";
+        if ("image/webp".equals(mediaType)) return "webp";
+        return "jpg";
+    }
+
+    private record SourceMaterial(
+        String text,
+        String sourceUrl,
+        String title,
+        String creator,
+        byte[] coverBytes,
+        String coverMediaType
+    ) {}
 }

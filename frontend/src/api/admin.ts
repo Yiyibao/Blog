@@ -579,6 +579,7 @@ export interface YrecipePreview {
 export interface DishImportCommitRequest {
   category: string
   correctedSlug?: string
+  published?: boolean
 }
 
 export async function previewDishImport(file: File) {
@@ -603,14 +604,25 @@ export function cancelDishImport(token: string) {
   return api.delete(`/admin/dish-imports/${token}`, { headers: tokenHeader() })
 }
 
+export async function downloadStagedRecipe(token: string) {
+  const response = await api.get<Blob>(`/admin/dish-imports/${token}/download`, {
+    headers: tokenHeader(), responseType: 'blob',
+  })
+  downloadBlobResponse(response.data, response.headers['content-disposition'], 'generated-recipe.yrecipe')
+}
+
 export async function exportDish(id: number) {
   const response = await api.get<Blob>(`/admin/dishes/${id}/export`, {
     headers: tokenHeader(), responseType: 'blob',
   })
-  const disposition = response.headers['content-disposition'] || ''
+  downloadBlobResponse(response.data, response.headers['content-disposition'], `${id}.yrecipe`)
+}
+
+function downloadBlobResponse(data: Blob, contentDisposition: string | undefined, fallbackName: string) {
+  const disposition = contentDisposition || ''
   const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i)
-  const filename = match ? decodeURIComponent(match[1].trim()) : `${id}.yrecipe`
-  const url = URL.createObjectURL(response.data)
+  const filename = match ? decodeURIComponent(match[1].trim()) : fallbackName
+  const url = URL.createObjectURL(data)
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = filename
@@ -964,7 +976,7 @@ export function testAiProvider(id: number) {
 
 // 7：AI 提取菜谱
 export interface RecipeExtractionRequest {
-  sourceType: 'TEXT' | 'WEB_URL'
+  sourceType: 'TEXT' | 'WEB_URL' | 'VIDEO_URL'
   sourceContent: string
   providerId?: number | null
   model?: string | null

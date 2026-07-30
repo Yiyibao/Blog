@@ -66,4 +66,9 @@ public class AdminDishImportController {
             .header("X-Content-Type-Options", "nosniff")
             .body(data);
     }
+
+    @GetMapping("/{token}/download")
+    public ResponseEntity<byte[]> downloadStaged(@PathVariable UUID token) {
+        return importService.downloadStaged(token);
+    }
 }

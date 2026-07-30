@@ -3,7 +3,7 @@ import axios from 'axios'
 import { onMounted, ref } from 'vue'
 import {
   createRecipeExtraction, cancelRecipeExtraction,
-  fetchAiProviders, commitDishImport, cancelDishImport,
+  fetchAiProviders, commitDishImport, cancelDishImport, downloadStagedRecipe,
   type RecipeExtractionJob, type AiProvider,
 } from '../api/admin'
 
@@ -11,7 +11,7 @@ const emit = defineEmits<{
   done: []
 }>()
 
-const sourceTab = ref<'TEXT' | 'WEB_URL'>('TEXT')
+const sourceTab = ref<'TEXT' | 'WEB_URL' | 'VIDEO_URL'>('TEXT')
 const sourceContent = ref('')
 const providers = ref<AiProvider[]>([])
 const selectedProviderId = ref<number | null>(null)
@@ -35,7 +35,7 @@ async function startExtraction() {
     error.value = '请输入菜谱文本或 URL'
     return
   }
-  if (sourceTab.value === 'WEB_URL') {
+  if (sourceTab.value === 'WEB_URL' || sourceTab.value === 'VIDEO_URL') {
     const url = sourceContent.value.trim()
     if (!url.startsWith('https://')) {
       error.value = '仅支持 HTTPS 链接'
@@ -56,6 +56,10 @@ async function startExtraction() {
     completedJob.value = job
     history.value.unshift(job)
     if (history.value.length > 20) history.value.pop()
+    if (job.preview) {
+      commitSlug.value = job.preview.recipe.recipe.slug || ''
+      commitCategory.value = job.preview.categoryMatch || ''
+    }
     if (job.status === 'FAILED') {
       error.value = job.safeErrorMessage || '提取失败'
     }
@@ -78,6 +82,7 @@ async function commitExtraction() {
     await commitDishImport(completedJob.value.preview.token, {
       category: commitCategory.value,
       correctedSlug: commitSlug.value || undefined,
+      published: publishAfterImport.value,
     })
     emit('done')
     close()
@@ -96,7 +101,7 @@ async function handleCancel() {
   if (runningJob.value) {
     try { await cancelRecipeExtraction(runningJob.value.id) } catch {}
   }
-  if (completedJob.value?.preview && !completedJob.value.resultImportToken) {
+  if (completedJob.value?.preview) {
     try { await cancelDishImport(completedJob.value.preview.token) } catch {}
   }
   close()
@@ -107,10 +112,25 @@ function close() {
   runningJob.value = null
   completedJob.value = null
   error.value = ''
+  commitSlug.value = ''
+  commitCategory.value = ''
+  publishAfterImport.value = false
 }
 
 const commitSlug = ref('')
 const commitCategory = ref('')
+const publishAfterImport = ref(false)
+
+async function downloadRecipePackage() {
+  if (!completedJob.value?.preview) return
+  error.value = ''
+  try {
+    await downloadStagedRecipe(completedJob.value.preview.token)
+  } catch (cause) {
+    error.value = axios.isAxiosError(cause) && cause.response?.data?.message
+      ? cause.response.data.message : '下载菜谱文件失败。'
+  }
+}
 
 function statusBadgeClass(status: string) {
   if (status === 'SUCCEEDED') return 'badge-success'
@@ -147,6 +167,7 @@ function statusLabel(status: string) {
         <div class="source-tabs">
           <button :class="{ active: sourceTab === 'TEXT' }" @click="sourceTab = 'TEXT'">文本粘贴</button>
           <button :class="{ active: sourceTab === 'WEB_URL' }" @click="sourceTab = 'WEB_URL'">网页链接</button>
+          <button :class="{ active: sourceTab === 'VIDEO_URL' }" @click="sourceTab = 'VIDEO_URL'">视频链接</button>
         </div>
 
         <div v-if="sourceTab === 'TEXT'" class="editor-card">
@@ -164,16 +185,19 @@ function statusLabel(status: string) {
         </div>
         <div v-else class="editor-card">
           <label>
-            <span>网页链接</span>
+            <span>{{ sourceTab === 'VIDEO_URL' ? '视频链接' : '网页链接' }}</span>
             <input
               v-model="sourceContent"
               type="url"
               class="extraction-input"
-              placeholder="https://example.com/recipe"
+              :placeholder="sourceTab === 'VIDEO_URL' ? '粘贴 B 站、YouTube、抖音或小红书视频链接' : 'https://example.com/recipe'"
               maxlength="2048"
               :disabled="loading"
             >
           </label>
+          <p v-if="sourceTab === 'VIDEO_URL'" class="source-help">
+            仅提取视频标题、简介、字幕和缩略图，不下载完整视频；没有字幕或详细简介时会停止生成。
+          </p>
         </div>
 
         <div class="editor-card">
@@ -240,6 +264,10 @@ function statusLabel(status: string) {
                 <input v-model="commitCategory" type="text" placeholder="输入分类名称">
               </label>
             </div>
+            <label class="publish-option">
+              <input v-model="publishAfterImport" type="checkbox">
+              <span>创建后直接发布，使其立即进入菜单模块的可选菜品</span>
+            </label>
           </div>
 
           <div class="editor-card">
@@ -258,8 +286,11 @@ function statusLabel(status: string) {
           <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
           <footer>
             <button class="button secondary" type="button" :disabled="loading" @click="handleCancel">取消</button>
+            <button class="button secondary" type="button" :disabled="loading" @click="downloadRecipePackage">
+              下载 .yrecipe
+            </button>
             <button class="button primary" type="button" :disabled="loading || !commitCategory" @click="commitExtraction">
-              {{ loading ? '正在创建…' : '创建菜品草稿' }}
+              {{ loading ? '正在创建…' : (publishAfterImport ? '创建并发布菜品' : '创建菜品草稿') }}
             </button>
           </footer>
         </div>
@@ -295,7 +326,7 @@ function statusLabel(status: string) {
             :class="{ active: job.id === completedJob?.id }"
           >
             <div class="history-info">
-              <span class="history-source">{{ job.sourceType === 'TEXT' ? '文本' : '链接' }}</span>
+              <span class="history-source">{{ job.sourceType === 'TEXT' ? '文本' : (job.sourceType === 'VIDEO_URL' ? '视频' : '网页') }}</span>
               <span class="history-time">{{ new Date(job.createdAt).toLocaleString('zh-CN') }}</span>
             </div>
             <span class="status-badge small" :class="statusBadgeClass(job.status)">{{ statusLabel(job.status) }}</span>
@@ -373,6 +404,24 @@ function statusLabel(status: string) {
 .extraction-input:focus {
   border-color: var(--accent, #7c3aed);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #7c3aed) 20%, transparent);
+}
+.source-help {
+  margin: 8px 0 0;
+  color: var(--muted, #64748b);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.publish-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--ink, #1e293b);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.publish-option input {
+  margin-top: 2px;
 }
 .provider-select-row {
   display: flex;

@@ -93,6 +93,12 @@ app:
     max-compressed-size: ${APP_RECIPE_MAX_COMPRESSED_SIZE:25MB}
     max-uncompressed-total: ${APP_RECIPE_MAX_UNCOMPRESSED_TOTAL:40MB}
     max-entry-size: ${APP_RECIPE_MAX_ENTRY_SIZE:10MB}
+    extraction:
+      video-enabled: ${APP_RECIPE_VIDEO_ENABLED:true}
+      yt-dlp-path: ${APP_RECIPE_YT_DLP_PATH:yt-dlp}
+      video-timeout: ${APP_RECIPE_VIDEO_TIMEOUT:PT45S}
+      max-transcript-chars: ${APP_RECIPE_MAX_TRANSCRIPT_CHARS:25000}
+      video-hosts: ${APP_RECIPE_VIDEO_HOSTS:youtube.com,youtu.be,bilibili.com,b23.tv,douyin.com,iesdouyin.com,xiaohongshu.com,xhslink.com}
 
   ai:
     enabled: ${AI_ENABLED:false}
