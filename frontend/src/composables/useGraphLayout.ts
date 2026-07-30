@@ -27,6 +27,10 @@ export interface VisualEdge {
   strength: number
   pathD: string
   isStructure: boolean
+  color: string
+  leafX: number
+  leafY: number
+  leafRotation: number
 }
 
 function stringHash(str: string, salt = 0): number {
@@ -49,15 +53,14 @@ export const GROUP_CONFIGS: Record<string, {
   directionDeg: number
   color: string
 }> = {
-  POST: { label: '文章', xRatio: 0.48, yRatio: 0.3, directionDeg: -90, color: '#4a9af7' },
-  NOTE: { label: '学习笔记', xRatio: 0.25, yRatio: 0.42, directionDeg: 180, color: '#67c890' },
-  DISH: { label: '美食菜谱', xRatio: 0.38, yRatio: 0.68, directionDeg: 125, color: '#f4aa54' },
-  TAG: { label: '标签', xRatio: 0.7, yRatio: 0.37, directionDeg: -8, color: '#9b63e7' },
-  SERIES: { label: '合集', xRatio: 0.76, yRatio: 0.68, directionDeg: 22, color: '#ef6c9a' },
+  POST: { label: '文章', xRatio: 0.53, yRatio: 0.32, directionDeg: -90, color: '#4a9af7' },
+  NOTE: { label: '学习笔记', xRatio: 0.33, yRatio: 0.49, directionDeg: 180, color: '#ef6c9a' },
+  DISH: { label: '美食菜谱', xRatio: 0.67, yRatio: 0.51, directionDeg: 0, color: '#f4aa54' },
 }
 
 export const ROOT_COLOR = '#f58cab'
 export const MAX_DISPLAY_NODES = 40
+export const TREE_GROUP_TYPES = ['POST', 'NOTE', 'DISH'] as const
 
 export function computeGardenLayout(
   rawNodes: Partial<GraphOverviewNode>[],
@@ -70,6 +73,38 @@ export function computeGardenLayout(
 
   const nodesMap = new Map<string, VisualNode>()
   const isV2Overview = rawNodes.some((n) => n.kind === 'ROOT' || n.kind === 'GROUP' || n.id === 'hub-root')
+
+  if (!isV2Overview) {
+    const legacyContent = rawNodes
+      .filter((node) => TREE_GROUP_TYPES.includes(node.type as (typeof TREE_GROUP_TYPES)[number]))
+      .map((node) => ({
+        ...node,
+        kind: 'CONTENT' as const,
+        groupId: `hub-${node.type!.toLowerCase()}`,
+      }))
+    const treeNodes: Partial<GraphOverviewNode>[] = [
+      {
+        id: 'root-knowledge',
+        label: '全站知识',
+        type: 'ROOT',
+        kind: 'ROOT',
+        groupId: null,
+      },
+      ...TREE_GROUP_TYPES.map((type) => ({
+        id: `hub-${type.toLowerCase()}`,
+        label: GROUP_CONFIGS[type].label,
+        type,
+        kind: 'GROUP' as const,
+        groupId: 'root-knowledge',
+      })),
+      ...legacyContent,
+    ]
+    const contentIds = new Set(legacyContent.map((node) => node.id))
+    const treeEdges = rawEdges.filter((edge) =>
+      Boolean(edge.source && edge.target && contentIds.has(edge.source) && contentIds.has(edge.target))
+    )
+    return computeGardenLayout(treeNodes, treeEdges, baseWidth, baseHeight)
+  }
 
   // Calculate node degrees
   const degreeMap = new Map<string, number>()
@@ -124,15 +159,8 @@ export function computeGardenLayout(
 
     const rootId = vRoot.id
 
-    // Only render groups present in the API. Empty synthetic hubs made the legend and canvas disagree.
-    const allGroupTypes = ['POST', 'NOTE', 'DISH', 'TAG', 'SERIES'] as const
-    const groupTypes = allGroupTypes.filter((type) =>
-      rawNodes.some((node) =>
-        (node.kind === 'GROUP' && node.type === type) ||
-        (node.kind === 'CONTENT' && node.type === type)
-      )
-    )
-    groupTypes.forEach((type, idx) => {
+    // The overview is a stable three-branch tree, including an empty NOTE branch for guests.
+    TREE_GROUP_TYPES.forEach((type, idx) => {
       const hubId = `hub-${type.toLowerCase()}`
       const existing = rawNodes.find((n) => n.id === hubId || (n.kind === 'GROUP' && n.type === type))
       const config = GROUP_CONFIGS[type]
@@ -162,7 +190,10 @@ export function computeGardenLayout(
     })
 
     // Filter & Cap CONTENT nodes
-    const contentNodes = rawNodes.filter((n) => n.kind === 'CONTENT' || (!n.kind && n.id !== 'hub-root' && !n.id?.startsWith('hub-')))
+    const contentNodes = rawNodes.filter((n) =>
+      TREE_GROUP_TYPES.includes(n.type as (typeof TREE_GROUP_TYPES)[number])
+      && (n.kind === 'CONTENT' || (!n.kind && n.id !== 'hub-root' && !n.id?.startsWith('hub-')))
+    )
     const sortedContent = [...contentNodes].sort((a, b) => {
       const degA = a.degree ?? degreeMap.get(a.id || '') ?? 0
       const degB = b.degree ?? degreeMap.get(b.id || '') ?? 0
@@ -192,18 +223,20 @@ export function computeGardenLayout(
       const h1 = stringHash(n.id || '', 13)
       const h2 = stringHash(n.id || '', 37)
 
-      const ringSize = 8
-      const ringIndex = Math.floor(indexInGroup / ringSize)
-      const ringStart = ringIndex * ringSize
-      const nodesInRing = Math.min(ringSize, countInGroup - ringStart)
-      const slot = indexInGroup - ringStart
-      const arcSpan = nodesInRing <= 1 ? 0 : Math.min(2.1, 0.72 + nodesInRing * 0.17)
-      const stepAngle = nodesInRing <= 1 ? 0 : (slot / (nodesInRing - 1) - 0.5) * arcSpan
-      const angle = baseAngleRad + stepAngle + pseudoRandom(h1) * 0.09
-      const ringRadius = 80 + ringIndex * 48 + pseudoRandom(h2) * 10
+      const tierSize = 6
+      const tier = Math.floor(indexInGroup / tierSize)
+      const tierStart = tier * tierSize
+      const nodesInTier = Math.min(tierSize, countInGroup - tierStart)
+      const slot = indexInGroup - tierStart
+      const offset = (slot - (nodesInTier - 1) / 2) * 43 + pseudoRandom(h1) * 8
+      const depth = 82 + tier * 67 + (slot % 2) * 14 + pseudoRandom(h2) * 8
+      const dirX = Math.cos(baseAngleRad)
+      const dirY = Math.sin(baseAngleRad)
+      const perpX = -dirY
+      const perpY = dirX
 
-      const px = Math.max(48, Math.min(baseWidth - 48, hub.x + Math.cos(angle) * ringRadius))
-      const py = Math.max(48, Math.min(baseHeight - 48, hub.y + Math.sin(angle) * ringRadius))
+      const px = Math.max(48, Math.min(baseWidth - 48, hub.x + dirX * depth + perpX * offset))
+      const py = Math.max(48, Math.min(baseHeight - 48, hub.y + dirY * depth + perpY * offset))
 
       const importance = Math.max(1, n.importance || 1)
       const radius = 10.5 + Math.min(7, Math.sqrt(importance) * 1.35)
@@ -224,7 +257,7 @@ export function computeGardenLayout(
         y: py,
         radius,
         color: config.color,
-        order: 6 + idx,
+        order: 4 + idx,
       }
       nodesMap.set(vNode.id, vNode)
     })
@@ -345,6 +378,8 @@ export function computeGardenLayout(
       pathD = `M ${src.x.toFixed(1)},${src.y.toFixed(1)} L ${tgt.x.toFixed(1)},${tgt.y.toFixed(1)}`
     }
 
+    const edgeColor = tgt.kind !== 'ROOT' ? tgt.color : src.color
+
     visualEdges.push({
       id: key,
       source: srcId,
@@ -353,6 +388,10 @@ export function computeGardenLayout(
       strength,
       pathD,
       isStructure,
+      color: edgeColor,
+      leafX: src.x + (tgt.x - src.x) * 0.62,
+      leafY: src.y + (tgt.y - src.y) * 0.62,
+      leafRotation: Math.atan2(tgt.y - src.y, tgt.x - src.x) * 180 / Math.PI + 32,
     })
   }
 

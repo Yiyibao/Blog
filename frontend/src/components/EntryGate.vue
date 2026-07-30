@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import heroBackgroundUrl from '../assets/hero-sakura-lake.jpg'
 
 /**
  * L-16/D-18：入口大屏——仅根路径且无既往选择时出现；选择记 localStorage，
@@ -54,11 +55,11 @@ function chooseAdmin() {
 <template>
   <Teleport to="body">
     <div v-if="visible" class="entry-gate" role="dialog" aria-modal="true" aria-label="选择进入方式">
-      <div class="entry-backdrop" aria-hidden="true" />
+      <img class="entry-backdrop" :src="heroBackgroundUrl" alt="" fetchpriority="high" decoding="async">
       <div class="entry-content">
-        <p class="entry-kicker">YUBAI · DIGITAL GARDEN</p>
-        <h1 class="entry-title">余白手记</h1>
-        <p class="entry-sub">留白之处，皆是生长。<br>选择一种方式，走进这片数字花园。</p>
+        <p class="entry-kicker">HXNF'S MEMOIR</p>
+        <h1 class="entry-title">日常拾光录</h1>
+        <p class="entry-sub">拾起日常里一闪而过的光。<br>选择一种方式，翻开这本生活手记。</p>
         <div class="entry-choices">
           <button type="button" class="entry-choice guest" @click="chooseGuest">
             <span class="choice-icon" aria-hidden="true">✿</span>
@@ -85,12 +86,20 @@ function chooseAdmin() {
   place-items: center;
   overflow: hidden;
 }
+.entry-gate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(18, 15, 13, 0.55), rgba(18, 15, 13, 0.72));
+  pointer-events: none;
+}
 .entry-backdrop {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(180deg, rgba(18, 15, 13, 0.55), rgba(18, 15, 13, 0.72)),
-    url('/images/hero-sakura-lake.jpg') center / cover no-repeat;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   animation: entry-zoom 12s ease-out forwards;
 }
 @keyframes entry-zoom {

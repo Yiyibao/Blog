@@ -27,12 +27,12 @@ describe('createSiteConfig', () => {
 
   it('returns defaults when no env vars are set', () => {
     const cfg = createSiteConfig()
-    expect(cfg.siteName).toBe('余白')
-    expect(cfg.siteSubtitle).toBe('')
-    expect(cfg.siteDescription).toBe('记录代码、设计与日常生活的个人博客')
+    expect(cfg.siteName).toBe('日常拾光录')
+    expect(cfg.siteSubtitle).toBe("hxnf's Memoir.")
+    expect(cfg.siteDescription).toBe('拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。')
     expect(cfg.siteUrl).toBe('http://localhost:5173')
     expect(cfg.socialImage).toBe('/og.png')
-    expect(cfg.authorName).toBe('Yubai')
+    expect(cfg.authorName).toBe('hxnf')
     expect(cfg.copyrightOwner).toBe('')
     expect(cfg.copyrightYear).toBe(new Date().getFullYear())
     expect(cfg.contactEmail).toBe('')
@@ -93,9 +93,9 @@ describe('createSiteConfig', () => {
     expect(createSiteConfig().siteUrl).toBe('http://localhost:5173')
   })
 
-  it('keeps optional fields empty when not set', () => {
+  it('uses the brand subtitle while keeping other optional fields empty', () => {
     const cfg = createSiteConfig()
-    expect(cfg.siteSubtitle).toBe('')
+    expect(cfg.siteSubtitle).toBe("hxnf's Memoir.")
     expect(cfg.copyrightOwner).toBe('')
     expect(cfg.contactEmail).toBe('')
     expect(cfg.icpRecord).toBe('')

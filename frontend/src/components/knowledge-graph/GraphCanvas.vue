@@ -25,9 +25,20 @@ const emit = defineEmits<{
 
 const svgRef = ref<SVGSVGElement | null>(null)
 const imageErrorMap = ref<Record<string, boolean>>({})
+const locallyHoveredNodeId = ref<string | null>(null)
 
 function handleImageError(id: string) {
   imageErrorMap.value[id] = true
+}
+
+function handleNodeEnter(id: string) {
+  locallyHoveredNodeId.value = id
+  emit('hoverNode', id)
+}
+
+function handleNodeLeave(id: string) {
+  if (locallyHoveredNodeId.value === id) locallyHoveredNodeId.value = null
+  emit('hoverNode', null)
 }
 </script>
 
@@ -71,23 +82,31 @@ function handleImageError(id: string) {
         </radialGradient>
       </defs>
 
-      <!-- Background Ambient Organic Floral Vine Decorations -->
+      <!-- Background Ambient Organic Floral Vine Decorations & Floating Petals -->
       <g class="bg-decorations" pointer-events="none">
         <path
-          d="M 150,120 Q 300,80 500,350 T 850,580"
+          d="M 150,120 Q 300,80 500,340 T 850,580"
           fill="none"
-          stroke="var(--accent, #f43f5e)"
-          stroke-opacity="0.06"
+          stroke="#f43f5e"
+          stroke-opacity="0.08"
           stroke-width="3"
         />
         <path
-          d="M 820,150 Q 650,200 500,350 T 180,550"
+          d="M 820,150 Q 650,200 500,340 T 180,550"
           fill="none"
           stroke="#8b5cf6"
-          stroke-opacity="0.06"
+          stroke-opacity="0.08"
           stroke-width="3"
         />
-        <circle cx="500" cy="350" r="180" fill="url(#root-aura)" />
+        <circle cx="500" cy="340" r="190" fill="url(#root-aura)" />
+
+        <!-- Floating Petals -->
+        <g class="petal-group">
+          <path class="floating-petal p1" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#fda4af" opacity="0.6" transform="translate(180, 100) scale(1.2)" />
+          <path class="floating-petal p2" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#f43f5e" opacity="0.4" transform="translate(750, 140) scale(1.4)" />
+          <path class="floating-petal p3" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#f472b6" opacity="0.5" transform="translate(880, 420) scale(1.1)" />
+          <path class="floating-petal p4" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#fb7185" opacity="0.45" transform="translate(260, 520) scale(1.3)" />
+        </g>
       </g>
 
       <!-- Edges Layer -->
@@ -96,6 +115,7 @@ function handleImageError(id: string) {
           v-for="(edge, idx) in edges"
           :key="`edge-${edge.id}`"
           :d="edge.pathD"
+          :stroke="edge.color"
           pathLength="1"
           class="graph-edge"
           :class="{
@@ -105,6 +125,18 @@ function handleImageError(id: string) {
             faded: (selectedNodeId || hoveredNodeId) && !(edge.source === (selectedNodeId || hoveredNodeId) || edge.target === (selectedNodeId || hoveredNodeId))
           }"
           :style="{ animationDelay: `${Math.min(idx * 15, 600) + 150}ms` }"
+        />
+        <ellipse
+          v-for="edge in edges.filter((item) => item.isStructure)"
+          :key="`leaf-${edge.id}`"
+          :cx="edge.leafX"
+          :cy="edge.leafY"
+          rx="6"
+          ry="3"
+          :fill="edge.color"
+          fill-opacity="0.48"
+          class="branch-leaf"
+          :transform="`rotate(${edge.leafRotation.toFixed(1)} ${edge.leafX.toFixed(1)} ${edge.leafY.toFixed(1)})`"
         />
       </g>
 
@@ -117,6 +149,7 @@ function handleImageError(id: string) {
           :class="{
             'is-root': node.kind === 'ROOT',
             'is-group': node.kind === 'GROUP',
+            'is-hovered': locallyHoveredNodeId === node.id,
             selected: selectedNodeId === node.id,
             highlighted: (selectedNodeId || hoveredNodeId) && neighborNodeIds.has(node.id),
             faded: (selectedNodeId || hoveredNodeId) && !neighborNodeIds.has(node.id)
@@ -130,17 +163,24 @@ function handleImageError(id: string) {
           :aria-label="`${node.label} (${node.type})`"
           @click.stop="emit('selectNode', node)"
           @dblclick.stop="emit('dblclickNode', node)"
-          @mouseenter="emit('hoverNode', node.id)"
-          @mouseleave="emit('hoverNode', null)"
+          @mouseenter="handleNodeEnter(node.id)"
+          @mouseleave="handleNodeLeave(node.id)"
           @keydown.enter.prevent="emit('selectNode', node)"
           @keydown.space.prevent="emit('selectNode', node)"
         >
-          <!-- Breathing float wrapper for ROOT and GROUP -->
-          <g :class="{ 'node-float': node.kind === 'ROOT' || node.kind === 'GROUP' }" :style="{ animationDelay: `${(idx % 7) * -1.2}s` }">
-            <!-- 44x44 Touch Target -->
-            <circle r="24" fill="transparent" class="hit-target" />
+          <!-- Keep the pointer target anchored while the visible node floats. -->
+          <circle
+            :r="Math.max(node.radius + 12, 30)"
+            fill="transparent"
+            class="hit-target stationary-hit-target"
+          />
 
-            <!-- Selection Ring -->
+          <!-- Floating wrapper for ALL nodes with phase staggered delays -->
+          <g
+            :class="{ 'node-float': node.kind !== 'ROOT', 'node-static': node.kind === 'ROOT' }"
+            :style="{ animationDelay: `${(idx % 11) * -0.75}s` }"
+          >
+            <!-- Dynamic Selection Ring -->
             <circle
               v-if="selectedNodeId === node.id"
               :r="node.radius + 6"
@@ -150,9 +190,10 @@ function handleImageError(id: string) {
               class="selection-ring"
             />
 
-            <!-- ROOT Node Special Flower Circle & Aura -->
+            <!-- ROOT Node Special Flower Circle & Pulsing Aura -->
             <template v-if="node.kind === 'ROOT'">
-              <circle :r="node.radius + 8" fill="none" stroke="#f43f5e" stroke-opacity="0.3" stroke-width="1.5" stroke-dasharray="3 3" />
+              <circle :r="node.radius + 12" fill="none" stroke="#f43f5e" stroke-opacity="0.25" class="root-aura-pulse" />
+              <circle :r="node.radius + 6" fill="none" stroke="#f43f5e" stroke-opacity="0.4" stroke-width="1.5" stroke-dasharray="3 3" class="root-dash-ring" />
               <circle :r="node.radius" fill="url(#root-fill)" class="node-circle main-root" />
               <!-- Flower SVG Icon -->
               <g transform="translate(-14, -14)">
@@ -282,9 +323,8 @@ function handleImageError(id: string) {
 }
 
 .graph-edge.is-structure {
-  stroke: var(--line-strong, #cbd5e1);
-  stroke-opacity: 0.5;
-  stroke-width: 1.8px;
+  stroke-opacity: 0.52;
+  stroke-width: 2.2px;
 }
 
 .graph-edge.is-relation {
@@ -318,6 +358,12 @@ function handleImageError(id: string) {
   stroke-opacity: 0.08 !important;
 }
 
+.branch-leaf {
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 /* Nodes Styling */
 .graph-node {
   cursor: pointer;
@@ -347,25 +393,144 @@ function handleImageError(id: string) {
 }
 
 .node-float {
-  animation: node-float 6s ease-in-out infinite alternate;
+  animation: node-float-natural 5.2s ease-in-out infinite alternate;
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
 }
 
-@keyframes node-float {
-  from {
-    transform: translateY(-2.5px);
+.node-static {
+  transform: none;
+}
+
+.graph-node.is-root .root-aura-pulse,
+.graph-node.is-root .root-dash-ring {
+  animation: none;
+}
+
+@keyframes node-float-natural {
+  0% {
+    transform: translate(-3.5px, -7px) rotate(-1deg);
   }
+  35% {
+    transform: translate(3px, -1.5px) rotate(0.55deg);
+  }
+  70% {
+    transform: translate(-2px, 4.5px) rotate(-0.4deg);
+  }
+  100% {
+    transform: translate(3.5px, 7px) rotate(0.9deg);
+  }
+}
+
+.floating-petal {
+  animation: float-petal 12s ease-in-out infinite alternate;
+}
+
+.p1 { animation-delay: 0s; }
+.p2 { animation-delay: -3s; }
+.p3 { animation-delay: -6s; }
+.p4 { animation-delay: -9s; }
+
+@keyframes float-petal {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(12px, 15px) rotate(15deg);
+  }
+  100% {
+    transform: translate(-8px, 30px) rotate(-10deg);
+  }
+}
+
+.root-aura-pulse {
+  animation: aura-pulse 3.5s ease-in-out infinite alternate;
+}
+
+@keyframes aura-pulse {
+  0% {
+    r: 36px;
+    stroke-opacity: 0.15;
+  }
+  100% {
+    r: 46px;
+    stroke-opacity: 0.45;
+  }
+}
+
+.root-dash-ring {
+  animation: dash-rotate 25s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes dash-rotate {
   to {
-    transform: translateY(2.5px);
+    transform: rotate(360deg);
   }
+}
+
+.selection-ring {
+  animation: selection-pulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes selection-pulse {
+  0% {
+    stroke-width: 2px;
+    stroke-opacity: 1;
+  }
+  50% {
+    stroke-width: 4px;
+    stroke-opacity: 0.6;
+  }
+  100% {
+    stroke-width: 2px;
+    stroke-opacity: 1;
+  }
+}
+
+/* Hover/focus freezes the node at its current natural phase; leaving resumes smoothly. */
+.graph-node:hover .node-float,
+.graph-node.is-hovered .node-float,
+.graph-node:focus-visible .node-float {
+  animation-play-state: paused !important;
+}
+
+/* Root/selection decorations belong to the node and must become still as well. */
+.graph-node:hover .root-aura-pulse,
+.graph-node:hover .root-dash-ring,
+.graph-node:hover .selection-ring,
+.graph-node.is-hovered .root-aura-pulse,
+.graph-node.is-hovered .root-dash-ring,
+.graph-node.is-hovered .selection-ring,
+.graph-node:focus-visible .root-aura-pulse,
+.graph-node:focus-visible .root-dash-ring,
+.graph-node:focus-visible .selection-ring {
+  animation-play-state: paused !important;
+}
+
+.graph-node {
+  outline: none;
+  transition: opacity 0.25s;
 }
 
 .graph-node:hover .node-circle,
-.graph-node.highlighted .node-circle {
-  filter: brightness(1.15);
+.graph-node.is-hovered .node-circle {
+  filter: brightness(1.18) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.18));
+}
+
+.graph-node.selected .node-circle {
+  transform: scale(1.08);
+  filter: brightness(1.18) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.18));
+}
+
+.graph-node.highlighted:not(:hover) .node-circle {
+  filter: brightness(1.12);
 }
 
 .node-circle {
-  transition: stroke 0.2s, stroke-width 0.2s, filter 0.25s;
+  transform-origin: center;
+  transition: stroke 0.2s, stroke-width 0.2s, filter 0.25s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .node-label {

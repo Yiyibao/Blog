@@ -40,7 +40,7 @@ function logout() {
   <aside class="admin-sidebar">
     <RouterLink class="admin-brand" to="/admin">
       <span>余</span>
-      <div><strong>余白后台</strong><small>ADMIN CONSOLE</small></div>
+      <div><strong>拾光录后台</strong><small>ADMIN CONSOLE</small></div>
     </RouterLink>
     <nav aria-label="后台导航">
       <p>工作空间</p>

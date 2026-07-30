@@ -20,8 +20,8 @@ function envStr(key, fallback = '') {
 }
 
 let SITE_URL = normalizeHttpBase(envStr('VITE_SITE_URL', 'https://hxnf.top'), 'VITE_SITE_URL')
-let SITE_NAME = envStr('VITE_SITE_NAME', '余白')
-let SITE_DESCRIPTION = envStr('VITE_SITE_DESCRIPTION', '记录代码、设计与日常生活的个人博客')
+let SITE_NAME = envStr('VITE_SITE_NAME', '日常拾光录')
+let SITE_DESCRIPTION = envStr('VITE_SITE_DESCRIPTION', '拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。')
 let AUTHOR_NAME = envStr('VITE_AUTHOR_NAME', 'Yubai')
 let SOCIAL_IMAGE = envStr('VITE_SOCIAL_IMAGE', '/og.png')
 let API_BASE = normalizeApiBase(envStr('PRERENDER_API_BASE_URL'))
@@ -29,8 +29,8 @@ let REQUIRE_DYNAMIC = envStr('PRERENDER_REQUIRE_DYNAMIC') === 'true'
 
 export function __resetConfig() {
   SITE_URL = normalizeHttpBase(envStr('VITE_SITE_URL', 'https://hxnf.top'), 'VITE_SITE_URL')
-  SITE_NAME = envStr('VITE_SITE_NAME', '余白')
-  SITE_DESCRIPTION = envStr('VITE_SITE_DESCRIPTION', '记录代码、设计与日常生活的个人博客')
+  SITE_NAME = envStr('VITE_SITE_NAME', '日常拾光录')
+  SITE_DESCRIPTION = envStr('VITE_SITE_DESCRIPTION', '拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。')
   AUTHOR_NAME = envStr('VITE_AUTHOR_NAME', 'Yubai')
   SOCIAL_IMAGE = envStr('VITE_SOCIAL_IMAGE', '/og.png')
   API_BASE = normalizeApiBase(envStr('PRERENDER_API_BASE_URL'))

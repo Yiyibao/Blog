@@ -236,7 +236,7 @@ function statusLabel(status: string) {
 
           <div class="import-preview-layout">
             <div class="import-cover">
-              <img :src="completedJob.preview.coverPreviewUrl" :alt="completedJob.preview.recipe.cover.alt || completedJob.preview.recipe.recipe.name">
+              <img :src="completedJob.preview.coverPreviewUrl" :alt="completedJob.preview.recipe.cover.alt || completedJob.preview.recipe.recipe.name" decoding="async">
             </div>
             <div class="import-details">
               <h3>{{ completedJob.preview.recipe.recipe.name }}</h3>

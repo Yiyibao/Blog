@@ -32,6 +32,8 @@ describe('NF-2 文章正文前端消毒', () => {
   it('保留图片与安全链接', () => {
     const out = sanitizeHtml('<img src="/api/v1/note-assets/abc.png" alt="图"><a href="https://example.com">外链</a>')
     expect(out).toContain('src="/api/v1/note-assets/abc.png"')
+    expect(out).toContain('loading="lazy"')
+    expect(out).toContain('decoding="async"')
     expect(out).toContain('https://example.com')
   })
 

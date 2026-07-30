@@ -111,6 +111,22 @@ describe('KnowledgeGraph Component', () => {
     expect(new Set(delays).size).toBeGreaterThan(1)
     // 呼吸漂浮载体存在
     expect(wrapper.find('.node-float').exists()).toBe(true)
+    expect(wrapper.find('.graph-node.is-root .node-float').exists()).toBe(false)
+    expect(wrapper.find('.graph-node.is-root .node-static').exists()).toBe(true)
+  })
+
+  it('locks a floating node while hovered and releases it on mouse leave', async () => {
+    const { wrapper } = await mountGraph()
+    await flushPromises()
+
+    const node = wrapper.findAll('g.graph-node').find((item) => item.text().includes('Vue 架构'))
+    expect(node).toBeDefined()
+
+    await node!.trigger('mouseenter')
+    expect(node!.classes()).toContain('is-hovered')
+
+    await node!.trigger('mouseleave')
+    expect(node!.classes()).not.toContain('is-hovered')
   })
 
   it('selects content node on first click without immediate navigation', async () => {
@@ -138,22 +154,16 @@ describe('KnowledgeGraph Component', () => {
     expect(pushSpy).toHaveBeenCalledWith('/articles/vue-arch')
   })
 
-  it('selects TAG node and does not navigate to /categories', async () => {
-    const { wrapper, router } = await mountGraph()
+  it('keeps tags out of the three primary tree branches', async () => {
+    const { wrapper } = await mountGraph()
     await flushPromises()
 
-    const pushSpy = vi.spyOn(router, 'push')
     const tagNodeEl = wrapper.findAll('g.graph-node').find((n) => n.text().includes('#前端'))
-    expect(tagNodeEl).toBeDefined()
-
-    await tagNodeEl!.trigger('click')
-    await flushPromises()
-
-    expect(pushSpy).not.toHaveBeenCalled()
-    expect(wrapper.emitted('selectTag')).toBeDefined()
-    expect(wrapper.emitted('selectTag')![0]).toEqual(['前端'])
-    // TAG panel should not show "打开内容" button
-    expect(wrapper.find('.open-content-btn').exists()).toBe(false)
+    expect(tagNodeEl).toBeUndefined()
+    const groupLabels = wrapper.findAll('.graph-node.is-group').map((node) => node.text())
+    expect(groupLabels.some((label) => label.includes('文章'))).toBe(true)
+    expect(groupLabels.some((label) => label.includes('学习笔记'))).toBe(true)
+    expect(groupLabels.some((label) => label.includes('美食菜谱'))).toBe(true)
   })
 
   it('handles API failure by displaying error state without fake demo fallback data', async () => {
@@ -317,7 +327,7 @@ describe('KnowledgeGraph 5C Subgraph', () => {
     await flushPromises()
 
     // Back to original node count
-    expect(wrapper.findAll('g.graph-node').length).toBe(baseNodes.length)
+    expect(wrapper.findAll('g.graph-node').length).toBe(5)
   })
 
   it('useRequestToken 内置的竞态守卫：序列号机制丢弃迟到响应', async () => {
@@ -437,7 +447,7 @@ describe('KnowledgeGraph 5C Subgraph', () => {
     await flushPromises()
 
     const afterNodes = wrapper.findAll('g.graph-node')
-    expect(afterNodes.length).toBeLessThanOrEqual(40)
+    expect(afterNodes.length).toBeLessThanOrEqual(44)
     expect(afterNodes.length).toBeLessThan(300)
   })
 })
@@ -532,7 +542,7 @@ describe('KnowledgeGraph V2 Suite', () => {
       },
       legend: [
         { type: 'POST', label: '文章', color: '#3b82f6', count: 1 },
-        { type: 'NOTE', label: '学习笔记', color: '#10b981', count: 1 },
+        { type: 'NOTE', label: '学习笔记', color: '#ef6c9a', count: 1 },
         { type: 'DISH', label: '美食菜谱', color: '#f59e0b', count: 1 },
         { type: 'SERIES', label: '合集', color: '#ec4899', count: 0 },
         { type: 'TAG', label: '标签', color: '#8b5cf6', count: 0 },
@@ -561,7 +571,7 @@ describe('KnowledgeGraph V2 Suite', () => {
 
     expect(wrapper.text()).toContain('全站知识关联图谱')
     expect(wrapper.text()).toContain('麻婆豆腐')
-    expect(wrapper.findAll('.legend-item').length).toBe(5)
+    expect(wrapper.findAll('.legend-item').length).toBe(3)
   })
 
   it('search matches node labels and selecting centers node', async () => {
@@ -639,7 +649,7 @@ describe('KnowledgeGraph V2 Suite', () => {
     expect(() => wrapper.unmount()).not.toThrow()
   })
 
-  it('garden layout is stable and does not invent empty group hubs', async () => {
+  it('garden layout is stable and always exposes exactly three primary branches', async () => {
     const { computeGardenLayout } = await import('../composables/useGraphLayout')
     const nodes = [
       { id: 'root-knowledge', label: '全站知识', type: 'ROOT', kind: 'ROOT' as const },
@@ -668,7 +678,14 @@ describe('KnowledgeGraph V2 Suite', () => {
 
     expect(coordinates(first)).toEqual(coordinates(second))
     expect(first.nodesMap.has('hub-post')).toBe(true)
-    expect(first.nodesMap.has('hub-note')).toBe(false)
+    expect(first.nodesMap.has('hub-note')).toBe(true)
+    expect(first.nodesMap.has('hub-dish')).toBe(true)
     expect(first.nodesMap.has('hub-series')).toBe(false)
+    expect(first.nodesMap.has('hub-tag')).toBe(false)
+
+    const root = first.nodesMap.get('root-knowledge')!
+    expect(first.nodesMap.get('hub-post')!.y).toBeLessThan(root.y)
+    expect(first.nodesMap.get('hub-note')!.x).toBeLessThan(root.x)
+    expect(first.nodesMap.get('hub-dish')!.x).toBeGreaterThan(root.x)
   })
 })

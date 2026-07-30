@@ -43,15 +43,15 @@ export function resetSiteConfig() {
 export function createSiteConfig(): SiteConfig {
   if (cached) return cached
   cached = {
-    siteName: readStr('VITE_SITE_NAME', '余白'),
-    siteSubtitle: readStr('VITE_SITE_SUBTITLE', ''),
-    siteDescription: readStr('VITE_SITE_DESCRIPTION', '记录代码、设计与日常生活的个人博客'),
+    siteName: readStr('VITE_SITE_NAME', '日常拾光录'),
+    siteSubtitle: readStr('VITE_SITE_SUBTITLE', "hxnf's Memoir."),
+    siteDescription: readStr('VITE_SITE_DESCRIPTION', '拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。'),
     siteUrl: normalizeUrl(
       readStr('VITE_SITE_URL', ''),
       'http://localhost:5173',
     ),
     socialImage: readStr('VITE_SOCIAL_IMAGE', '/og.png'),
-    authorName: readStr('VITE_AUTHOR_NAME', 'Yubai'),
+    authorName: readStr('VITE_AUTHOR_NAME', 'hxnf'),
     copyrightOwner: readStr('VITE_COPYRIGHT_OWNER', ''),
     copyrightYear: readInt('VITE_COPYRIGHT_YEAR', new Date().getFullYear()),
     contactEmail: readStr('VITE_CONTACT_EMAIL', ''),

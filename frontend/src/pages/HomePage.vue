@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useContentStore } from '../stores/contentStore'
+import heroBackgroundUrl from '../assets/hero-sakura-lake.jpg'
 
 const content = useContentStore()
 const heroProgress = ref(0)
@@ -62,13 +63,13 @@ onBeforeUnmount(() => {
 <template>
   <section class="hero-stage">
     <div class="hero" :style="heroStyle">
-      <div class="hero-background" aria-hidden="true" />
+      <img class="hero-background" :src="heroBackgroundUrl" alt="" fetchpriority="high" decoding="async">
       <div class="hero-veil" aria-hidden="true" />
       <div class="hero-copy">
-        <p class="hero-kana hero-enter" style="--enter-delay: 0ms">一页一念，安静生长。</p>
-        <p class="eyebrow hero-enter" style="--enter-delay: 40ms"><span /> A QUIET DIGITAL GARDEN</p>
-        <h1 class="hero-enter" style="--enter-delay: 80ms">把生活写成一座<br><em>安静生长的花园</em>。</h1>
-        <p class="hero-intro hero-enter" style="--enter-delay: 160ms">关于设计、工程与日常的长期手记。向下走，让故事从风景里慢慢浮现。</p>
+        <p class="hero-kana hero-enter" style="--enter-delay: 0ms">拾取日常里一闪而过的光。</p>
+        <p class="eyebrow hero-enter" style="--enter-delay: 40ms"><span /> HXNF'S MEMOIR</p>
+        <h1 class="hero-enter" style="--enter-delay: 80ms">把日常散落的微光<span class="hero-punctuation">，</span><br><em>写成可以重读的记忆<span class="hero-punctuation">。</span></em></h1>
+        <p class="hero-intro hero-enter" style="--enter-delay: 160ms">拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。</p>
         <div class="hero-actions hero-enter" style="--enter-delay: 220ms">
           <RouterLink class="button primary" to="/articles">开始阅读 <span>→</span></RouterLink>
           <RouterLink class="button secondary" to="/about">关于这里</RouterLink>

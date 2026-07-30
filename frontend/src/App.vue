@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import SiteFooter from './components/SiteFooter.vue'
-import GlobalSearch from './components/GlobalSearch.vue'
 import AmbientSound from './components/AmbientSound.vue'
 import EntryGate from './components/EntryGate.vue'
-import AdminAiSidebar from './components/AdminAiSidebar.vue'
 import { useUiStore } from './stores/uiStore'
 import { useAuthStore } from './stores/auth'
 import { usePageMeta } from './composables/usePageMeta'
 import { useStructuredData, webSite } from './composables/useStructuredData'
 import { refreshReveals, disconnectReveals } from './composables/useReveals'
+import { createSiteConfig } from './config/site'
+
+const GlobalSearch = defineAsyncComponent(() => import('./components/GlobalSearch.vue'))
+const AdminAiSidebar = defineAsyncComponent(() => import('./components/AdminAiSidebar.vue'))
 
 const route = useRoute()
 const ui = useUiStore()
+const siteConfig = createSiteConfig()
 // L-16：角色化导航——游客隐藏学习笔记，管理员多一个"进入后台"
 const auth = useAuthStore()
 
@@ -180,9 +183,9 @@ onBeforeUnmount(() => {
       />
     </div>
     <header v-if="!isAdminRoute" class="site-header">
-      <RouterLink class="brand" to="/" aria-label="余白首页">
-        <span class="brand-stamp">余</span>
-        <span><strong>余白手记</strong><small>YUBAI · DIGITAL GARDEN</small></span>
+      <RouterLink class="brand" to="/" :aria-label="`${siteConfig.siteName}首页`">
+        <span class="brand-stamp">{{ siteConfig.siteName.slice(0, 1) }}</span>
+        <span><strong>{{ siteConfig.siteName }}</strong><small>{{ siteConfig.siteSubtitle }}</small></span>
       </RouterLink>
       <nav class="desktop-nav" aria-label="主导航">
         <RouterLink to="/"><i>⌂</i>首页</RouterLink>
@@ -218,7 +221,7 @@ onBeforeUnmount(() => {
     </main>
 
     <footer v-if="!isAdminRoute" class="site-footer section-wrap">
-      <div class="footer-brand"><span class="brand-stamp">余</span><strong>余白</strong><p>BUILD · WRITE · REFLECT</p></div>
+      <div class="footer-brand"><span class="brand-stamp">{{ siteConfig.siteName.slice(0, 1) }}</span><strong>{{ siteConfig.siteName }}</strong><p>{{ siteConfig.siteSubtitle }}</p></div>
       <div>
         <RouterLink to="/articles">文章</RouterLink>
         <RouterLink to="/series">合集</RouterLink>
@@ -248,7 +251,7 @@ onBeforeUnmount(() => {
       <small>回到顶部</small>
     </button>
 
-    <GlobalSearch :open="ui.searchOpen" @close="ui.closeSearch" />
+    <GlobalSearch v-if="ui.searchOpen" :open="true" @close="ui.closeSearch" />
     <!-- L-16/D-18：入口大屏（组件内部判定：仅根路径 + 无既往选择 + 未登录） -->
     <EntryGate />
     <!-- 4A-4：AI 助手停靠栏——全 /admin 路由可用（组件内部排除 /admin/ai 全屏页） -->

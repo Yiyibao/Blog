@@ -10,9 +10,9 @@ export default defineConfig({
       // NF-6：预缓存只收代码与字体/矢量资源；位图全部退出预缓存改运行时缓存
       includeAssets: [],
       manifest: {
-        name: '余白 · 个人博客',
-        short_name: '余白',
-        description: '记录代码、设计与日常生活的个人博客',
+        name: "日常拾光录 · hxnf's Memoir.",
+        short_name: '日常拾光录',
+        description: '拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。',
         theme_color: '#f7f3e9',
         background_color: '#fff9f8',
         display: 'standalone',

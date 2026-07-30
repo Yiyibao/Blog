@@ -74,6 +74,7 @@ const loadError = ref('')
 const selectedNodeId = ref<string | null>(null)
 const hoveredNodeId = ref<string | null>(null)
 const activeTypeFilter = ref<string>('')
+const TREE_TYPES = new Set(['POST', 'NOTE', 'DISH'])
 
 // Subgraph & Local Mode composable
 const {
@@ -152,7 +153,7 @@ const selectedVisualNode = computed(() => {
 // Legend & Stats calculation
 const legendItems = computed<GraphOverviewLegendItem[]>(() => {
   if (overview.value?.legend && overview.value.legend.length > 0) {
-    return overview.value.legend
+    return overview.value.legend.filter((item) => TREE_TYPES.has(item.type))
   }
   // Fallback count from current rawNodes
   const counts: Record<string, number> = {}
@@ -163,10 +164,8 @@ const legendItems = computed<GraphOverviewLegendItem[]>(() => {
   })
   return [
     { type: 'POST', label: '文章', color: '#3b82f6', count: counts['POST'] || 0 },
-    { type: 'NOTE', label: '学习笔记', color: '#10b981', count: counts['NOTE'] || 0 },
+    { type: 'NOTE', label: '学习笔记', color: '#ef6c9a', count: counts['NOTE'] || 0 },
     { type: 'DISH', label: '美食菜谱', color: '#f59e0b', count: counts['DISH'] || 0 },
-    { type: 'SERIES', label: '合集', color: '#ec4899', count: counts['SERIES'] || 0 },
-    { type: 'TAG', label: '标签', color: '#8b5cf6', count: counts['TAG'] || 0 },
   ]
 })
 
@@ -175,7 +174,9 @@ const statsData = computed<GraphOverviewStats | null>(() => {
     return overview.value.stats
   }
   return {
-    contentNodeCount: rawNodes.value.filter((n) => n.kind !== 'ROOT' && n.kind !== 'GROUP').length,
+    contentNodeCount: rawNodes.value.filter((n) =>
+      n.kind !== 'ROOT' && n.kind !== 'GROUP' && TREE_TYPES.has(n.type)
+    ).length,
     visualNodeCount: rawNodes.value.length,
     relationCount: rawEdges.value.length,
     lastUpdatedAt: null,

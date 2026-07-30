@@ -414,20 +414,19 @@ class GraphServiceTest {
         });
         assertThat(overview.nodes()).filteredOn(node -> node.kind().equals("GROUP"))
             .extracting(GraphOverviewResponse.VisualNode::id)
-            .contains("hub-post", "hub-note", "hub-dish", "hub-tag");
+            .containsExactly("hub-post", "hub-note", "hub-dish");
         assertThat(overview.edges()).anySatisfy(edge -> {
             assertThat(edge.source()).isEqualTo("root-knowledge");
             assertThat(edge.target()).isEqualTo("hub-post");
             assertThat(edge.kind()).isEqualTo("STRUCTURE");
         });
-        assertThat(overview.edges()).filteredOn(edge -> edge.kind().equals("RELATION"))
-            .hasSize(overview.stats().relationCount());
+        assertThat(overview.stats().relationCount()).isEqualTo(overview.edges().size());
         assertThat(overview.legend()).extracting(GraphOverviewResponse.LegendItem::label)
-            .contains("文章", "学习笔记", "美食菜谱", "标签");
-        assertThat(overview.stats().contentNodeCount()).isGreaterThan(3);
+            .containsExactly("文章", "学习笔记", "美食菜谱");
+        assertThat(overview.stats().contentNodeCount()).isEqualTo(3);
         assertThat(overview.stats().visualNodeCount()).isEqualTo(overview.nodes().size());
         assertThat(overview.stats().lastUpdatedAt()).isEqualTo(java.time.Instant.parse("2026-07-31T00:00:00Z"));
-        assertThat(overview.stats().recommendedCenterId()).startsWith("t-");
+        assertThat(overview.stats().recommendedCenterId()).isIn("p-1", "n-1", "d-1");
         assertThat(overview.stats().localModeRecommended()).isFalse();
 
         var dish = overview.nodes().stream().filter(node -> node.id().equals("d-1")).findFirst().orElseThrow();
@@ -437,7 +436,7 @@ class GraphServiceTest {
     }
 
     @Test
-    void guestOverviewDoesNotExposeNoteGroup() {
+    void guestOverviewKeepsEmptyNoteBranchWithoutExposingNoteContent() {
         when(postRepository.findPublishedGraphRows())
             .thenReturn(List.of(row(new P(1L, "Article", "article", "Engineering", List.of()))));
         when(postRepository.findPublishedTagRows()).thenReturn(List.of());
@@ -445,8 +444,12 @@ class GraphServiceTest {
 
         var overview = GraphService.toOverview(service.buildGraph(false));
 
-        assertThat(overview.legend()).noneMatch(item -> item.type().equals("NOTE"));
+        assertThat(overview.legend()).anySatisfy(item -> {
+            assertThat(item.type()).isEqualTo("NOTE");
+            assertThat(item.count()).isZero();
+        });
+        assertThat(overview.nodes()).anyMatch(node -> node.id().equals("hub-note"));
         assertThat(overview.nodes()).noneMatch(node ->
-            node.id().equals("hub-note") || node.type().equals("NOTE"));
+            node.kind().equals("CONTENT") && node.type().equals("NOTE"));
     }
 }

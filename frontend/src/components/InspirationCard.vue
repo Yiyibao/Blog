@@ -14,7 +14,7 @@ const ui = useUiStore()
 
 const fallbackQuotes: Quote[] = [
   { id: '1', content: '代码是写给人看的，只是顺便让机器能够运行。', author: '《SICP》', category: '极客哲学' },
-  { id: '2', content: '留白，不是空无，而是给灵感与思考呼吸的空间。', author: '余白手记', category: '设计美学' },
+  { id: '2', content: '把寻常日子里的微光拾起，时间便有了可以重读的形状。', author: '日常拾光录', category: '生活随想' },
   { id: '3', content: '人间烟火气，最抚凡人心。一道好菜是时间的艺术。', author: '美食随笔', category: '生活哲学' },
   { id: '4', content: '保持简单，保持专注。复杂是设计的死敌。', author: 'Dieter Rams', category: '设计原则' },
   { id: '5', content: '终身学习的意义，在于不断重构自己的认知地图。', author: '学习笔记', category: '认知跃迁' },

@@ -1371,7 +1371,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .site-shell:not(.admin-mode)::before {
-  content: "余白 · 数字花园";
+  content: "日常拾光录 · HXNF'S MEMOIR";
   position: fixed;
   z-index: 15;
   left: 18px;
@@ -1664,14 +1664,20 @@ a { color: inherit; text-decoration: none; }
   position: absolute;
   z-index: -3;
   inset: -5%;
-  background-image: url('/images/hero-sakura-lake.jpg'); /* NF-6：1.91MB PNG → 171KB JPEG */
-  background-position: center center;
-  background-size: cover;
+  width: 110%;
+  height: 110%;
+  object-fit: cover;
+  object-position: center center;
   opacity: var(--hero-backdrop-opacity, 1);
   transform: translate3d(0, 0, 0) scale(var(--hero-scale, 1));
   transform-origin: center 58%;
   will-change: transform, opacity;
   transition: transform 100ms linear, opacity 100ms linear;
+}
+
+.home-content > section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 620px;
 }
 
 .hero-veil {
@@ -1693,7 +1699,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .site-shell:not(.admin-mode) .hero-stage .hero-copy {
-  width: min(920px, 100%);
+  width: min(1280px, calc(100% - 48px));
   max-width: none;
   display: flex;
   flex-direction: column;
@@ -1722,11 +1728,13 @@ a { color: inherit; text-decoration: none; }
 .site-shell:not(.admin-mode) .hero-stage .eyebrow > span { background: #f4b6c3; }
 
 .site-shell:not(.admin-mode) .hero-stage h1 {
-  max-width: 12.5ch;
+  max-width: none;
   margin: 0;
   color: #fff;
-  font: 500 clamp(58px, 7.2vw, 108px)/1.08 Georgia, "Songti SC", "Noto Serif SC", serif;
+  font: 500 clamp(30px, 7.2vw, 108px)/1.08 Georgia, "Songti SC", "Noto Serif SC", serif;
   letter-spacing: -.055em;
+  white-space: nowrap;
+  text-wrap: nowrap;
   text-shadow: 0 5px 36px rgba(0, 0, 0, .52), 0 1px 3px rgba(0, 0, 0, .4);
 }
 
@@ -1735,6 +1743,16 @@ a { color: inherit; text-decoration: none; }
   font-family: "STKaiti", "KaiTi", "Songti SC", serif;
   font-style: normal;
   font-weight: 400;
+}
+
+.site-shell:not(.admin-mode) .hero-stage h1 .hero-punctuation {
+  display: inline-block;
+  font-family: "Songti SC", "Noto Serif SC", "STSong", serif;
+  font-size: .82em;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  transform: translateY(-.02em);
 }
 
 .site-shell:not(.admin-mode) .hero-stage .hero-intro {
@@ -1806,14 +1824,18 @@ a { color: inherit; text-decoration: none; }
     min-height: 520px;
     padding: 0 22px;
   }
-  .site-shell:not(.admin-mode) .hero-stage h1 { font-size: clamp(48px, 13vw, 72px); }
+  .site-shell:not(.admin-mode) .hero-stage h1 { font-size: clamp(30px, 7.2vw, 58px); }
   .site-shell:not(.admin-mode) .hero-stage .hero-intro { max-width: 31em; font-size: 14px; }
   .site-shell:not(.admin-mode) .home-content { scroll-margin-top: 68px; }
   .hero-background { background-position: 62% center; }
 }
 
 @media (max-width: 560px) {
-  .site-shell:not(.admin-mode) .hero-stage h1 { font-size: clamp(43px, 12.5vw, 58px); }
+  .site-shell:not(.admin-mode) .hero-stage .hero-copy { width: calc(100% - 24px); }
+  .site-shell:not(.admin-mode) .hero-stage h1 {
+    font-size: clamp(28px, 7.2vw, 40px);
+    letter-spacing: -.055em;
+  }
   .site-shell:not(.admin-mode) .hero-stage .hero-kana { font-size: 15px; }
   .site-shell:not(.admin-mode) .hero-stage .eyebrow { font-size: 10px; }
   .site-shell:not(.admin-mode) .hero-stage .hero-intro { margin-block: 24px 28px; }

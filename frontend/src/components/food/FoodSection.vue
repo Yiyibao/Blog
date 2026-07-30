@@ -354,7 +354,7 @@ onBeforeUnmount(() => {
     <div class="food-shell section-wrap">
       <header class="food-hero">
         <div class="food-hero-copy">
-          <p class="food-kicker">YUBAI · LIVING COOKBOOK</p>
+          <p class="food-kicker">HXNF · LIVING COOKBOOK</p>
           <h1><span>一座持续生长的</span><em>家常菜谱库</em></h1>
           <p>真实食材、清楚步骤，以及值得反复端上餐桌的味道。每一道菜都来自数据库，也保留照片作者与来源。</p>
         </div>

@@ -50,9 +50,9 @@ public class RssService {
             xml.writeStartElement("rss");
             xml.writeAttribute("version", "2.0");
             xml.writeStartElement("channel");
-            text(xml, "title", "余白手记");
+            text(xml, "title", "日常拾光录");
             text(xml, "link", urls.home());
-            text(xml, "description", "余白 · 数字花园——工程、设计与日常记录");
+            text(xml, "description", "拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。");
             text(xml, "language", "zh-cn");
 
             for (var post : posts) {

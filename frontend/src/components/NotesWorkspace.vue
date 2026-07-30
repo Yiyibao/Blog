@@ -512,7 +512,7 @@ onBeforeUnmount(() => {
       <div v-if="outline.length"><button v-for="item in outline" :key="`${item.index}-${item.title}`" type="button" :style="{ paddingLeft: `${(item.level - 1) * 14}px` }" @click="jumpToOutline(item.title)">{{ item.title }}</button></div>
       <small v-else>添加一至三级标题后，文章结构会显示在这里。</small>
       <div class="outline-note"><b>写作提示</b><p>输入 <code>#</code> 创建标题，<code>- [ ]</code> 创建任务，三个反引号创建代码块。</p></div>
-      <div class="attachment-panel"><header><b>图片</b><span>{{ attachments.length }}</span></header><p v-if="!attachments.length">粘贴、拖入或从工具栏上传图片。</p><article v-for="attachment in attachments" :key="attachment.id"><img :src="attachmentPreviewUrls[attachment.id] || attachment.url" :alt="attachment.fileName"><div><strong>{{ attachment.fileName }}</strong><small>{{ Math.ceil(attachment.byteSize / 1024) }} KB</small></div><button title="复制 Markdown" @click="copyAttachment(attachment)">复制</button><button class="danger" title="删除图片" @click="removeAttachment(attachment)">×</button></article></div>
+      <div class="attachment-panel"><header><b>图片</b><span>{{ attachments.length }}</span></header><p v-if="!attachments.length">粘贴、拖入或从工具栏上传图片。</p><article v-for="attachment in attachments" :key="attachment.id"><img :src="attachmentPreviewUrls[attachment.id] || attachment.url" :alt="attachment.fileName" loading="lazy" decoding="async"><div><strong>{{ attachment.fileName }}</strong><small>{{ Math.ceil(attachment.byteSize / 1024) }} KB</small></div><button title="复制 Markdown" @click="copyAttachment(attachment)">复制</button><button class="danger" title="删除图片" @click="removeAttachment(attachment)">×</button></article></div>
     </aside>
   </section>
 </template>

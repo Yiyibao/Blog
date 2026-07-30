@@ -16,8 +16,8 @@ server {
 }
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
 
     server_name hxnf.top www.hxnf.top;
 
@@ -27,6 +27,20 @@ server {
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
     ssl_session_tickets off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types
+        text/plain
+        text/css
+        application/json
+        application/javascript
+        application/xml
+        application/manifest+json
+        image/svg+xml;
 
     root /opt/yubai-blog/current/frontend/client;
     index index.html;
@@ -108,8 +122,28 @@ server {
 
     location /assets/ {
         try_files $uri =404;
-        expires 7d;
+        expires 1y;
         add_header Cache-Control "public, immutable";
+    }
+
+    # Public assets with stable names may change between releases, so keep a
+    # shorter browser cache than Vite's content-hashed /assets/ files.
+    location ~* ^/(images|food|icons)/ {
+        try_files $uri =404;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # The app shell and service worker must revalidate so a deployment becomes
+    # visible immediately instead of being held behind a stale browser cache.
+    location = /index.html {
+        try_files $uri =404;
+        add_header Cache-Control "no-cache";
+    }
+
+    location = /sw.js {
+        try_files $uri =404;
+        add_header Cache-Control "no-cache";
     }
 
     location ~* \.map$ {

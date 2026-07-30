@@ -220,7 +220,7 @@ onUnmounted(() => {
         <p>{{ content.currentPost.excerpt }}</p>
         <div class="article-header-actions"><div class="tag-row"><RouterLink v-for="tag in content.currentPost.tags" :key="tag" class="tag-link" :to="`/tags/${encodeURIComponent(tag)}`"># {{ tag }}</RouterLink></div><button class="button secondary" type="button" @click="content.toggleFavorite(content.currentPost.slug); ui.showToast(content.favorites.includes(content.currentPost.slug) ? '已收藏' : '已取消收藏')">{{ content.favorites.includes(content.currentPost.slug) ? '★ 已收藏' : '☆ 收藏' }}</button></div>
       </header>
-      <div class="article-cover section-wrap" :style="{ '--post-color': content.currentPost.color }"><b>{{ content.currentPost.number }}</b><span>YUBAI / FIELD NOTE</span><i /></div>
+      <div class="article-cover section-wrap" :style="{ '--post-color': content.currentPost.color }"><b>{{ content.currentPost.number }}</b><span>HXNF / FIELD NOTE</span><i /></div>
       <!-- 4B：合集归属条 -->
       <RouterLink v-if="seriesRef" class="article-series-bar section-wrap" :to="`/series/${seriesRef.slug}`">
         <span class="series-icon" aria-hidden="true">≣</span>

@@ -62,7 +62,7 @@ public class GraphService {
     private static final Map<String, String> TYPE_COLORS = Map.of(
         TYPE_ROOT, "#F58CAB",
         TYPE_POST, "#4A9AF7",
-        TYPE_NOTE, "#67C890",
+        TYPE_NOTE, "#EF6C9A",
         TYPE_DISH, "#F4AA54",
         TYPE_SERIES, "#EF6C9A",
         TYPE_TAG, "#9B63E7"
@@ -70,8 +70,12 @@ public class GraphService {
 
     /** TAG nodes are emitted first so they survive any frontend node cap and stay layout hubs. */
     private static final List<String> TYPE_ORDER = List.of(TYPE_TAG, TYPE_SERIES, TYPE_POST, TYPE_NOTE, TYPE_DISH);
+    /**
+     * The overview is intentionally a three-branch tree. Tags and series remain
+     * available in the semantic/legacy graph, but do not become top-level visual branches.
+     */
     private static final List<String> PRESENTATION_TYPE_ORDER =
-        List.of(TYPE_POST, TYPE_NOTE, TYPE_DISH, TYPE_SERIES, TYPE_TAG);
+        List.of(TYPE_POST, TYPE_NOTE, TYPE_DISH);
 
     private static final Comparator<GraphNode> NODE_ORDER =
         Comparator.<GraphNode>comparingInt(node -> TYPE_ORDER.indexOf(node.type()))
@@ -182,18 +186,22 @@ public class GraphService {
             counts.merge(node.type(), 1, Integer::sum);
         }
 
+        var presentationNodes = graph.nodes().stream()
+            .filter(node -> PRESENTATION_TYPE_ORDER.contains(node.type()))
+            .toList();
+        var presentationNodeIds = presentationNodes.stream()
+            .map(GraphNode::id)
+            .collect(java.util.stream.Collectors.toSet());
+
         var visualNodes = new ArrayList<GraphOverviewResponse.VisualNode>();
         var visualEdges = new ArrayList<GraphOverviewResponse.VisualEdge>();
         visualNodes.add(new GraphOverviewResponse.VisualNode(
             "root-knowledge", "全站知识", TYPE_ROOT, "ROOT", null, null,
-            "知识在连接中生长", null, null, graph.nodes().size(), 100
+            "知识在连接中生长", null, null, presentationNodes.size(), 100
         ));
 
         for (var type : PRESENTATION_TYPE_ORDER) {
             int count = counts.getOrDefault(type, 0);
-            if (count == 0) {
-                continue;
-            }
             String hubId = hubId(type);
             visualNodes.add(new GraphOverviewResponse.VisualNode(
                 hubId, TYPE_LABELS.get(type), type, "GROUP", "root-knowledge", null,
@@ -204,7 +212,7 @@ public class GraphService {
             ));
         }
 
-        for (var node : graph.nodes()) {
+        for (var node : presentationNodes) {
             int degree = degrees.getOrDefault(node.id(), 0);
             String groupId = hubId(node.type());
             visualNodes.add(new GraphOverviewResponse.VisualNode(
@@ -218,39 +226,39 @@ public class GraphService {
         }
 
         for (var edge : graph.edges()) {
-            visualEdges.add(new GraphOverviewResponse.VisualEdge(
-                edge.source(), edge.target(), "RELATION", 0.42
-            ));
+            if (presentationNodeIds.contains(edge.source()) && presentationNodeIds.contains(edge.target())) {
+                visualEdges.add(new GraphOverviewResponse.VisualEdge(
+                    edge.source(), edge.target(), "RELATION", 0.42
+                ));
+            }
         }
 
         var legend = PRESENTATION_TYPE_ORDER.stream()
-            .filter(type -> counts.getOrDefault(type, 0) > 0)
             .map(type -> new GraphOverviewResponse.LegendItem(
-                type, TYPE_LABELS.get(type), TYPE_COLORS.get(type), counts.get(type)
+                type, TYPE_LABELS.get(type), TYPE_COLORS.get(type), counts.getOrDefault(type, 0)
             ))
             .toList();
 
-        var lastUpdated = graph.nodes().stream()
+        var lastUpdated = presentationNodes.stream()
             .map(GraphNode::updatedAt)
             .filter(java.util.Objects::nonNull)
             .max(Comparator.naturalOrder())
             .orElse(null);
 
-        String recommendedCenter = graph.nodes().stream()
+        String recommendedCenter = presentationNodes.stream()
             .max(Comparator
                 .comparingInt((GraphNode node) -> degrees.getOrDefault(node.id(), 0))
-                .thenComparingInt(node -> TYPE_TAG.equals(node.type()) ? 1 : 0)
                 .thenComparing(GraphNode::id, Comparator.reverseOrder()))
             .map(GraphNode::id)
             .orElse("root-knowledge");
 
         var stats = new GraphOverviewResponse.Stats(
-            graph.nodes().size(),
+            presentationNodes.size(),
             visualNodes.size(),
-            graph.edges().size(),
+            visualEdges.size(),
             lastUpdated,
             recommendedCenter,
-            graph.nodes().size() > LARGE_GRAPH_THRESHOLD
+            presentationNodes.size() > LARGE_GRAPH_THRESHOLD
         );
 
         return new GraphOverviewResponse(

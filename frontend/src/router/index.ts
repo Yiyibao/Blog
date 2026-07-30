@@ -1,56 +1,33 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { defineAsyncComponent } from 'vue'
-import AdminLoginPage from '../pages/AdminLoginPage.vue'
-import NotFoundPage from '../pages/NotFoundPage.vue'
 import { useAuthStore } from '../stores/auth'
 import { refreshSession } from '../api/admin'
 import { Capabilities, type Capability } from '../utils/capabilities'
 
-const HomePage = defineAsyncComponent(() => import('../pages/HomePage.vue'))
-const ArticlesPage = defineAsyncComponent(() => import('../pages/ArticlesPage.vue'))
-const ArticlePage = defineAsyncComponent(() => import('../pages/ArticlePage.vue'))
-const AboutPage = defineAsyncComponent(() => import('../pages/AboutPage.vue'))
-const NotesPage = defineAsyncComponent(() => import('../pages/NotesPage.vue'))
-const ArchivePage = defineAsyncComponent(() => import('../pages/ArchivePage.vue'))
-const RecipesPage = defineAsyncComponent(() => import('../pages/RecipesPage.vue'))
-const AdminDashboardPage = defineAsyncComponent(() => import('../pages/AdminDashboardPage.vue'))
-const AdminNotesPage = defineAsyncComponent(() => import('../pages/AdminNotesPage.vue'))
-const AdminAiPage = defineAsyncComponent(() => import('../pages/AdminAiPage.vue'))
-const AdminAiProvidersPage = defineAsyncComponent(() => import('../pages/AdminAiProvidersPage.vue'))
-const AdminLibraryPage = defineAsyncComponent(() => import('../pages/AdminLibraryPage.vue'))
-const AdminSeriesPage = defineAsyncComponent(() => import('../pages/AdminSeriesPage.vue'))
-const AdminAttachmentsPage = defineAsyncComponent(() => import('../pages/AdminAttachmentsPage.vue'))
-const SeriesPage = defineAsyncComponent(() => import('../pages/SeriesPage.vue'))
-const SeriesDetailPage = defineAsyncComponent(() => import('../pages/SeriesDetailPage.vue'))
-const TagPage = defineAsyncComponent(() => import('../pages/TagPage.vue'))
-const LoginPage = defineAsyncComponent(() => import('../pages/LoginPage.vue'))
-const AccountPage = defineAsyncComponent(() => import('../pages/AccountPage.vue'))
-
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'home', component: HomePage },
-    { path: '/articles', name: 'articles', component: ArticlesPage },
-    { path: '/articles/:slug', name: 'article', component: ArticlePage },
-    { path: '/about', name: 'about', component: AboutPage },
+    { path: '/', name: 'home', component: () => import('../pages/HomePage.vue') },
+    { path: '/articles', name: 'articles', component: () => import('../pages/ArticlesPage.vue') },
+    { path: '/articles/:slug', name: 'article', component: () => import('../pages/ArticlePage.vue') },
+    { path: '/about', name: 'about', component: () => import('../pages/AboutPage.vue') },
     // L-16/D-17：学习笔记对游客真隐藏——需登录（任意角色），深链未登录会被送去 /login?next= 接续
-    { path: '/notes', name: 'notes', component: NotesPage, meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
-    { path: '/login', name: 'login', component: LoginPage },
-    { path: '/account', name: 'account', component: AccountPage, meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
-    { path: '/admin/login', name: 'admin-login', component: AdminLoginPage },
-    { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
-    { path: '/admin/notes', name: 'admin-notes', component: AdminNotesPage, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
-    { path: '/admin/ai', name: 'admin-ai', component: AdminAiPage, meta: { requiresAuth: true, capability: Capabilities.AI_USAGE } },
-    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: AdminAiProvidersPage, meta: { requiresAuth: true, capability: Capabilities.AI_MANAGE } },
-    { path: '/admin/library', name: 'admin-library', component: AdminLibraryPage, meta: { requiresAuth: true, capability: Capabilities.LIBRARY_MANAGE } },
-    { path: '/admin/series', name: 'admin-series', component: AdminSeriesPage, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
-    { path: '/admin/attachments', name: 'admin-attachments', component: AdminAttachmentsPage, meta: { requiresAuth: true, capability: Capabilities.ATTACHMENTS_MANAGE } },
-    { path: '/series', name: 'series', component: SeriesPage },
-    { path: '/series/:slug', name: 'series-detail', component: SeriesDetailPage },
-    { path: '/tags/:tag', name: 'tag', component: TagPage },
-    { path: '/archive', name: 'archive', component: ArchivePage },
-    { path: '/recipes', name: 'recipes', component: RecipesPage },
-    { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage },
+    { path: '/notes', name: 'notes', component: () => import('../pages/NotesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
+    { path: '/login', name: 'login', component: () => import('../pages/LoginPage.vue') },
+    { path: '/account', name: 'account', component: () => import('../pages/AccountPage.vue'), meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
+    { path: '/admin/login', name: 'admin-login', component: () => import('../pages/AdminLoginPage.vue') },
+    { path: '/admin', name: 'admin', component: () => import('../pages/AdminDashboardPage.vue'), meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
+    { path: '/admin/notes', name: 'admin-notes', component: () => import('../pages/AdminNotesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
+    { path: '/admin/ai', name: 'admin-ai', component: () => import('../pages/AdminAiPage.vue'), meta: { requiresAuth: true, capability: Capabilities.AI_USAGE } },
+    { path: '/admin/ai/providers', name: 'admin-ai-providers', component: () => import('../pages/AdminAiProvidersPage.vue'), meta: { requiresAuth: true, capability: Capabilities.AI_MANAGE } },
+    { path: '/admin/library', name: 'admin-library', component: () => import('../pages/AdminLibraryPage.vue'), meta: { requiresAuth: true, capability: Capabilities.LIBRARY_MANAGE } },
+    { path: '/admin/series', name: 'admin-series', component: () => import('../pages/AdminSeriesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
+    { path: '/admin/attachments', name: 'admin-attachments', component: () => import('../pages/AdminAttachmentsPage.vue'), meta: { requiresAuth: true, capability: Capabilities.ATTACHMENTS_MANAGE } },
+    { path: '/series', name: 'series', component: () => import('../pages/SeriesPage.vue') },
+    { path: '/series/:slug', name: 'series-detail', component: () => import('../pages/SeriesDetailPage.vue') },
+    { path: '/tags/:tag', name: 'tag', component: () => import('../pages/TagPage.vue') },
+    { path: '/archive', name: 'archive', component: () => import('../pages/ArchivePage.vue') },
+    { path: '/recipes', name: 'recipes', component: () => import('../pages/RecipesPage.vue') },
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('../pages/NotFoundPage.vue') },
   ],
   scrollBehavior: (_to, _from, savedPosition) => savedPosition ?? { top: 0 },
 })

@@ -57,6 +57,11 @@ async function applyHeadingIds() {
   await nextTick()
   const headings = host.value?.querySelectorAll('h2') ?? []
   headings.forEach((heading, index) => heading.setAttribute('id', `h-${index}`))
+  const images = host.value?.querySelectorAll('img') ?? []
+  images.forEach((image) => {
+    image.setAttribute('loading', 'lazy')
+    image.setAttribute('decoding', 'async')
+  })
   emit('rendered')
 }
 
