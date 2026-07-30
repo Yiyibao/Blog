@@ -1,22 +1,46 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchGraphNodes } from '../api/content'
+import {
+  fetchGraphOverview,
+  fetchGraphNodes,
+  type GraphOverview,
+  type GraphOverviewLegendItem,
+  type GraphOverviewStats,
+} from '../api/content'
 import { useGraphSubgraph } from '../composables/useGraphSubgraph'
+import { useGraphViewport } from '../composables/useGraphViewport'
+import { computeGardenLayout, type VisualNode } from '../composables/useGraphLayout'
+
+import GraphCanvas from './knowledge-graph/GraphCanvas.vue'
+import GraphToolbar from './knowledge-graph/GraphToolbar.vue'
+import GraphSidebar from './knowledge-graph/GraphSidebar.vue'
+import GraphSearch from './knowledge-graph/GraphSearch.vue'
+import GraphMiniMap from './knowledge-graph/GraphMiniMap.vue'
+import GraphSelectionPanel from './knowledge-graph/GraphSelectionPanel.vue'
 
 export interface GraphNode {
   id: string
   label: string
-  type: 'POST' | 'NOTE' | 'DISH' | 'TAG' | 'SERIES'
+  type: 'POST' | 'NOTE' | 'DISH' | 'TAG' | 'SERIES' | 'ROOT' | string
   url?: string | null
   category?: string
   summary?: string
+  kind?: 'ROOT' | 'GROUP' | 'CONTENT'
+  groupId?: string | null
+  subtitle?: string | null
+  imageUrl?: string | null
+  updatedAt?: string | null
+  degree?: number
+  importance?: number
 }
 
 export interface GraphEdge {
   source: string
   target: string
+  kind?: 'STRUCTURE' | 'RELATION'
+  strength?: number
 }
 
 const props = withDefaults(
@@ -38,14 +62,20 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const isFullscreen = ref(false)
-const nodes = ref<GraphNode[]>([])
-const edges = ref<GraphEdge[]>([])
+const containerRef = ref<HTMLElement | null>(null)
+
+// Data state
+const overview = ref<GraphOverview | null>(null)
+const rawNodes = ref<GraphNode[]>([])
+const rawEdges = ref<GraphEdge[]>([])
 const loading = ref(false)
 const loadError = ref('')
+
 const selectedNodeId = ref<string | null>(null)
 const hoveredNodeId = ref<string | null>(null)
+const activeTypeFilter = ref<string>('')
 
+// Subgraph & Local Mode composable
 const {
   subgraphLoading,
   subgraphError,
@@ -58,71 +88,113 @@ const {
   autoLocalSubgraph,
 } = useGraphSubgraph()
 
-const initialLoadDone = ref(false)
-const expandedFromIds = ref(new Set<string>())
+// Viewport composable
+const BASE_W = 1000
+const BASE_H = 680
+const {
+  zoom,
+  panX,
+  panY,
+  isFullscreen,
+  viewBox,
+  zoomBy,
+  resetView,
+  centerOn,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onWheel,
+  toggleFullscreen,
+} = useGraphViewport(BASE_W, BASE_H, containerRef)
 
-// Maximum nodes to display for clarity
-const MAX_DISPLAY_NODES = 40
-
-// L-13：平移/缩放视窗（viewBox 驱动，零依赖）；reduced-motion 用户仍可用（非动画，是导航）
-const BASE_W = 800
-const BASE_H = 480
-const zoom = ref(1)
-const panX = ref(0)
-const panY = ref(0)
-const viewBox = computed(() => {
-  const w = BASE_W / zoom.value
-  const h = BASE_H / zoom.value
-  const x = (BASE_W - w) / 2 + panX.value
-  const y = (BASE_H - h) / 2 + panY.value
-  return `${x} ${y} ${w} ${h}`
+// Compute Garden Layout
+const gardenLayout = computed(() => {
+  return computeGardenLayout(
+    rawNodes.value,
+    rawEdges.value,
+    BASE_W,
+    BASE_H
+  )
 })
 
-function zoomBy(factor: number) {
-  zoom.value = Math.min(3, Math.max(0.6, zoom.value * factor))
-}
+const visibleNodesList = computed(() => {
+  let list = gardenLayout.value.nodesList
+  if (activeTypeFilter.value) {
+    list = list.filter((n) => n.kind === 'ROOT' || n.kind === 'GROUP' || n.type === activeTypeFilter.value)
+  }
+  return list
+})
 
-function resetView() {
-  zoom.value = 1
-  panX.value = 0
-  panY.value = 0
-}
+const visibleEdgesList = computed(() => {
+  const visibleIds = new Set(visibleNodesList.value.map((n) => n.id))
+  return gardenLayout.value.edgesList.filter(
+    (e) => visibleIds.has(e.source) && visibleIds.has(e.target)
+  )
+})
 
-let dragState: { startX: number; startY: number; panX: number; panY: number } | null = null
+// Neighbor highlighting calculation
+const neighborNodeIds = computed(() => {
+  const targetId = selectedNodeId.value || hoveredNodeId.value
+  if (!targetId) return new Set<string>()
+  const set = new Set<string>([targetId])
+  rawEdges.value.forEach((e) => {
+    if (e.source === targetId) set.add(e.target)
+    if (e.target === targetId) set.add(e.source)
+  })
+  return set
+})
 
-function onPointerDown(event: PointerEvent) {
-  // 节点自身可点击/可拖出选中——仅空白处按下才开始平移
-  if ((event.target as Element).closest('.graph-node')) return
-  dragState = { startX: event.clientX, startY: event.clientY, panX: panX.value, panY: panY.value }
-  ;(event.currentTarget as Element).setPointerCapture(event.pointerId)
-}
+const selectedVisualNode = computed(() => {
+  if (!selectedNodeId.value) return null
+  return gardenLayout.value.nodesMap.get(selectedNodeId.value) || null
+})
 
-function onPointerMove(event: PointerEvent) {
-  if (!dragState) return
-  const scale = 1 / zoom.value
-  panX.value = dragState.panX - (event.clientX - dragState.startX) * scale
-  panY.value = dragState.panY - (event.clientY - dragState.startY) * scale
-}
+// Legend & Stats calculation
+const legendItems = computed<GraphOverviewLegendItem[]>(() => {
+  if (overview.value?.legend && overview.value.legend.length > 0) {
+    return overview.value.legend
+  }
+  // Fallback count from current rawNodes
+  const counts: Record<string, number> = {}
+  rawNodes.value.forEach((n) => {
+    if (n.kind !== 'ROOT' && n.kind !== 'GROUP') {
+      counts[n.type] = (counts[n.type] || 0) + 1
+    }
+  })
+  return [
+    { type: 'POST', label: '文章', color: '#3b82f6', count: counts['POST'] || 0 },
+    { type: 'NOTE', label: '学习笔记', color: '#10b981', count: counts['NOTE'] || 0 },
+    { type: 'DISH', label: '美食菜谱', color: '#f59e0b', count: counts['DISH'] || 0 },
+    { type: 'SERIES', label: '合集', color: '#ec4899', count: counts['SERIES'] || 0 },
+    { type: 'TAG', label: '标签', color: '#8b5cf6', count: counts['TAG'] || 0 },
+  ]
+})
 
-function onPointerUp() {
-  dragState = null
-}
+const statsData = computed<GraphOverviewStats | null>(() => {
+  if (overview.value?.stats) {
+    return overview.value.stats
+  }
+  return {
+    contentNodeCount: rawNodes.value.filter((n) => n.kind !== 'ROOT' && n.kind !== 'GROUP').length,
+    visualNodeCount: rawNodes.value.length,
+    relationCount: rawEdges.value.length,
+    lastUpdatedAt: null,
+    recommendedCenterId: '',
+    localModeRecommended: rawNodes.value.length > 300,
+  }
+})
 
-function onWheel(event: WheelEvent) {
-  zoomBy(event.deltaY < 0 ? 1.12 : 1 / 1.12)
-}
-
+// Load graph data
 async function loadGraphData() {
   if (props.initialNodes && props.initialNodes.length > 0) {
-    nodes.value = props.initialNodes
-    edges.value = props.initialEdges
-    initialLoadDone.value = true
-    saveSnapshot(nodes.value, edges.value)
-    if (nodes.value.length > 300) {
-      const result = await autoLocalSubgraph(nodes.value, edges.value)
+    rawNodes.value = props.initialNodes
+    rawEdges.value = props.initialEdges || []
+    saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+    if (rawNodes.value.length > 300) {
+      const result = await autoLocalSubgraph(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
       if (result) {
-        nodes.value = result.nodes
-        edges.value = result.edges
+        rawNodes.value = result.nodes as GraphNode[]
+        rawEdges.value = result.edges as GraphEdge[]
       }
     }
     return
@@ -131,156 +203,47 @@ async function loadGraphData() {
   loading.value = true
   loadError.value = ''
   try {
-    const data = await fetchGraphNodes()
-    const fullNodes: GraphNode[] = data.nodes || []
-    const fullEdges: GraphEdge[] = data.edges || []
-    saveSnapshot(fullNodes, fullEdges)
+    // Try V2 Overview API first
+    try {
+      const data = await fetchGraphOverview()
+      overview.value = data
+      rawNodes.value = data.nodes as GraphNode[]
+      rawEdges.value = data.edges as GraphEdge[]
+      saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
 
-    if (fullNodes.length > 300) {
-      const result = await autoLocalSubgraph(fullNodes, fullEdges)
-      if (result) {
-        nodes.value = result.nodes
-        edges.value = result.edges
-      } else {
-        nodes.value = fullNodes
-        edges.value = fullEdges
+      if (data.stats.localModeRecommended || data.nodes.length > 300) {
+        const result = await autoLocalSubgraph(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+        if (result) {
+          rawNodes.value = result.nodes as GraphNode[]
+          rawEdges.value = result.edges as GraphEdge[]
+        }
       }
-    } else {
-      nodes.value = fullNodes
-      edges.value = fullEdges
+    } catch {
+      // Fallback to legacy GET /api/v1/graph/nodes
+      const legacy = await fetchGraphNodes()
+      rawNodes.value = (legacy.nodes || []) as GraphNode[]
+      rawEdges.value = (legacy.edges || []) as GraphEdge[]
+      saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+
+      if (rawNodes.value.length > 300) {
+        const result = await autoLocalSubgraph(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+        if (result) {
+          rawNodes.value = result.nodes as GraphNode[]
+          rawEdges.value = result.edges as GraphEdge[]
+        }
+      }
     }
-    initialLoadDone.value = true
   } catch (cause) {
     loadError.value = axios.isAxiosError(cause) && cause.response
-      ? '关联图谱数据加载失败'
+      ? '数据加载失败'
       : '无法连接网络，图谱数据加载失败'
   } finally {
     loading.value = false
   }
 }
 
-watch(
-  () => props.initialNodes,
-  (newNodes) => {
-    if (newNodes && newNodes.length > 0) {
-      nodes.value = newNodes
-      edges.value = props.initialEdges || []
-      loadError.value = ''
-    }
-  },
-  { immediate: true }
-)
-
-const nodeDegree = computed(() => {
-  const degree = new Map<string, number>()
-  edges.value.forEach((edge) => {
-    degree.set(edge.source, (degree.get(edge.source) || 0) + 1)
-    degree.set(edge.target, (degree.get(edge.target) || 0) + 1)
-  })
-  return degree
-})
-
-// L-13/D-15：分类筛选整体移除，仅保留数量上限与节点点击驱动的关联交互
-// 5C：子图展开的节点（expandedFromIds）不受 MAX_DISPLAY_NODES 限制
-const filteredNodes = computed(() => {
-  const tags = nodes.value
-    .filter((node) => node.type === 'TAG')
-    .sort((a, b) => (nodeDegree.value.get(b.id) || 0) - (nodeDegree.value.get(a.id) || 0) || a.id.localeCompare(b.id))
-  const content = nodes.value
-    .filter((node) => node.type !== 'TAG')
-    .sort((a, b) => a.id.localeCompare(b.id))
-  const capped = [...tags.slice(0, 12), ...content.slice(0, MAX_DISPLAY_NODES - 12)]
-  const cappedIds = new Set(capped.map((n) => n.id))
-  const expanded = nodes.value.filter((n) => expandedFromIds.value.has(n.id) && !cappedIds.has(n.id))
-  return [...capped, ...expanded]
-})
-
-const activeNodeIds = computed(() => new Set(filteredNodes.value.map((n) => n.id)))
-
-const filteredEdges = computed(() => {
-  return edges.value.filter((e) => activeNodeIds.value.has(e.source) && activeNodeIds.value.has(e.target))
-})
-
-/** L-13/D-16：零依赖确定性布局——环形基座 + id 哈希有机抖动（同一数据集坐标恒定，测试可复现）。 */
-function hashJitter(id: string, salt: number): number {
-  let h = salt
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
-  return ((h % 1000) / 1000 - 0.5) * 36
-}
-
-const positionedNodes = computed(() => {
-  const list = [...filteredNodes.value].sort((a, b) => {
-    const typeOrder: Record<string, number> = { TAG: 1, SERIES: 2, POST: 3, NOTE: 4, DISH: 5 }
-    const diff = (typeOrder[a.type] || 9) - (typeOrder[b.type] || 9)
-    if (diff !== 0) return diff
-    return a.id.localeCompare(b.id)
-  })
-
-  const cx = BASE_W / 2
-  const cy = BASE_H / 2
-
-  const tagNodes = list.filter((n) => n.type === 'TAG')
-  const contentNodes = list.filter((n) => n.type !== 'TAG')
-
-  const map = new Map<string, GraphNode & { x: number; y: number; radius: number; order: number }>()
-
-  tagNodes.forEach((node, idx) => {
-    const total = tagNodes.length
-    const angle = total === 1 ? 0 : (idx / total) * Math.PI * 2 - Math.PI / 2
-    map.set(node.id, {
-      ...node,
-      x: cx + Math.cos(angle) * 90 + hashJitter(node.id, 7),
-      y: cy + Math.sin(angle) * 90 + hashJitter(node.id, 13),
-      radius: 18,
-      order: idx,
-    })
-  })
-
-  contentNodes.forEach((node, idx) => {
-    const total = contentNodes.length
-    const angle = total === 1 ? 0 : (idx / total) * Math.PI * 2 - Math.PI / 2
-    const radius = 175 + (idx % 2) * 45
-    map.set(node.id, {
-      ...node,
-      x: cx + Math.cos(angle) * radius + hashJitter(node.id, 7),
-      y: cy + Math.sin(angle) * radius + hashJitter(node.id, 13),
-      radius: 20,
-      order: tagNodes.length + idx,
-    })
-  })
-
-  return map
-})
-
-const activeHighlightId = computed(() => selectedNodeId.value || hoveredNodeId.value)
-
-const neighborNodeIds = computed(() => {
-  if (!activeHighlightId.value) return new Set<string>()
-  const targetId = activeHighlightId.value
-  const set = new Set<string>([targetId])
-  edges.value.forEach((e) => {
-    if (e.source === targetId) set.add(e.target)
-    if (e.target === targetId) set.add(e.source)
-  })
-  return set
-})
-
-const selectedNode = computed(() => {
-  if (!selectedNodeId.value) return null
-  return nodes.value.find((n) => n.id === selectedNodeId.value) || null
-})
-
-function getNodeColor(type: GraphNode['type']): string {
-  switch (type) {
-    case 'POST': return '#3b82f6'
-    case 'NOTE': return '#10b981'
-    case 'DISH': return '#f59e0b'
-    case 'TAG': return '#8b5cf6'
-    case 'SERIES': return '#ec4899'
-  }
-}
-
-function handleNodeClick(node: GraphNode) {
+// Handlers
+function handleSelectNode(node: VisualNode) {
   if (selectedNodeId.value === node.id) {
     if (node.type === 'TAG') emit('selectTag', '')
     selectedNodeId.value = null
@@ -288,7 +251,7 @@ function handleNodeClick(node: GraphNode) {
     return
   }
   selectedNodeId.value = node.id
-  emit('selectNode', node)
+  emit('selectNode', node as unknown as GraphNode)
 
   if (node.type === 'TAG') {
     const tagText = node.label.replace(/^#/, '')
@@ -296,288 +259,240 @@ function handleNodeClick(node: GraphNode) {
   }
 }
 
+function handleDblClickNode(node: VisualNode) {
+  if (node.kind !== 'CONTENT') return
+  selectedNodeId.value = node.id
+  void doExpandRelations()
+}
+
 function clearSelection() {
-  if (selectedNode.value?.type === 'TAG') emit('selectTag', '')
+  if (selectedVisualNode.value?.type === 'TAG') emit('selectTag', '')
   selectedNodeId.value = null
   emit('selectNode', null)
 }
 
+function handleSearchSelect(node: VisualNode) {
+  handleSelectNode(node)
+  centerOn(node.x, node.y, 1.3)
+}
+
 function handleOpenContent() {
-  if (selectedNode.value && selectedNode.value.url && selectedNode.value.type !== 'TAG') {
-    void router.push(selectedNode.value.url)
+  if (selectedVisualNode.value?.url && selectedVisualNode.value.type !== 'TAG') {
+    void router.push(selectedVisualNode.value.url)
   }
 }
 
 async function doExpandRelations() {
   if (!selectedNodeId.value) return
-  const result = await expandSubgraph(selectedNodeId.value, 2, nodes.value, edges.value)
+  const result = await expandSubgraph(
+    selectedNodeId.value,
+    2,
+    rawNodes.value as unknown as GraphNode[],
+    rawEdges.value as unknown as GraphEdge[]
+  )
   if (result) {
-    const beforeIds = new Set(nodes.value.map((n) => n.id))
-    const newIds = new Set<string>()
-    for (const n of result.nodes) {
-      if (!beforeIds.has(n.id)) newIds.add(n.id)
-    }
-    expandedFromIds.value = newIds
-    nodes.value = result.nodes
-    edges.value = result.edges
+    rawNodes.value = result.nodes as GraphNode[]
+    rawEdges.value = result.edges as GraphEdge[]
   }
 }
 
 async function doReturnToOverview() {
   const snapshot = restoreOverview()
   if (snapshot) {
-    nodes.value = snapshot.nodes
-    edges.value = snapshot.edges
-    expandedFromIds.value = new Set()
+    rawNodes.value = snapshot.nodes as GraphNode[]
+    rawEdges.value = snapshot.edges as GraphEdge[]
     resetView()
   }
 }
 
-async function retrySubgraph() {
-  subgraphError.value = ''
-  await doExpandRelations()
+async function handleToggleFullscreen() {
+  await toggleFullscreen()
+  resetView()
+  requestAnimationFrame(resetView)
 }
 
-function handleNodeDblClick(node: GraphNode) {
-  selectedNodeId.value = node.id
-  void doExpandRelations()
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    clearSelection()
+  }
 }
 
-const ariaStatusText = computed(() => {
-  if (subgraphLoading.value) return '正在展开关联节点…'
-  if (subgraphError.value) return `关联展开失败：${subgraphError.value}`
-  if (localMode.value) return `已自动切换至局部图谱模式，聚焦 ${localModeCenter.value}`
-  return ''
-})
+watch(
+  () => props.initialNodes,
+  (newNodes) => {
+    if (newNodes && newNodes.length > 0) {
+      rawNodes.value = newNodes
+      rawEdges.value = props.initialEdges || []
+      loadError.value = ''
+    }
+  },
+  { immediate: true }
+)
 
-function toggleFullscreen() {
-  isFullscreen.value = !isFullscreen.value
-}
-
-onMounted(() => {
-  void loadGraphData()
-})
-
-watch([() => props.selectedRelation, nodes], ([relation]) => {
+watch([() => props.selectedRelation, rawNodes], ([relation]) => {
   const normalized = relation.trim().toLocaleLowerCase()
   if (!normalized) {
-    if (selectedNode.value?.type === 'TAG') selectedNodeId.value = null
+    if (selectedVisualNode.value?.type === 'TAG') selectedNodeId.value = null
     return
   }
-  const matchingTag = nodes.value.find((node) => node.type === 'TAG'
+  const matchingTag = rawNodes.value.find((node) => node.type === 'TAG'
     && node.label.replace(/^#/, '').trim().toLocaleLowerCase() === normalized)
   selectedNodeId.value = matchingTag?.id || null
 }, { immediate: true })
 
-watch(filteredNodes, (visibleNodes) => {
-  if (selectedNodeId.value && !visibleNodes.some((node) => node.id === selectedNodeId.value)) {
-    selectedNodeId.value = null
-    emit('selectNode', null)
-  }
+onMounted(() => {
+  void loadGraphData()
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
 <template>
-  <div class="knowledge-graph-container" :class="{ 'is-fullscreen': isFullscreen }">
-    <header class="graph-toolbar">
-      <div class="graph-title">
-        <span class="graph-badge">✦ KNOWLEDGE GRAPH</span>
-        <h3>全站知识关联图谱</h3>
+  <div
+    ref="containerRef"
+    class="knowledge-graph-v2-container"
+    :class="{ 'is-fullscreen': isFullscreen }"
+  >
+    <!-- Header Toolbar Bar -->
+    <header class="graph-header">
+      <div class="header-title">
+        <span class="graph-badge">✦ KNOWLEDGE GRAPH V2</span>
+        <h2>全站知识关联图谱</h2>
       </div>
-      <div class="graph-filters">
-        <!-- L-13：分类筛选移除；平移/缩放控制取而代之 -->
-        <button type="button" class="view-ctrl-btn" aria-label="放大" @click="zoomBy(1.25)">＋</button>
-        <button type="button" class="view-ctrl-btn" aria-label="缩小" @click="zoomBy(1 / 1.25)">－</button>
-        <button type="button" class="view-ctrl-btn" aria-label="复位视图" @click="resetView">⟳</button>
-        <button type="button" class="fullscreen-btn" :title="isFullscreen ? '退出全屏' : '全屏浏览'" @click="toggleFullscreen">
-          {{ isFullscreen ? '⤢ 退出全屏' : '⤢ 全屏罗盘' }}
-        </button>
-        <button
-          v-if="subgraphActive"
-          type="button"
-          class="return-overview-btn"
-          aria-label="返回全图概览"
-          @click="doReturnToOverview"
-        >
-          ← 全图概览
-        </button>
-      </div>
+
+      <GraphToolbar
+        :is-fullscreen="isFullscreen"
+        :local-mode="localMode"
+        :subgraph-active="subgraphActive"
+        @zoom-in="zoomBy(1.25)"
+        @zoom-out="zoomBy(1 / 1.25)"
+        @reset="resetView"
+        @toggle-fullscreen="handleToggleFullscreen"
+        @return-overview="doReturnToOverview"
+      />
     </header>
 
-    <!-- 5C：aria-live 状态宣告（加载/失败/自动局部模式） -->
-    <div aria-live="polite" aria-atomic="true" class="sr-only">
-      {{ ariaStatusText }}
-    </div>
-
-    <div v-if="localMode" class="graph-local-mode" role="status">
+    <!-- Status Notice Bar -->
+    <div v-if="localMode" class="status-notice local-notice graph-local-mode" role="status">
       <span>局部图谱模式 · 聚焦「{{ localModeCenter }}」</span>
-      <button type="button" class="return-overview-btn-inline" @click="doReturnToOverview">返回全图</button>
+      <button type="button" class="btn-text return-overview-btn-inline" @click="doReturnToOverview">返回全图</button>
     </div>
 
-    <div v-if="subgraphLoading && !loading" class="graph-expanding" role="status">
+    <div v-if="subgraphLoading && !loading" class="status-notice info-notice" role="status">
       <span>正在展开关联节点…</span>
     </div>
 
-    <div v-if="subgraphError" class="graph-subgraph-error" role="alert">
-      <p>{{ subgraphError }}</p>
-      <button type="button" class="button primary" @click="retrySubgraph">重试</button>
+    <div v-if="subgraphError" class="status-notice error-notice" role="alert">
+      <span>{{ subgraphError }}</span>
+      <button type="button" class="btn-text" @click="doExpandRelations">重试</button>
     </div>
 
-    <div v-if="loading" class="graph-state graph-loading" role="status">
-      <span>正在加载关联图谱…</span>
-    </div>
+    <!-- Main Workspace Layout -->
+    <div class="graph-body">
+      <!-- Left Sidebar -->
+      <GraphSidebar
+        :legend="legendItems"
+        :stats="statsData"
+        :active-type-filter="activeTypeFilter"
+        @filter-type="activeTypeFilter = activeTypeFilter === $event ? '' : $event"
+      />
 
-    <div v-else-if="loadError" class="graph-state graph-error" role="alert">
-      <p>{{ loadError }}</p>
-      <button class="button primary" type="button" @click="loadGraphData">重试</button>
-    </div>
+      <!-- Center Main Canvas Stage -->
+      <div class="canvas-stage glass-card">
+        <!-- Skeleton Loading State -->
+        <div v-if="loading" class="stage-state stage-loading" role="status">
+          <div class="skeleton-flower">🌸</div>
+          <span>正在生根发芽，载入全站知识图谱…</span>
+        </div>
 
-    <div v-else-if="filteredNodes.length === 0 && !loadError" class="graph-state graph-empty">
-      <p>暂无符合条件的关联节点。</p>
-    </div>
+        <!-- Error State -->
+        <div v-else-if="loadError" class="stage-state stage-error" role="alert">
+          <p>{{ loadError }}</p>
+          <button class="button primary" type="button" @click="loadGraphData">重试</button>
+        </div>
 
-    <div v-else class="svg-wrapper">
-      <svg
-        :viewBox="viewBox"
-        preserveAspectRatio="xMidYMid meet"
-        aria-label="知识关联图谱（可拖拽平移、滚轮缩放）"
-        class="graph-svg"
-        @pointerdown="onPointerDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
-        @wheel.prevent="onWheel"
-      >
-        <!-- Edges：入场描线动画（pathLength 归一化 dasharray） -->
-        <g class="graph-edges">
-          <line
-            v-for="(edge, idx) in filteredEdges"
-            :key="`edge-${edge.source}-${edge.target}`"
-            :x1="positionedNodes.get(edge.source)?.x"
-            :y1="positionedNodes.get(edge.source)?.y"
-            :x2="positionedNodes.get(edge.target)?.x"
-            :y2="positionedNodes.get(edge.target)?.y"
-            pathLength="1"
-            class="graph-edge"
-            :style="{ animationDelay: `${Math.min(idx * 18, 700) + 250}ms` }"
-            :class="{
-              highlighted: activeHighlightId && (edge.source === activeHighlightId || edge.target === activeHighlightId),
-              faded: activeHighlightId && !(edge.source === activeHighlightId || edge.target === activeHighlightId)
-            }"
+        <!-- Empty State -->
+        <div v-else-if="visibleNodesList.length === 0" class="stage-state stage-empty">
+          <p>暂无符合条件的关联节点。</p>
+        </div>
+
+        <!-- Interactive SVG Canvas -->
+        <template v-else>
+          <GraphCanvas
+            :nodes="visibleNodesList"
+            :edges="visibleEdgesList"
+            :view-box="viewBox"
+            :selected-node-id="selectedNodeId"
+            :hovered-node-id="hoveredNodeId"
+            :neighbor-node-ids="neighborNodeIds"
+            :base-width="BASE_W"
+            :base-height="BASE_H"
+            @select-node="handleSelectNode"
+            @dblclick-node="handleDblClickNode"
+            @hover-node="hoveredNodeId = $event"
+            @pointer-down="onPointerDown"
+            @pointer-move="onPointerMove"
+            @pointer-up="onPointerUp"
+            @wheel="onWheel"
           />
-        </g>
 
-        <!-- Nodes：transform 定位（布局变化平滑过渡）+ 错峰入场 + 轻微呼吸漂浮 -->
-        <g class="graph-nodes">
-          <g
-            v-for="[id, node] in positionedNodes"
-            :key="id"
-            class="graph-node"
-            :style="{ transform: `translate(${node.x}px, ${node.y}px)`, animationDelay: `${Math.min(node.order * 45, 900)}ms` }"
-            :class="{
-              selected: selectedNodeId === id,
-              highlighted: activeHighlightId && neighborNodeIds.has(id),
-              faded: activeHighlightId && !neighborNodeIds.has(id)
-            }"
-            tabindex="0"
-            role="button"
-            :aria-label="`${node.label} (${node.type})`"
-            @click="handleNodeClick(node)"
-            @dblclick="handleNodeDblClick(node)"
-            @mouseenter="hoveredNodeId = id"
-            @mouseleave="hoveredNodeId = null"
-            @keydown.enter.prevent="handleNodeClick(node)"
-            @keydown.space.prevent="handleNodeClick(node)"
-          >
-            <g class="node-float" :style="{ animationDelay: `${(node.order % 7) * -1.1}s` }">
-              <!-- 44x44 minimum touch/pointer target area -->
-              <circle r="22" fill="transparent" class="hit-target" />
+          <!-- Floating Search Box -->
+          <GraphSearch
+            :nodes="gardenLayout.nodesList"
+            class="floating-search"
+            @select="handleSearchSelect"
+          />
 
-              <!-- Selection ring -->
-              <circle
-                v-if="selectedNodeId === id"
-                :r="node.radius + 6"
-                fill="none"
-                stroke="var(--accent)"
-                stroke-width="2"
-                class="selection-ring"
-              />
+          <!-- Floating MiniMap -->
+          <GraphMiniMap
+            :nodes="gardenLayout.nodesList"
+            :zoom="zoom"
+            :pan-x="panX"
+            :pan-y="panY"
+            :base-width="BASE_W"
+            :base-height="BASE_H"
+            @pan-to="(x, y) => centerOn(x, y)"
+          />
 
-              <!-- Main Circle -->
-              <circle
-                :r="node.radius"
-                :fill="getNodeColor(node.type)"
-                class="node-circle"
-              />
-
-              <!-- Label -->
-              <text
-                :y="node.radius + 14"
-                text-anchor="middle"
-                class="node-label"
-              >
-                {{ node.label }}
-              </text>
-            </g>
-          </g>
-        </g>
-      </svg>
-
-      <!-- Selection Panel / Card -->
-      <div v-if="selectedNode" class="graph-selection-panel">
-        <div class="panel-content">
-          <span class="panel-type" :style="{ background: getNodeColor(selectedNode.type) }">
-            {{ selectedNode.type === 'POST' ? '文章' : selectedNode.type === 'NOTE' ? '笔记' : selectedNode.type === 'DISH' ? '菜谱' : selectedNode.type === 'SERIES' ? '合集' : '标签' }}
-          </span>
-          <strong class="panel-title">{{ selectedNode.label }}</strong>
-          <span v-if="selectedNode.category" class="panel-category">{{ selectedNode.category }}</span>
-        </div>
-        <div class="panel-actions">
-          <button
-            type="button"
-            class="expand-btn"
-            :disabled="subgraphLoading"
-            aria-label="展开两层关联"
-            @click="doExpandRelations"
-          >
-            展开两层关联
-          </button>
-          <button
-            v-if="selectedNode.url"
-            type="button"
-            class="open-content-btn"
-            @click="handleOpenContent"
-          >
-            {{ selectedNode.type === 'TAG' ? '打开标签页 ↗' : '打开内容 ↗' }}
-          </button>
-          <button type="button" class="close-panel-btn" @click="clearSelection">
-            关闭
-          </button>
-        </div>
-      </div>
-
-      <div class="canvas-legend">
-        <span><i style="background: #3b82f6;" /> 文章</span>
-        <span><i style="background: #10b981;" /> 学习笔记</span>
-        <span><i style="background: #f59e0b;" /> 美食菜谱</span>
-        <span><i style="background: #ec4899;" /> 合集</span>
-        <span><i style="background: #8b5cf6;" /> 标签</span>
+          <!-- Floating Selected Node Details Panel -->
+          <GraphSelectionPanel
+            v-if="selectedVisualNode"
+            :node="selectedVisualNode"
+            :subgraph-loading="subgraphLoading"
+            @expand="doExpandRelations"
+            @open="handleOpenContent"
+            @close="clearSelection"
+          />
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.knowledge-graph-container {
-  margin: 32px 0;
+.knowledge-graph-v2-container {
+  margin: 24px 0 40px 0;
   padding: 24px;
-  border-radius: 24px;
-  background: var(--surface-solid);
-  border: 1px solid var(--line-strong);
-  box-shadow: var(--shadow-md);
-  transition: opacity 0.2s ease, border-color 0.2s ease;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(255, 251, 245, 0.95), rgba(254, 242, 242, 0.85));
+  border: 1px solid var(--line, rgba(244, 63, 94, 0.12));
+  box-shadow: var(--shadow-md, 0 12px 32px rgba(244, 63, 94, 0.06));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: all 0.3s ease;
 }
-.knowledge-graph-container.is-fullscreen {
+
+:deep(.dark),
+[data-theme='dark'] .knowledge-graph-v2-container {
+  background: var(--surface-solid, #1e293b);
+  border-color: var(--line-strong, #334155);
+}
+
+.knowledge-graph-v2-container.is-fullscreen {
   position: fixed;
   inset: 0;
   z-index: 1300;
@@ -586,380 +501,116 @@ watch(filteredNodes, (visibleNodes) => {
   overflow: auto;
 }
 
-.graph-toolbar {
+.graph-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
 }
+
 .graph-badge {
-  font: 600 10px ui-monospace, Consolas, monospace;
-  color: var(--accent);
+  font: 700 10px ui-monospace, Consolas, monospace;
+  color: var(--accent, #f43f5e);
   letter-spacing: 0.15em;
   display: block;
 }
-.graph-title h3 {
-  margin: 2px 0 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--ink);
+
+.header-title h2 {
+  margin: 2px 0 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink, #1e293b);
 }
 
-.graph-filters {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-/* L-13：平移/缩放控制钮 */
-.view-ctrl-btn {
-  min-width: 44px;
-  min-height: 44px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 15px;
-  cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
-}
-.view-ctrl-btn:hover {
-  color: var(--ink);
-  border-color: var(--accent);
-}
-
-.fullscreen-btn {
-  min-height: 44px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.return-overview-btn {
-  min-height: 44px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.return-overview-btn-inline {
-  min-height: 44px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  margin-left: 12px;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-}
-
-.graph-state {
-  display: grid;
-  place-items: center;
-  min-height: 320px;
-  padding: 40px;
-  text-align: center;
-  color: var(--muted);
-}
-
-.graph-local-mode {
-  min-height: auto;
-  padding: 14px 20px;
-  flex-direction: row;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-radius: 12px;
-  margin-bottom: 12px;
-}
-
-.graph-expanding,
-.graph-subgraph-error {
-  min-height: auto;
-  padding: 14px 20px;
-  gap: 10px;
-}
-
-.graph-expanding {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.graph-subgraph-error {
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.graph-subgraph-error p {
-  margin: 0;
-}
-
-.graph-subgraph-error .button {
-  min-height: 36px;
-  font-size: 12px;
-  padding: 4px 14px;
-}
-
-.svg-wrapper {
-  position: relative;
-  width: 100%;
-  border-radius: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  overflow: hidden;
-}
-svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 500px;
-}
-
-.graph-svg {
-  cursor: grab;
-  touch-action: none;
-}
-.graph-svg:active {
-  cursor: grabbing;
-}
-
-/* L-13：连线入场描线（pathLength=1 使 dasharray 归一化），随后保持常规态 */
-.graph-edge {
-  stroke: var(--line-strong);
-  stroke-opacity: 0.4;
-  stroke-width: 1.5px;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: edge-draw 0.9s ease-out forwards;
-  transition: stroke 0.2s, stroke-opacity 0.2s, stroke-width 0.2s;
-}
-@keyframes edge-draw {
-  to { stroke-dashoffset: 0; }
-}
-.graph-edge.highlighted {
-  stroke: var(--accent);
-  stroke-opacity: 1;
-  stroke-width: 2.5px;
-}
-.graph-edge.faded {
-  stroke-opacity: 0.1;
-}
-
-/* L-13：节点 transform 定位——布局变化时平滑滑移；错峰浮现入场 */
-.graph-node {
-  cursor: pointer;
-  outline: none;
-  opacity: 0;
-  animation: node-enter 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
-  transition: opacity 0.25s, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes node-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.graph-node:focus-visible .node-circle {
-  stroke: var(--accent);
-  stroke-width: 3px;
-}
-.graph-node.faded {
-  opacity: 0.2;
-  animation: none;
-}
-
-/* L-13：持续的轻微呼吸漂浮（振幅 3px，非大幅循环），负延迟错相 */
-.node-float {
-  animation: node-float 7s ease-in-out infinite alternate;
-}
-@keyframes node-float {
-  from { transform: translateY(-3px); }
-  to { transform: translateY(3px); }
-}
-.graph-node:hover .node-circle,
-.graph-node.highlighted .node-circle {
-  filter: brightness(1.12);
-}
-
-.node-circle {
-  transition: stroke 0.2s, stroke-width 0.2s, filter 0.25s;
-}
-
-.node-label {
-  font-size: 12px;
-  font-weight: 500;
-  fill: var(--ink);
-  pointer-events: none;
-  user-select: none;
-}
-
-.graph-selection-panel {
-  position: absolute;
-  top: 16px;
-  right: 16px;
+.status-notice {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 12px 18px;
+  padding: 10px 16px;
   border-radius: 12px;
-  background: var(--surface-solid);
-  border: 1px solid var(--line-strong);
-  box-shadow: var(--shadow-md);
-  max-width: 380px;
-  z-index: 10;
+  font-size: 13px;
+  font-weight: 500;
 }
-.panel-content {
+
+.local-notice {
+  background: rgba(244, 63, 94, 0.1);
+  color: var(--accent, #f43f5e);
+}
+.info-notice {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+}
+.error-notice {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.btn-text {
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.graph-body {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.canvas-stage {
+  flex: 1;
+  position: relative;
+  min-height: 580px;
+  border-radius: 20px;
+  background: var(--surface, rgba(255, 255, 255, 0.7));
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.06));
+  overflow: hidden;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.stage-state {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.panel-type {
-  display: inline-block;
-  align-self: flex-start;
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-}
-.panel-title {
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  height: 100%;
+  min-height: 520px;
+  color: var(--muted, #64748b);
   font-size: 14px;
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.panel-category {
-  font-size: 11px;
-  color: var(--muted);
 }
 
-.panel-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.open-content-btn {
-  min-height: 44px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  background: var(--accent);
-  color: #fff;
-  border: 0;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
+.skeleton-flower {
+  font-size: 42px;
+  animation: pulse-flower 1.8s ease-in-out infinite alternate;
 }
 
-.expand-btn {
-  min-height: 44px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
+@keyframes pulse-flower {
+  from {
+    transform: scale(0.9) rotate(-5deg);
+  }
+  to {
+    transform: scale(1.1) rotate(5deg);
+  }
 }
 
-.expand-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.close-panel-btn {
-  min-height: 44px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.canvas-legend {
+.floating-search {
   position: absolute;
   bottom: 16px;
   left: 16px;
-  display: flex;
-  gap: 14px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: var(--surface-solid);
-  border: 1px solid var(--line);
-  backdrop-filter: blur(10px);
-  font-size: 12px;
-  color: var(--muted);
-}
-.canvas-legend span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.canvas-legend i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  z-index: 10;
 }
 
-/* L-13：reduced-motion 降级为静态布局——入场/呼吸/描线全部关闭，直接呈现终态 */
-@media (prefers-reduced-motion: reduce) {
-  .knowledge-graph-container,
-  .graph-edge,
-  .graph-node,
-  .node-circle {
-    transition: none !important;
-    animation: none !important;
+@media (max-width: 860px) {
+  .graph-body {
+    flex-direction: column;
   }
-  .graph-node {
-    opacity: 1;
+  .canvas-stage {
+    min-height: 480px;
   }
-  .graph-node.faded {
-    opacity: 0.2;
-  }
-  .graph-edge {
-    stroke-dashoffset: 0;
-  }
-  .node-float {
-    animation: none !important;
-  }
-}
-
-@media (max-width: 720px) {
-  .knowledge-graph-container { padding: 14px; border-radius: 16px; }
-  .graph-filters { gap: 4px; }
-  .filter-pill, .fullscreen-btn { flex: 1 1 auto; }
-  .graph-selection-panel { position: static; max-width: none; margin: 12px; flex-direction: column; align-items: stretch; }
-  .panel-actions { justify-content: flex-end; }
-  .canvas-legend { position: static; margin: 12px; flex-wrap: wrap; border-radius: 10px; }
 }
 </style>

@@ -15,7 +15,7 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  if (typeof config.url === 'string' && config.url.includes('/graph/nodes')) {
+  if (typeof config.url === 'string' && config.url.includes('/graph/')) {
     const authStore = useAuthStore()
     if (authStore.isAuthenticated && authStore.token) {
       config.headers.Authorization = `Bearer ${authStore.token}`
@@ -134,7 +134,57 @@ export function favoriteDish(slug: string) {
   return unwrap<DishFavoriteResult>(api.post(`/dishes/${encodeURIComponent(slug)}/favorite`))
 }
 
-// NF-7：以下三组接口原先在组件内裸 fetch，统一收编到 api 层（错误处理与 baseURL 一致化）
+export type GraphNodeKind = 'ROOT' | 'GROUP' | 'CONTENT'
+export type GraphEdgeKind = 'STRUCTURE' | 'RELATION'
+
+export interface GraphOverviewNode {
+  id: string
+  label: string
+  type: string
+  kind: GraphNodeKind
+  groupId: string | null
+  url: string | null
+  subtitle: string | null
+  imageUrl: string | null
+  updatedAt: string | null
+  degree: number
+  importance: number
+}
+
+export interface GraphOverviewEdge {
+  source: string
+  target: string
+  kind: GraphEdgeKind
+  strength: number
+}
+
+export interface GraphOverviewLegendItem {
+  type: string
+  label: string
+  color: string
+  count: number
+}
+
+export interface GraphOverviewStats {
+  contentNodeCount: number
+  visualNodeCount: number
+  relationCount: number
+  lastUpdatedAt: string | null
+  recommendedCenterId: string
+  localModeRecommended: boolean
+}
+
+export interface GraphOverview {
+  schemaVersion: string
+  stats: GraphOverviewStats
+  legend: GraphOverviewLegendItem[]
+  nodes: GraphOverviewNode[]
+  edges: GraphOverviewEdge[]
+}
+
+export function fetchGraphOverview() {
+  return unwrap<GraphOverview>(api.get('/graph/overview'))
+}
 
 export interface GraphApiNode {
   id: string

@@ -7,6 +7,7 @@ import KnowledgeGraph, { type GraphNode, type GraphEdge } from '../components/Kn
 
 const mockFetchGraphNodes = vi.fn()
 const mockFetchGraphSubgraph = vi.fn()
+const mockFetchGraphOverview = vi.fn()
 
 vi.mock('../api/content', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/content')>()
@@ -14,6 +15,7 @@ vi.mock('../api/content', async (importOriginal) => {
     ...actual,
     fetchGraphNodes: (...args: unknown[]) => mockFetchGraphNodes(...args),
     fetchGraphSubgraph: (...args: unknown[]) => mockFetchGraphSubgraph(...args),
+    fetchGraphOverview: (...args: unknown[]) => mockFetchGraphOverview(...args),
   }
 })
 
@@ -491,5 +493,182 @@ describe('Graph API Auth and Params', () => {
     await flushPromises()
 
     expect(mockFetchGraphSubgraph).toHaveBeenCalledWith('p1', 2)
+  })
+})
+
+describe('KnowledgeGraph V2 Suite', () => {
+  beforeEach(() => {
+    mockFetchGraphNodes.mockReset()
+    mockFetchGraphSubgraph.mockReset()
+    mockFetchGraphOverview.mockReset()
+  })
+
+  it('fetchGraphOverview calls /graph/overview URL endpoint', async () => {
+    setActivePinia(createPinia())
+    useAuthStore().clearSession()
+
+    const { fetchGraphOverview: realFetch } = await vi.importActual<typeof import('../api/content')>('../api/content')
+    let caught = false
+    try {
+      await realFetch()
+    } catch (err: unknown) {
+      caught = true
+      const axiosErr = err as { config?: { url?: string } }
+      expect(axiosErr.config?.url).toBe('/graph/overview')
+    }
+    expect(caught).toBe(true)
+  })
+
+  it('renders ROOT, GROUP, CONTENT nodes and sidebar legend counts', async () => {
+    const overviewSample = {
+      schemaVersion: '2.0',
+      stats: {
+        contentNodeCount: 3,
+        visualNodeCount: 9,
+        relationCount: 4,
+        lastUpdatedAt: '今天 10:42',
+        recommendedCenterId: 'p1',
+        localModeRecommended: false,
+      },
+      legend: [
+        { type: 'POST', label: '文章', color: '#3b82f6', count: 1 },
+        { type: 'NOTE', label: '学习笔记', color: '#10b981', count: 1 },
+        { type: 'DISH', label: '美食菜谱', color: '#f59e0b', count: 1 },
+        { type: 'SERIES', label: '合集', color: '#ec4899', count: 0 },
+        { type: 'TAG', label: '标签', color: '#8b5cf6', count: 0 },
+      ],
+      nodes: [
+        { id: 'hub-root', label: '全站知识', type: 'ROOT', kind: 'ROOT', groupId: null, url: null, subtitle: null, imageUrl: null, updatedAt: null, degree: 10, importance: 5 },
+        { id: 'hub-post', label: '文章', type: 'POST', kind: 'GROUP', groupId: 'hub-root', url: null, subtitle: null, imageUrl: null, updatedAt: null, degree: 5, importance: 4 },
+        { id: 'p1', label: 'Vue 3 架构进阶', type: 'POST', kind: 'CONTENT', groupId: 'hub-post', url: '/articles/vue-3', subtitle: null, imageUrl: null, updatedAt: null, degree: 2, importance: 3 },
+        { id: 'd1', label: '麻婆豆腐', type: 'DISH', kind: 'CONTENT', groupId: 'hub-dish', url: '/recipes?dish=mapo', subtitle: null, imageUrl: '/images/mapo.jpg', updatedAt: null, degree: 1, importance: 2 },
+      ],
+      edges: [
+        { source: 'hub-root', target: 'hub-post', kind: 'STRUCTURE', strength: 2 },
+        { source: 'hub-post', target: 'p1', kind: 'STRUCTURE', strength: 1 },
+      ],
+    }
+    mockFetchGraphOverview.mockResolvedValue(overviewSample)
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div>Home</div>' } }],
+    })
+    const wrapper = mount(KnowledgeGraph, {
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('全站知识关联图谱')
+    expect(wrapper.text()).toContain('麻婆豆腐')
+    expect(wrapper.findAll('.legend-item').length).toBe(5)
+  })
+
+  it('search matches node labels and selecting centers node', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div>Home</div>' } }],
+    })
+    const wrapper = mount(KnowledgeGraph, {
+      props: {
+        initialNodes: [
+          { id: 'p1', label: 'TypeScript 进阶技巧', type: 'POST' },
+        ],
+        initialEdges: [],
+      },
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    const searchInput = wrapper.find('.search-input')
+    expect(searchInput.exists()).toBe(true)
+
+    await searchInput.setValue('TypeScript')
+    await searchInput.trigger('input')
+    await flushPromises()
+
+    const resultItem = wrapper.find('.result-item')
+    expect(resultItem.exists()).toBe(true)
+    expect(resultItem.text()).toContain('TypeScript 进阶技巧')
+
+    await resultItem.trigger('mousedown')
+    await flushPromises()
+
+    expect(wrapper.find('.graph-selection-panel').exists()).toBe(true)
+    expect(wrapper.find('.panel-title').text()).toContain('TypeScript 进阶技巧')
+  })
+
+  it('handles image error fallback for dish nodes cleanly', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div>Home</div>' } }],
+    })
+    const wrapper = mount(KnowledgeGraph, {
+      props: {
+        initialNodes: [
+          { id: 'd1', label: '红烧肉', type: 'DISH', imageUrl: 'invalid-img.jpg' },
+        ],
+        initialEdges: [],
+      },
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    const img = wrapper.find('image')
+    if (img.exists()) {
+      await img.trigger('error')
+      await flushPromises()
+    }
+    expect(wrapper.find('g.graph-node').exists()).toBe(true)
+  })
+
+  it('cleans up event listeners and RAF on unmount without throwing errors', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div>Home</div>' } }],
+    })
+    const wrapper = mount(KnowledgeGraph, {
+      props: {
+        initialNodes: [{ id: 'p1', label: 'Test Node', type: 'POST' }],
+        initialEdges: [],
+      },
+      global: { plugins: [router] },
+    })
+    await flushPromises()
+
+    expect(() => wrapper.unmount()).not.toThrow()
+  })
+
+  it('garden layout is stable and does not invent empty group hubs', async () => {
+    const { computeGardenLayout } = await import('../composables/useGraphLayout')
+    const nodes = [
+      { id: 'root-knowledge', label: '全站知识', type: 'ROOT', kind: 'ROOT' as const },
+      { id: 'hub-post', label: '文章', type: 'POST', kind: 'GROUP' as const },
+      {
+        id: 'p-1',
+        label: '文章 A',
+        type: 'POST',
+        kind: 'CONTENT' as const,
+        groupId: 'hub-post',
+        importance: 16,
+      },
+    ]
+    const edges = [
+      { source: 'root-knowledge', target: 'hub-post', kind: 'STRUCTURE' as const, strength: 1 },
+      { source: 'hub-post', target: 'p-1', kind: 'STRUCTURE' as const, strength: 0.7 },
+    ]
+
+    const first = computeGardenLayout(nodes, edges)
+    const second = computeGardenLayout(nodes, edges)
+    const coordinates = (layout: typeof first) => layout.nodesList.map((node) => ({
+      id: node.id,
+      x: node.x,
+      y: node.y,
+    }))
+
+    expect(coordinates(first)).toEqual(coordinates(second))
+    expect(first.nodesMap.has('hub-post')).toBe(true)
+    expect(first.nodesMap.has('hub-note')).toBe(false)
+    expect(first.nodesMap.has('hub-series')).toBe(false)
   })
 })
