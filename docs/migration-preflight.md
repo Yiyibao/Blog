@@ -40,6 +40,26 @@ SELECT project_id, technology
 "
 ```
 
+## 隔离恢复预检
+
+使用生产备份创建临时数据库时，恢复对象必须归应用角色所有；仅执行
+`pg_restore --no-owner` 会让执行恢复的 `postgres` 成为表所有者，导致
+Flyway 在 `ALTER TABLE` 时以 `must be owner of table` 失败。
+
+```bash
+sudo -u postgres createdb --owner=yubai_app yubai_blog_preflight
+sudo -u postgres pg_restore \
+  --no-owner \
+  --role=yubai_app \
+  --dbname=yubai_blog_preflight \
+  /var/backups/yubai-blog/yubai_blog-<STAMP>.dump
+```
+
+随后用独立端口和明确覆盖的 `DB_URL` 启动候选 JAR。不要把 systemd
+`EnvironmentFile=` 和 `--setenv` 混用来覆盖同名变量；环境文件可能覆盖
+临时值。应在启动脚本中先加载环境文件，再 `export DB_URL`、`SERVER_PORT`
+和临时附件目录。
+
 ## 从备份恢复已丢失的项目数据
 
 如果 V8 已经运行且数据丢失：

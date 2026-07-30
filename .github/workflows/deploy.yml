@@ -33,7 +33,7 @@ jobs:
         run: |
           grep -qF 'ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/current/backend/blog-backend.jar' deploy/yubai-blog.service
           grep -qF 'ReadWritePaths=/opt/yubai-blog/shared/attachments' deploy/yubai-blog.service
-          grep -qF 'root /opt/yubai-blog/current/frontend;' deploy/hxnf.top.nginx
+          grep -qF 'root /opt/yubai-blog/current/frontend/client;' deploy/hxnf.top.nginx
 
   build:
     needs: validate

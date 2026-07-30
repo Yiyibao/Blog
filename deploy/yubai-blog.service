@@ -1,7 +1,7 @@
 [Unit]
 Description=Yubai Blog Spring Boot API
-After=network-online.target postgresql.service yubai-blog-opencode.service
-Wants=network-online.target yubai-blog-opencode.service
+After=network-online.target postgresql.service
+Wants=network-online.target
 Requires=postgresql.service
 
 [Service]
