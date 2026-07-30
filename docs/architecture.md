@@ -579,12 +579,23 @@ First-time auth (manual, after service is running):
 sudo -u opencode HOME=/var/lib/opencode opencode auth login
 ```
 
+OpenCode Go requires a separately issued subscription/API key. Until
+`opencode auth list` reports `opencode-go` as connected, keep the database
+provider row disabled; the sidecar process being healthy does not mean model
+inference is available.
+
 Then start both services and create the provider row through the admin UI:
 
 ```
 systemctl start yubai-blog-opencode.service
 systemctl restart yubai-blog.service
 ```
+
+The production installation pins the native binary version and verifies the
+package digest before copying it to `/usr/bin/opencode`. After an upgrade,
+confirm `opencode --version`, `opencode serve --help`, loopback-only binding,
+unauthenticated 401, authenticated `/provider`, and the systemd hardening
+properties before enabling model traffic.
 
 ### Key files
 

@@ -50,8 +50,9 @@
 
 ## 后续项
 
-- `pg_stat_statements` 尚未安装；需要 PostgreSQL 重启，留到独立维护窗口。
-- OpenCode 侧车尚未安装。主应用已取消对不存在 unit 的启动依赖，其余 AI 供应商
-  和博客功能不受影响。
+- `pg_stat_statements` 已在后续维护窗口安装并启用，见
+  `checkpoint-2026-07-31-observability-opencode.md`。
+- OpenCode 1.18.10 侧车已在后续维护窗口安装并启用；OpenCode Go 模型凭据仍需
+  用户提供，见 `checkpoint-2026-07-31-observability-opencode.md`。
 - 每季度继续随机选择一个 COS 历史批次做隔离恢复抽查。
 - NB-9 演示数据分离、评论系统和完整附件回收站继续作为产品增强项，不纳入本次发布。
