@@ -9,6 +9,7 @@
 - 首页背景从固定 public URL 改为 Vite 内容哈希资源，并以高优先级图片元素加载，避免 Service Worker 长缓存导致换图后仍显示旧图。
 - 首页首屏以下区块启用 `content-visibility: auto`，减少初始布局与绘制开销。
 - nginx 启用 HTTP/2、gzip、哈希资源一年 immutable 缓存、普通图片七天缓存，并要求 HTML 与 Service Worker 每次重新验证。
+- Caffeine 缓存启用统计采集，使 Micrometer 能正常记录命中、未命中和驱逐指标。
 - 通过 npm overrides 将受安全公告影响的 `brace-expansion` 统一提升至 5.0.9；生产与完整依赖审计均为 0 漏洞。
 
 ## 验证结果
@@ -23,4 +24,9 @@
 
 ## 部署记录
 
-部署版本、服务器 release 目录、健康检查和线上响应头结果在生产部署完成后补充。
+- 部署前生产备份：`Result=success`、`ExecMainStatus=0`。
+- 首次发布版本：`release-20260731-1c8c79c`，由上一版 `release-20260731-515b107` 原子切换。
+- Flyway：成功从 v37 升级至 v38。
+- 应用：`/actuator/health` 返回 `UP`；知识图谱公开接口返回 200。
+- nginx：配置校验通过并 reload；服务器本机验证 HTTP/2、gzip、HTML/SW `no-cache`、哈希资源一年 immutable 缓存。
+- 公网复核：因备案期间公网 443 已关闭，从开发机访问 `https://hxnf.top` 失败；服务器本机 HTTPS 验证正常。

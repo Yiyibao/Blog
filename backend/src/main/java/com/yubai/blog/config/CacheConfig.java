@@ -40,6 +40,7 @@ public class CacheConfig {
         var manager = new CaffeineCacheManager(GRAPH, SITEMAP, QUOTES, MUSIC, RSS, RELATED_POSTS);
         manager.setCaffeine(Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofMinutes(5))
+            .recordStats()
             .maximumSize(50));
         return manager;
     }
