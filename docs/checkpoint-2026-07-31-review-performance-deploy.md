@@ -26,6 +26,7 @@
 
 - 部署前生产备份：`Result=success`、`ExecMainStatus=0`。
 - 首次发布版本：`release-20260731-1c8c79c`，由上一版 `release-20260731-515b107` 原子切换。
+- 生产复核发现缓存统计未启用后，提交 `9ad751d` 并发布最终版本 `release-20260731-9ad751d`；健康检查再次通过，启动日志不再出现 Caffeine 统计告警。
 - Flyway：成功从 v37 升级至 v38。
 - 应用：`/actuator/health` 返回 `UP`；知识图谱公开接口返回 200。
 - nginx：配置校验通过并 reload；服务器本机验证 HTTP/2、gzip、HTML/SW `no-cache`、哈希资源一年 immutable 缓存。
