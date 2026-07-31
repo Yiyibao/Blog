@@ -150,8 +150,8 @@ class BlogApiIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items").isArray())
             .andExpect(jsonPath("$.data.size").value(2))
-            .andExpect(jsonPath("$.data.totalElements").value(15))
-            .andExpect(jsonPath("$.data.totalPages").value(8))
+            .andExpect(jsonPath("$.data.totalElements").value(20))
+            .andExpect(jsonPath("$.data.totalPages").value(10))
             // P1-2：列表为摘要 DTO——保留元数据字段，但绝不携带正文
             .andExpect(jsonPath("$.data.items[0].slug").isNotEmpty())
             .andExpect(jsonPath("$.data.items[0].likeCount").exists())
@@ -189,7 +189,7 @@ class BlogApiIntegrationTest {
 
         mockMvc.perform(get("/api/v1/posts").param("page", "0").param("size", "50"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.totalElements").value(15));
+            .andExpect(jsonPath("$.data.totalElements").value(20));
 
         mockMvc.perform(get("/api/v1/admin/posts").param("status", "DRAFT")
                 .header("Authorization", "Bearer " + token))
@@ -283,11 +283,11 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/dish-categories")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.length()").value(5));
+            .andExpect(jsonPath("$.data.length()").value(8));
 
         mockMvc.perform(get("/api/v1/dishes"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.totalElements").value(10))
+            .andExpect(jsonPath("$.data.totalElements").value(20))
             .andExpect(jsonPath("$.data.items[0].slug").value("authentic-mapo-tofu"))
             .andExpect(jsonPath("$.data.items[0].ingredients").isArray())
             .andExpect(jsonPath("$.data.items[0].imageCredit").isNotEmpty());
@@ -333,7 +333,7 @@ class BlogApiIntegrationTest {
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.size").value(2))
-            .andExpect(jsonPath("$.data.totalElements").value(11));
+            .andExpect(jsonPath("$.data.totalElements").value(21));
 
         mockMvc.perform(get("/api/v1/dishes/test-scallion-noodles"))
             .andExpect(status().isNotFound());
@@ -493,7 +493,7 @@ class BlogApiIntegrationTest {
         mockMvc.perform(get("/api/v1/categories"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data").isArray())
-            .andExpect(jsonPath("$.data.length()").value(3))
+            .andExpect(jsonPath("$.data.length()").value(8))
             .andExpect(jsonPath("$.data[0].name").isString())
             .andExpect(jsonPath("$.data[0].slug").isString())
             .andExpect(jsonPath("$.data[0].publishedPostCount").isNumber());

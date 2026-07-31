@@ -26,6 +26,7 @@ const showBackToTop = ref(false)
 let scrollFrame: number | undefined
 
 const isAdminRoute = computed(() => String(route.path).startsWith('/admin'))
+const isRestrictedMember = computed(() => auth.isAuthenticated && !auth.isAdmin)
 
 function onKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -162,7 +163,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="site-shell" :class="{ 'admin-mode': isAdminRoute }" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
+  <div class="site-shell" :class="{ 'admin-mode': isAdminRoute, 'restricted-member': isRestrictedMember }" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
     <div v-if="!isAdminRoute" class="reading-progress" :style="{ width: `${readingProgress}%` }" aria-hidden="true" />
     <div v-if="!isAdminRoute" class="sakura-petals" aria-hidden="true">
       <i
@@ -279,5 +280,28 @@ onBeforeUnmount(() => {
 .admin-entry-link:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Ordinary signed-in members can read only articles and recipes. Keep the
+   guard in the router authoritative while mirroring it in the navigation so
+   hidden destinations are not advertised in the UI. */
+.restricted-member .desktop-nav a[href="/"],
+.restricted-member .desktop-nav a[href="/series"],
+.restricted-member .desktop-nav a[href="/archive"],
+.restricted-member .desktop-nav a[href="/about"],
+.restricted-member .desktop-nav a[href="/notes"],
+.restricted-member .admin-entry-link,
+.restricted-member .mobile-nav a[href="/"],
+.restricted-member .mobile-nav a[href="/series"],
+.restricted-member .mobile-nav a[href="/archive"],
+.restricted-member .mobile-nav a[href="/about"],
+.restricted-member .mobile-nav a[href="/notes"],
+.restricted-member .mobile-nav a[href="/admin"],
+.restricted-member .site-footer a[href="/series"],
+.restricted-member .site-footer a[href="/archive"],
+.restricted-member .site-footer a[href="/about"],
+.restricted-member .site-footer a[href="/notes"],
+.restricted-member .site-footer a[href="/admin/login"] {
+  display: none;
 }
 </style>

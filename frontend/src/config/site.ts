@@ -55,10 +55,16 @@ export function createSiteConfig(): SiteConfig {
     copyrightOwner: readStr('VITE_COPYRIGHT_OWNER', ''),
     copyrightYear: readInt('VITE_COPYRIGHT_YEAR', new Date().getFullYear()),
     contactEmail: readStr('VITE_CONTACT_EMAIL', ''),
-    icpRecord: readStr('VITE_ICP_RECORD', ''),
-    icpLink: readStr('VITE_ICP_LINK', ''),
+    // Keep the development preview uncluttered while ensuring every production
+    // build carries the required MIIT filing record even when CI omits env vars.
+    icpRecord: readStr('VITE_ICP_RECORD', import.meta.env.PROD ? '苏ICP备2026052529号-1' : ''),
+    icpLink: readStr('VITE_ICP_LINK', import.meta.env.PROD ? 'https://beian.miit.gov.cn/' : ''),
     policeRecord: readStr('VITE_POLICE_RECORD', ''),
     policeLink: readStr('VITE_POLICE_LINK', ''),
+  }
+  if (import.meta.env.PROD && !readStr('VITE_ICP_RECORD', '')) {
+    cached.icpRecord = '\u82cfICP\u59072026052529\u53f7-1'
+    cached.icpLink = readStr('VITE_ICP_LINK', 'https://beian.miit.gov.cn/')
   }
   return cached
 }

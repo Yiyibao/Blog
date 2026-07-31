@@ -33,14 +33,21 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, _from, next) => {
+  const auth = useAuthStore()
+  const routeName = String(to.name ?? '')
+  const memberVisibleRoutes = new Set(['articles', 'article', 'recipes'])
+  const isAuthEntry = routeName === 'login' || routeName === 'admin-login'
   // FD-8：requiresAuth + capability——
   // 未登录去登录页；已登录但缺少所需 capability（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
   // 免得"已登录还被要求登录"的死循环体验
   if (!to.meta.requiresAuth) {
+    if (auth.isAuthenticated && !auth.isAdmin && !isAuthEntry && !memberVisibleRoutes.has(routeName)) {
+      next({ name: 'articles' })
+      return
+    }
     next()
     return
   }
-  const auth = useAuthStore()
   // 6C-1：本地 access 无效时先尝试 cookie 恢复，再决定跳登录
   if (!auth.isAuthenticated) {
     const ok = await refreshSession()
@@ -48,6 +55,10 @@ router.beforeEach(async (to, _from, next) => {
       next({ name: 'login', query: { next: to.fullPath } })
       return
     }
+  }
+  if (auth.isAuthenticated && !auth.isAdmin && !memberVisibleRoutes.has(routeName)) {
+    next({ name: 'articles' })
+    return
   }
   const required = to.meta.capability as Capability | undefined
   if (required && !auth.can(required)) {
