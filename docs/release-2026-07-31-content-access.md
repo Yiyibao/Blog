@@ -21,3 +21,12 @@ Date: 2026-07-31
 - Build a new release from the commit containing this record.
 - Verify `/actuator/health`, `/api/v1/posts?size=100`, and `/api/v1/dishes?size=100` after restart.
 - Verify `https://hxnf.top/` contains the ICP record and that a non-admin session is redirected from `/about`, `/notes`, and `/admin` to `/articles`.
+
+## Deployment result
+
+- Commit: `903f464` (`feat: restrict member content and seed public catalog`).
+- Release: `/opt/yubai-blog/releases/release-20260731-903f464` (atomic symlink switch from `release-20260731-9ad751d`).
+- Server health: `UP` after restart; Flyway log reports version `v39`.
+- Server-side HTTPS check: `HTTP/2 200`, `cache-control: no-cache`.
+- Server-side API checks: posts `totalElements=20`; dishes `totalElements=20`.
+- Public domain checks from this workstation are currently blocked because local DNS resolves `hxnf.top` to `127.0.0.1`; the same hostname over HTTPS was verified on the server with `--resolve`.
