@@ -36,12 +36,11 @@ router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore()
   const routeName = String(to.name ?? '')
   const memberVisibleRoutes = new Set(['articles', 'article', 'recipes'])
-  const isAuthEntry = routeName === 'login' || routeName === 'admin-login'
   // FD-8：requiresAuth + capability——
   // 未登录去登录页；已登录但缺少所需 capability（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
   // 免得"已登录还被要求登录"的死循环体验
   if (!to.meta.requiresAuth) {
-    if (auth.isAuthenticated && !auth.isAdmin && !isAuthEntry && !memberVisibleRoutes.has(routeName)) {
+    if (auth.isAuthenticated && !auth.isAdmin && !memberVisibleRoutes.has(routeName)) {
       next({ name: 'articles' })
       return
     }
