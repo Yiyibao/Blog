@@ -244,4 +244,17 @@ describe('L-15 人机验证弹窗状态机（复用 L-7 三层协议）', () => 
     await submitAndVerify(wrapper)
     expect(wrapper.find('.admin-error').text()).toContain('尝试过于频繁')
   })
+
+  it('网络中断时使用环境无关文案，不误导用户检查本地 8080', async () => {
+    mockFetchChallenge.mockResolvedValue(POW_CHALLENGE)
+    mockLogin.mockRejectedValue(new AxiosError('Network Error', 'ERR_NETWORK'))
+    const { wrapper } = await mountLogin()
+
+    await submitAndVerify(wrapper)
+
+    const message = wrapper.find('.admin-error').text()
+    expect(message).toBe('无法连接登录服务，请检查网络连接或稍后重试。')
+    expect(message).not.toContain('8080')
+    expect(message).not.toContain('本地后端')
+  })
 })

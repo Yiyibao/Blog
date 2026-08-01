@@ -49,7 +49,7 @@ export function useLoginForm(onSuccess: (result: LoginResult) => void | Promise<
       } else if (axios.isAxiosError(cause) && cause.response) {
         error.value = `登录服务暂时不可用（${cause.response.status}），请稍后重试。`
       } else {
-        error.value = '无法连接本地后端，请确认 8080 服务正在运行。'
+        error.value = '无法连接登录服务，请检查网络连接或稍后重试。'
       }
     } finally {
       submitting.value = false
