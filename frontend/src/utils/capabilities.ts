@@ -14,8 +14,9 @@ export const Capabilities = {
 export type Capability = typeof Capabilities[keyof typeof Capabilities]
 
 const ROLE_CAPABILITIES: Record<string, ReadonlySet<Capability>> = {
+  // FD-29：PARTNER 与 ADMIN 能力完全一致（角色值仍各自保留）
   ADMIN: new Set(Object.values(Capabilities)),
-  PARTNER: new Set([Capabilities.ACCOUNT_ACCESS, Capabilities.KITCHEN_ACCESS]),
+  PARTNER: new Set(Object.values(Capabilities)),
 }
 
 export function getCapabilities(role: string | undefined | null): ReadonlySet<Capability> {

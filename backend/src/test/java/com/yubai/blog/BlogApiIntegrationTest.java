@@ -1819,9 +1819,10 @@ class BlogApiIntegrationTest {
 
     @Test
     @Order(36)
-    void partnerIsForbiddenFromEveryAdminEndpoint() throws Exception {
-        // FD-7：PARTNER 打全部管理端点逐条 403（身份已认出、权限不足；401 意味着规则配置错误）
-        String token = loginAs("partner", "partner-pass-12345");
+    void partnerHasAdminLevelAccessToEveryAdminEndpoint() throws Exception {
+        // FD-29：PARTNER 与 ADMIN 能力完全一致——管理端点逐条放行（403 意味着规则配置错误），
+        // 且 JWT authorities 与 ADMIN 集合恒等
+        String partnerToken = loginAs("partner", "partner-pass-12345");
         var probes = java.util.List.of(
             get("/api/v1/admin/stats"),
             get("/api/v1/admin/posts"),
@@ -1834,10 +1835,41 @@ class BlogApiIntegrationTest {
             delete("/api/v1/admin/dishes/1"),
             get("/api/v1/admin/ai/providers"),
             post("/api/v1/admin/ai/providers"),
+            get("/api/v1/admin/library/tracks"),
+            get("/api/v1/admin/attachments"),
+            get("/api/v1/admin/series"),
             post("/api/v1/admin/notes/1/attachments"));
         for (var probe : probes) {
-            mockMvc.perform(probe.header("Authorization", "Bearer " + token))
-                .andExpect(status().isForbidden());
+            int code = mockMvc.perform(probe.header("Authorization", "Bearer " + partnerToken))
+                .andReturn().getResponse().getStatus();
+            assertTrue(code != 403, "PARTNER 不应收到 403: " + probe + " -> " + code);
+        }
+        // 读端点应真实放行，不是被 401/404 掩盖的“无权限”
+        mockMvc.perform(get("/api/v1/admin/stats").header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/admin/posts").header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/admin/ai/providers").header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk());
+
+        // JWT authorities 恒等：解两个 token 的 authorities claim 做集合比较
+        var partnerClaims = jwtPayloadClaims(partnerToken);
+        var adminClaims = jwtPayloadClaims(login());
+        assertEquals(partnerClaims.path("roles").get(0).asText(), "PARTNER",
+            "角色值仍须保留为 PARTNER，不能被篡改成 ADMIN");
+        assertEquals(adminClaims.path("roles").get(0).asText(), "ADMIN");
+        assertEquals(partnerClaims.path("authorities").size(), adminClaims.path("authorities").size());
+        var partnerAuthorities = new java.util.HashSet<String>();
+        partnerClaims.path("authorities").forEach(authority -> partnerAuthorities.add(authority.asText()));
+        for (var authority : adminClaims.path("authorities")) {
+            assertTrue(partnerAuthorities.contains(authority.asText()),
+                "PARTNER 缺少 ADMIN 的能力: " + authority.asText());
+        }
+        for (var required : java.util.List.of(
+            "account:access", "content:manage", "ai:manage", "ai:usage",
+            "kitchen:access", "kitchen:delete_any", "dashboard:view",
+            "attachments:manage", "library:manage", "metrics:view")) {
+            assertTrue(partnerAuthorities.contains(required), "PARTNER 缺能力: " + required);
         }
     }
 
@@ -2168,8 +2200,8 @@ class BlogApiIntegrationTest {
 
     @Test
     @Order(49)
-    void kitchenDeletePermissionsFollowAuthorship() throws Exception {
-        // FD-10：删自己的菜可以；删对方的 403；ADMIN 可代删
+    void kitchenDeletePermissionsFollowCapability() throws Exception {
+        // FD-10/FD-29：PARTNER 持有 kitchen:delete_any 后与 ADMIN 同权，可代删对方菜单项
         String partnerToken = loginAs("partner", "partner-pass-12345");
         String adminToken = login();
         rateLimiter.reset();
@@ -2183,9 +2215,6 @@ class BlogApiIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/kitchen/menus/items/" + adminItem)
                 .header("Authorization", "Bearer " + partnerToken))
-            .andExpect(status().isForbidden());
-        mockMvc.perform(delete("/api/v1/kitchen/menus/items/" + adminItem)
-                .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.items.length()").value(0));
         rateLimiter.reset();
@@ -2261,7 +2290,7 @@ class BlogApiIntegrationTest {
     @Test
     @Order(53)
     void mealLogLifecycleWithSnapshotAndPermissions() throws Exception {
-        // FD-15：打卡（按菜谱/自由文本）→ 时间线 → 删他人 403 → 删自己 204
+        // FD-15：打卡（按菜谱/自由文本）→ 时间线；FD-29：PARTNER 与 ADMIN 同权，可代删对方打卡
         String partnerToken = loginAs("partner", "partner-pass-12345");
         String adminToken = login();
         rateLimiter.reset();
@@ -2289,9 +2318,6 @@ class BlogApiIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/kitchen/meal-logs/" + freeId)
                 .header("Authorization", "Bearer " + partnerToken))
-            .andExpect(status().isForbidden());
-        mockMvc.perform(delete("/api/v1/kitchen/meal-logs/" + freeId)
-                .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isNoContent());
         rateLimiter.reset();
     }
@@ -2926,6 +2952,12 @@ class BlogApiIntegrationTest {
 
     private String login() throws Exception {
         return loginAs("admin", "admin-pass-12345");
+    }
+
+    /** 解 JWT payload（roles/authorities/uid 等 claims 断言用）。 */
+    private JsonNode jwtPayloadClaims(String token) throws Exception {
+        return objectMapper.readTree(new String(
+            java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8));
     }
 
     private String loginAs(String username, String password) throws Exception {

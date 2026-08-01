@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AiStreamHttpError, logout as apiLogout, getAdminSessionName, streamAiChat,
-  type AiChatMessage,
+  AiStreamHttpError, fetchAiProviders, logout as apiLogout, getAdminSessionName,
+  streamAiChat, type AiChatMessage, type AiProvider,
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
 
 /**
- * 4A-4：compact=true 时去掉页面级 chrome（侧导航/顶栏），只渲染对话核心——供 AdminAiSidebar 停靠复用；
- * providerId/model 由宿主（侧边栏顶部切换器）注入，全屏页缺省走默认供应商。
- * 会话存于 sessionStorage 同一键，停靠与全屏两形态天然共享上下文。
+ * 4A-4：compact=true 时去掉页面级 chrome（侧导航/顶栏），只渲染对话核心——供 AdminPetAssistant 面板复用；
+ * providerId/model 由宿主（宠物助手面板）注入，全屏页缺省走默认供应商。
+ * 会话存于 sessionStorage 同一键，面板与全屏两形态天然共享上下文。
  */
 const props = withDefaults(defineProps<{
   compact?: boolean
@@ -22,17 +22,62 @@ const props = withDefaults(defineProps<{
   model: null,
 })
 
+/**
+ * 事件仅供宿主（AdminPetAssistant）驱动宠物动画，不复制聊天状态与请求逻辑；
+ * 401 仍走原有 logout + 跳转，宿主不得吞掉认证错误。
+ */
+const emit = defineEmits<{
+  'stream-start': []
+  'stream-first-delta': []
+  'stream-complete': []
+  'stream-error': []
+  'stream-abort': []
+}>()
+
 const STORAGE_KEY = 'yubai-admin-ai-messages'
 
 const router = useRouter()
 const username = getAdminSessionName() || 'Admin'
 const userInput = ref('')
 const loading = ref(false)
+const providers = ref<AiProvider[]>([])
+const selectedProviderId = ref<number | null>(props.providerId)
+const selectedModel = ref<string | null>(props.model)
 /** 4A-2：收到首个增量后隐藏「思考中…」占位，改由增量气泡实时呈现 */
 const streamingStarted = ref(false)
 const error = ref('')
 const chatBoxRef = ref<HTMLElement | null>(null)
 let abortController: AbortController | null = null
+
+const selectedProvider = computed(() =>
+  providers.value.find((provider) => provider.id === selectedProviderId.value) ?? null)
+
+const modelOptions = computed(() => {
+  const provider = selectedProvider.value
+  if (!provider) return []
+  const models = [...(provider.models ?? [])]
+  if (provider.defaultModel && !models.includes(provider.defaultModel)) {
+    models.unshift(provider.defaultModel)
+  }
+  return models
+})
+
+async function loadModelOptions() {
+  // 面板宿主（AdminPetAssistant）负责供应商和模型切换，避免重复请求和重复控件。
+  if (props.compact) return
+  try {
+    providers.value = (await fetchAiProviders()).filter((provider) => provider.enabled)
+    const preferred = providers.value.find((provider) => provider.isDefault)
+      ?? providers.value[0]
+      ?? null
+    selectedProviderId.value = preferred?.id ?? null
+    selectedModel.value = preferred?.defaultModel ?? preferred?.models?.[0] ?? null
+  } catch {
+    providers.value = []
+    selectedProviderId.value = null
+    selectedModel.value = null
+  }
+}
 
 function loadStoredMessages(): AiChatMessage[] {
   try {
@@ -131,26 +176,32 @@ async function sendMessage() {
   const live = messages.value[messages.value.length - 1]!
   const controller = new AbortController()
   abortController = controller
+  emit('stream-start')
 
   try {
+    const providerId = props.providerId ?? selectedProviderId.value
+    const model = props.model ?? selectedModel.value
     await streamAiChat(history, {
       onDelta: (text) => {
+        if (!streamingStarted.value) emit('stream-first-delta')
         streamingStarted.value = true
         live.content += text
         void scrollToBottom()
       },
     }, {
       signal: controller.signal,
-      ...(props.providerId != null ? { providerId: props.providerId } : {}),
-      ...(props.model ? { model: props.model } : {}),
+      ...(providerId != null ? { providerId } : {}),
+      ...(model ? { model } : {}),
     })
     if (!live.content.trim()) {
       throw new AiStreamHttpError(502, 'empty response')
     }
     saveMessagesToStorage(messages.value)
+    emit('stream-complete')
   } catch (cause) {
     if (controller.signal.aborted) {
       // 用户主动停止：保留已生成的部分；一无所出则移除空气泡
+      emit('stream-abort')
       if (live.content.trim()) {
         saveMessagesToStorage(messages.value)
       } else {
@@ -162,7 +213,13 @@ async function sendMessage() {
       return
     } else {
       messages.value = messages.value.filter((msg) => msg !== live)
-      error.value = 'AI 响应失败，请检查网络或稍后重试。'
+      // 展示后端返回的安全、可理解错误（固定中文文案，不含供应商原始响应）；
+      // 内部标记（如 empty response）与网络级异常回退到通用文案
+      const detail = cause instanceof AiStreamHttpError && cause.message && cause.message !== 'empty response'
+        ? cause.message
+        : ''
+      error.value = detail || 'AI 响应失败，请检查网络或稍后重试。'
+      emit('stream-error')
     }
   } finally {
     loading.value = false
@@ -177,7 +234,13 @@ function stopStreaming() {
 }
 
 onMounted(() => {
+  void loadModelOptions()
   void scrollToBottom()
+})
+
+// 宿主销毁（收起面板 / logout / 路由切换）时立即中止流式请求，避免后台继续消耗配额
+onBeforeUnmount(() => {
+  abortController?.abort()
 })
 </script>
 
@@ -251,12 +314,30 @@ onMounted(() => {
             <textarea
               v-model="userInput"
               class="chat-textarea"
+              data-testid="ai-chat-input"
               placeholder="输入消息，按 Ctrl + Enter 或 Cmd + Enter 快速发送…"
               maxlength="8000"
               rows="3"
               :disabled="loading"
               @keydown="handleKeyDown"
             />
+            <div v-if="!props.compact" class="chat-model-picker">
+              <label for="ai-chat-model">模型</label>
+              <select
+                id="ai-chat-model"
+                v-model="selectedModel"
+                class="chat-model-select"
+                data-testid="chat-model-select"
+                aria-label="选择模型"
+                :disabled="loading || !modelOptions.length"
+              >
+                <option v-if="!modelOptions.length" value="">暂无可用模型</option>
+                <option v-for="modelOption in modelOptions" :key="modelOption" :value="modelOption">
+                  {{ modelOption }}
+                </option>
+              </select>
+              <span v-if="selectedProvider" class="chat-model-provider">{{ selectedProvider.name }}</span>
+            </div>
             <div class="input-footer">
               <span class="char-count" :class="{ 'near-limit': userInput.length > 7500 }">
                 {{ userInput.length.toLocaleString() }} / 8,000 字
@@ -326,7 +407,7 @@ onMounted(() => {
   align-items: center;
 }
 .clear-btn {
-  color: #b84f48 !important;
+  color: color-mix(in srgb, #b84f48 74%, var(--ink, #20211e)) !important;
   border-color: rgba(184, 79, 72, 0.3) !important;
 }
 .clear-btn:hover {
@@ -339,9 +420,9 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   margin-top: 16px;
-  border: 1px solid var(--console-line, #d9d6cf);
+  border: 1px solid var(--line-strong, #d9d6cf);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--surface-solid, #fffdfb);
   box-shadow: 0 10px 40px rgba(34, 32, 27, 0.04);
   overflow: hidden;
 }
@@ -368,16 +449,16 @@ onMounted(() => {
 .chat-welcome h2 {
   font: 500 24px Georgia, 'Noto Serif SC', serif;
   margin: 0 0 8px;
-  color: var(--console-ink, #20211e);
+  color: var(--ink, #20211e);
 }
 .chat-welcome p {
-  color: var(--console-muted, #7f7e77);
+  color: var(--muted, #7f7e77);
   font-size: 14px;
   line-height: 1.6;
   margin: 0 0 12px;
 }
 .chat-welcome small {
-  color: #a17450;
+  color: var(--accent, #a17450);
   font-size: 11px;
 }
 
@@ -404,11 +485,11 @@ onMounted(() => {
   font: 600 14px Georgia, serif;
 }
 .user .bubble-avatar {
-  background: #292a27;
-  color: #f8f5ee;
+  background: var(--ink, #292a27);
+  color: var(--paper, #f8f5ee);
 }
 .assistant .bubble-avatar {
-  background: #d5b18a;
+  background: var(--accent, #d5b18a);
   color: #252521;
 }
 
@@ -429,7 +510,7 @@ onMounted(() => {
 }
 .sender-name {
   font-size: 11px;
-  color: var(--console-muted, #7f7e77);
+  color: var(--muted, #7f7e77);
 }
 
 .bubble-content {
@@ -441,15 +522,15 @@ onMounted(() => {
   word-break: break-word;
 }
 .user .bubble-content {
-  background: #292a27;
-  color: #f8f6f0;
+  background: var(--ink, #292a27);
+  color: var(--paper, #f8f6f0);
   border-top-right-radius: 4px;
 }
 .assistant .bubble-content {
-  background: #ffffff;
-  color: #20211e;
+  background: var(--surface-solid, #fffdfb);
+  color: var(--ink, #20211e);
   border-top-left-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.08));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
 }
 
@@ -457,13 +538,13 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--console-muted, #7f7e77);
+  color: var(--muted, #7f7e77);
 }
 .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #d5b18a;
+  background: var(--accent, #d5b18a);
   animation: dot-bounce 1.4s infinite ease-in-out both;
 }
 .dot:nth-child(1) { animation-delay: -0.32s; }
@@ -479,16 +560,16 @@ onMounted(() => {
 
 .chat-error-bar {
   padding: 10px 18px;
-  background: #fdf2f2;
-  border-top: 1px solid #f8d7da;
-  color: #b84f48;
+  background: color-mix(in srgb, #b84f48 10%, var(--surface-solid, #fffdfb));
+  border-top: 1px solid color-mix(in srgb, #b84f48 24%, var(--line, #e5e1d8));
+  color: color-mix(in srgb, #b84f48 74%, var(--ink, #20211e));
   font-size: 13px;
 }
 
 .chat-input-area {
   padding: 16px 20px;
-  background: #ffffff;
-  border-top: 1px solid var(--console-line, #d9d6cf);
+  background: var(--surface-solid, #ffffff);
+  border-top: 1px solid var(--line-strong, #d9d6cf);
 }
 .input-wrapper {
   display: flex;
@@ -497,12 +578,12 @@ onMounted(() => {
 }
 .chat-textarea {
   width: 100%;
-  border: 1px solid var(--console-line, #d9d6cf);
+  border: 1px solid var(--line-strong, #d9d6cf);
   border-radius: 12px;
   padding: 12px 14px;
   font: 14px/1.6 inherit;
-  color: var(--console-ink, #20211e);
-  background: #faf8f5;
+  color: var(--ink, #20211e);
+  background: var(--surface, #faf8f5);
   resize: vertical;
   outline: none;
   min-height: 72px;
@@ -510,9 +591,49 @@ onMounted(() => {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .chat-textarea:focus {
-  border-color: #d5b18a;
-  box-shadow: 0 0 0 3px rgba(213, 177, 138, 0.2);
-  background: #ffffff;
+  border-color: var(--accent, #d5b18a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #d5b18a) 20%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--accent, #d5b18a) 70%, var(--ink, #20211e));
+  outline-offset: 2px;
+  background: var(--surface-solid, #ffffff);
+}
+.chat-model-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted, #7f7e77);
+  font-size: 12px;
+}
+.chat-model-picker label {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+.chat-model-select {
+  min-width: 0;
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong, #d9d6cf);
+  border-radius: 8px;
+  color: var(--ink, #20211e);
+  background: var(--surface, #faf8f5);
+  font: inherit;
+  outline: none;
+}
+.chat-model-select:focus {
+  border-color: var(--accent, #d5b18a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #d5b18a) 20%, transparent);
+  background: var(--surface-solid, #ffffff);
+}
+.chat-model-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.chat-model-provider {
+  flex: 0 1 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .input-footer {
   display: flex;
@@ -521,17 +642,17 @@ onMounted(() => {
 }
 .char-count {
   font-size: 11px;
-  color: var(--console-muted, #7f7e77);
+  color: var(--muted, #7f7e77);
 }
 .char-count.near-limit {
-  color: #b84f48;
+  color: color-mix(in srgb, #b84f48 74%, var(--ink, #20211e));
   font-weight: 600;
 }
 .send-btn {
   padding: 8px 20px;
   border-radius: 8px;
-  background: #292a27;
-  color: #ffffff;
+  background: var(--ink, #292a27);
+  color: var(--paper, #ffffff);
   border: none;
   font-size: 13px;
   font-weight: 500;
@@ -539,7 +660,7 @@ onMounted(() => {
   transition: background 0.2s, opacity 0.2s, transform 0.2s;
 }
 .send-btn:hover:not(:disabled) {
-  background: #3c3d39;
+  background: color-mix(in srgb, var(--ink, #292a27) 84%, var(--paper, #ffffff));
   transform: translateY(-1px);
 }
 .send-btn:disabled {
@@ -555,7 +676,7 @@ onMounted(() => {
   padding: 8px 16px;
   border-radius: 8px;
   background: transparent;
-  color: #b84f48;
+  color: color-mix(in srgb, #b84f48 74%, var(--ink, #20211e));
   border: 1px solid rgba(184, 79, 72, 0.4);
   font-size: 13px;
   cursor: pointer;

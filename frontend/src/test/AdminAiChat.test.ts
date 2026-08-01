@@ -10,11 +10,13 @@ import { useAuthStore } from '../stores/auth'
 
 const mockStreamAiChat = vi.fn()
 const mockLogout = vi.fn()
+const mockFetchAiProviders = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof adminApi>()
   return {
     ...actual,
+    fetchAiProviders: (...args: unknown[]) => mockFetchAiProviders(...args),
     streamAiChat: (...args: unknown[]) => mockStreamAiChat(...args),
     logout: (...args: unknown[]) => mockLogout(...args),
   }
@@ -66,6 +68,28 @@ async function mountComponent(testRouter = createTestRouter()) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  mockFetchAiProviders.mockReset()
+  mockFetchAiProviders.mockResolvedValue([{
+    id: 1,
+    name: 'OpenCode Sidecar',
+    baseUrl: 'http://127.0.0.1:4096',
+    providerType: 'OPENCODE_SERVER',
+    models: [
+      'deepseek-v4-flash', 'deepseek-v4-pro', 'glm-5.1', 'glm-5.2',
+      'gpt-5.6-luna', 'grok-4.5', 'hy3', 'kimi-k2.6', 'kimi-k2.7-code',
+      'kimi-k3', 'mimo-v2.5', 'mimo-v2.5-pro', 'minimax-m2.7', 'minimax-m3',
+      'qwen3.6-plus', 'qwen3.7-max', 'qwen3.7-plus',
+    ],
+    defaultModel: 'mimo-v2.5',
+    enabled: true,
+    isDefault: true,
+    hasKey: true,
+    keyTail: null,
+    dailyRequestLimit: 200,
+    dailyTokenLimit: 200000,
+    createdAt: '2026-07-01T00:00:00Z',
+    updatedAt: '2026-07-01T00:00:00Z',
+  }])
   mockStreamAiChat.mockReset()
   mockLogout.mockReset()
   window.sessionStorage.clear()
@@ -75,6 +99,33 @@ beforeEach(() => {
 })
 
 describe('AdminAiChat Component', () => {
+  it('shows every configured model below the chat input', async () => {
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    const select = wrapper.find('[data-testid="chat-model-select"]')
+    expect(select.exists()).toBe(true)
+    expect(select.findAll('option').map((option) => option.text())).toHaveLength(17)
+    expect(select.findAll('option').map((option) => option.text())).toContain('qwen3.7-plus')
+    expect(select.findAll('option').map((option) => option.text())).toContain('mimo-v2.5-pro')
+  })
+
+  it('sends the selected model with the next message', async () => {
+    streamResolve('Model response')
+
+    const wrapper = await mountComponent()
+    await flushPromises()
+    await wrapper.find('[data-testid="chat-model-select"]').setValue('qwen3.7-plus')
+    await wrapper.find('textarea').setValue('Use this model')
+    await wrapper.find('button.send-btn').trigger('click')
+
+    expect(mockStreamAiChat).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Use this model' }],
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.objectContaining({ model: 'qwen3.7-plus', providerId: 1, signal: expect.any(AbortSignal) }),
+    )
+  })
+
   it('restores stored messages from sessionStorage on mount', async () => {
     const stored = [
       { role: 'user', content: 'Previous question' },
@@ -271,6 +322,110 @@ describe('AdminAiChat Component', () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(wrapper.text()).toContain('Hotkey response')
+  })
+})
+
+describe('FD-29 宠物动画事件（供 AdminPetAssistant 驱动状态，不改请求逻辑）', () => {
+  it('成功流依次发出 stream-start / stream-first-delta / stream-complete', async () => {
+    streamResolve('OK response')
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('hello pet')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+
+    const events = wrapper.emitted()
+    expect(events['stream-start']).toHaveLength(1)
+    expect(events['stream-first-delta']).toHaveLength(1)
+    expect(events['stream-complete']).toHaveLength(1)
+    expect(events['stream-error']).toBeUndefined()
+    expect(events['stream-abort']).toBeUndefined()
+  })
+
+  it('失败发出 stream-error', async () => {
+    mockStreamAiChat.mockRejectedValue(new Error('Network failure'))
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('boom')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('stream-error')).toHaveLength(1)
+    expect(wrapper.emitted('stream-complete')).toBeUndefined()
+  })
+
+  it('展示后端返回的安全错误消息（不吞错、不透传供应商原始响应）', async () => {
+    mockStreamAiChat.mockRejectedValue(new adminApi.AiStreamHttpError(502, 'OpenCode Server returned an error'))
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('will fail')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.chat-error-bar').text()).toContain('OpenCode Server returned an error')
+  })
+
+  it('内部标记 empty response 回退通用文案', async () => {
+    mockStreamAiChat.mockRejectedValue(new adminApi.AiStreamHttpError(502, 'empty response'))
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('empty reply')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.chat-error-bar').text()).toContain('AI 响应失败，请检查网络或稍后重试。')
+  })
+
+  it('停止生成发出 stream-abort，不发出 complete/error', async () => {
+    let capturedCallbacks!: adminApi.AiStreamCallbacks
+    mockStreamAiChat.mockImplementation(
+      (_messages: unknown, callbacks: adminApi.AiStreamCallbacks, options: adminApi.AiStreamOptions) =>
+        new Promise<void>((_resolve, reject) => {
+          capturedCallbacks = callbacks
+          options.signal?.addEventListener('abort', () => {
+            const abortError = new Error('aborted')
+            abortError.name = 'AbortError'
+            reject(abortError)
+          })
+        }),
+    )
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('long job')
+    await wrapper.find('button.send-btn').trigger('click')
+    capturedCallbacks.onDelta('partial')
+    await flushPromises()
+
+    await wrapper.find('button.stop-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.emitted('stream-abort')).toHaveLength(1)
+    expect(wrapper.emitted('stream-complete')).toBeUndefined()
+    expect(wrapper.emitted('stream-error')).toBeUndefined()
+  })
+
+  it('输入框带稳定 testid 供 /admin/ai 宠物点击聚焦', async () => {
+    const wrapper = await mountComponent()
+    expect(wrapper.find('[data-testid="ai-chat-input"]').exists()).toBe(true)
+  })
+
+  it('卸载时中止进行中的流式请求（导航到 /admin/ai 等面板销毁场景依赖）', async () => {
+    const captured = { signal: null as AbortSignal | null }
+    mockStreamAiChat.mockImplementation(
+      (_messages: unknown, _callbacks: adminApi.AiStreamCallbacks, options: adminApi.AiStreamOptions) =>
+        new Promise<void>((_resolve, reject) => {
+          captured.signal = options.signal ?? null
+          options.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    )
+
+    const wrapper = await mountComponent()
+    await wrapper.find('textarea').setValue('long running job')
+    await wrapper.find('button.send-btn').trigger('click')
+    expect(captured.signal?.aborted).toBe(false)
+
+    wrapper.unmount()
+    expect(captured.signal?.aborted).toBe(true)
   })
 })
 

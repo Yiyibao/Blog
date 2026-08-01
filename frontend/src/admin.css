@@ -3,6 +3,8 @@
 .admin-mode .note-desk { height: 100vh; }
 
 .admin-console { --console-ink: #20211e; --console-muted: #5e5d56; --console-line: #d9d6cf; display: grid; grid-template-columns: 238px minmax(0, 1fr); min-height: 100vh; color: var(--console-ink); }
+/* 深色主题：--console-* 与全局 tokens 的 :root.dark 值对齐 */
+:root.dark .admin-console { --console-ink: #f2efe7; --console-muted: #c6c2b4; --console-line: rgba(242, 239, 231, 0.18); }
 .admin-sidebar { position: sticky; top: 0; display: flex; flex-direction: column; height: 100vh; border-right: 1px solid #31322f; padding: 24px 17px 18px; background: #232421; color: #f0eee8; }
 .admin-brand { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #3b3c38; padding: 0 8px 24px; color: inherit; text-decoration: none; }
 .admin-brand > span { display: grid; place-items: center; width: 37px; height: 37px; border: 1px solid #a9825f; border-radius: 9px; color: #d6b38d; font: 500 18px Georgia, serif; }

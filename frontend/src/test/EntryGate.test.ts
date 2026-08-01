@@ -15,6 +15,7 @@ function createTestRouter(): Router {
       { path: '/', name: 'home', component: { template: '<div>Home</div>' } },
       { path: '/articles', name: 'articles', component: { template: '<div>Articles</div>' } },
       { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
+      { path: '/admin/login', name: 'admin-login', component: { template: '<div>Admin Login</div>' } },
     ],
   })
 }
@@ -81,8 +82,8 @@ describe('L-16/D-18 入口大屏', () => {
     document.body.querySelector<HTMLButtonElement>('.entry-choice.admin')!.click()
     await flushPromises()
     expect(localStorage.getItem('yubai-entry-choice')).toBe('admin')
-    expect(testRouter.currentRoute.value.path).toBe('/login')
-    expect(testRouter.currentRoute.value.query.next).toBe('/')
+    expect(testRouter.currentRoute.value.path).toBe('/admin/login')
+    expect(testRouter.currentRoute.value.query).toEqual({})
   })
 })
 

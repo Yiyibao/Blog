@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/uiStore'
 import { useRequestToken } from '../../composables/useRequestToken'
+import { Capabilities } from '../../utils/capabilities'
 
 /**
  * FD-17：美食时光机——"我们吃过的"垂直时间线（容器组件，仅登录可见）。
@@ -57,6 +58,8 @@ const grouped = computed(() => {
 
 const hasMore = computed(() => page.value + 1 < totalPages.value)
 const myName = computed(() => auth.displayName ?? auth.username ?? '')
+// FD-29：删除任意打卡以 capability 为准（PARTNER 与 ADMIN 同权）
+const canDeleteAny = computed(() => auth.can(Capabilities.KITCHEN_DELETE_ANY))
 
 function setSlot(slot: MealSlot | '') {
   const { slot: _slot, ...rest } = route.query
@@ -147,7 +150,7 @@ onMounted(() => void load(true))
               </small>
             </div>
             <button
-              v-if="auth.isAdmin || log.authorName === myName"
+              v-if="canDeleteAny || log.authorName === myName"
               class="entry-remove tap-44"
               type="button"
               :aria-label="`删除${log.title}的打卡记录`"

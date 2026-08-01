@@ -179,8 +179,6 @@ async function writeRoute(template, block, routePath) {
 const STATIC_ROUTES_CONFIG = [
   { path: '/', title: '', ogType: 'website', jsonLdType: 'WebSite' },
   { path: '/articles', title: '文章', description: '阅读所有技术文章与日常随笔', ogType: 'website' },
-  { path: '/series', title: '系列', description: '按系列浏览文章，追踪完整的知识脉络', ogType: 'website' },
-  { path: '/archive', title: '内容归档', description: '按时间浏览所有公开的文章与菜谱', ogType: 'website' },
   { path: '/recipes', title: '美食', description: '家常菜谱与美食记录', ogType: 'website' },
   { path: '/about', title: '关于', description: '关于作者和这个博客', ogType: 'website' },
 ]
@@ -354,8 +352,8 @@ export async function prerender({ template, apiBase }) {
   results.noindex = await generateNoindexRoutes(template)
   if (apiBase) {
     results.dynamic.articles = await generateDynamicArticleRoutes(template, apiBase)
-    results.dynamic.series = await generateDynamicSeriesRoutes(template, apiBase)
-    results.dynamic.tags = await generateDynamicTagRoutes(template, apiBase)
+    // Series, tags, and archive are restricted to authenticated users and
+    // must remain SPA-only so their content is never served as guest HTML.
   } else if (REQUIRE_DYNAMIC) {
     throw new Error(
       'PRERENDER_REQUIRE_DYNAMIC is true but PRERENDER_API_BASE_URL is not set. ' +

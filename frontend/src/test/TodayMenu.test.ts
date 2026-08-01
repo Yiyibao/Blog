@@ -194,11 +194,34 @@ describe('FD-13 TodayMenuBoard', () => {
     expect(appendSpy).toHaveBeenCalledWith({ dishSlug: 'mapo-tofu', mealSlot: 'DINNER' })
   })
 
-  it('删除按钮只出现在自己（或 ADMIN）的菜上', async () => {
+  it('FD-29：具备 kitchen:delete_any（ADMIN/PARTNER）时任意一方的菜都可删', async () => {
     await mountBoard(menuOf([
       { id: 1, title: '她点的', authorId: 2, authorName: '小伙伴' },
       { id: 2, title: '他点的', authorId: 1, authorName: '站长' },
     ]), 'PARTNER', '小伙伴')
+    const rows = board().querySelectorAll('.board-items li')
+    expect(rows[0].querySelector('.board-remove')).not.toBeNull()
+    expect(rows[1].querySelector('.board-remove')).not.toBeNull()
+  })
+
+  it('无 kitchen:delete_any 能力时只能删自己的菜', async () => {
+    useAuthStore(pinia).saveSession({
+      token: 't', tokenType: 'Bearer', username: 'gf',
+      expiresAt: '2099-12-31T23:59:59Z', role: 'PARTNER', displayName: '小伙伴',
+      // 服务端 capabilities 是能力判定事实源：即使角色是 PARTNER，缺 delete_any 也不可代删
+      capabilities: ['account:access', 'kitchen:access'],
+    })
+    const store = useFoodStore(pinia)
+    store.menu = menuOf([
+      { id: 1, title: '她点的', authorId: 2, authorName: '小伙伴' },
+      { id: 2, title: '他点的', authorId: 1, authorName: '站长' },
+    ])
+    mount(TodayMenuBoard, {
+      props: { dishes: [dishOf('mapo-tofu', '麻婆豆腐')] },
+      global: { plugins: [pinia] },
+      attachTo: document.body,
+    })
+    await flushPromises()
     const rows = board().querySelectorAll('.board-items li')
     expect(rows[0].querySelector('.board-remove')).not.toBeNull()
     expect(rows[1].querySelector('.board-remove')).toBeNull()

@@ -156,7 +156,7 @@ describe('AdminAiProviders Component', () => {
     await wrapper.find('input[type="url"]').setValue('https://open.bigmodel.cn/api/paas/v4')
     await wrapper.find('input[type="password"]').setValue('glm-secret-key')
     await wrapper.find('.admin-editor textarea').setValue('glm-4.7\nglm-4.7-air, glm-4-flash')
-    await wrapper.find('input[list="provider-model-options"]').setValue('glm-4.7')
+    await wrapper.find('[data-testid="default-model"]').setValue('glm-4.7')
     await wrapper.find('form.admin-editor').trigger('submit')
     await flushPromises()
 
@@ -269,7 +269,7 @@ describe('AdminAiProviders Component', () => {
     await wrapper.find('.provider-section > header button.primary').trigger('click')
     await wrapper.find('input[placeholder="deepseek"]').setValue('deepseek')
     await wrapper.find('input[type="url"]').setValue('https://api.deepseek.com')
-    await wrapper.find('input[list="provider-model-options"]').setValue('deepseek-chat')
+    await wrapper.find('[data-testid="default-model"]').setValue('deepseek-chat')
     await wrapper.find('form.admin-editor').trigger('submit')
     await flushPromises()
 
@@ -289,7 +289,7 @@ describe('AdminAiProviders Component', () => {
     await wrapper.find('.provider-section > header button.primary').trigger('click')
     await wrapper.find('input[placeholder="deepseek"]').setValue('glm')
     await wrapper.find('input[type="url"]').setValue('https://open.bigmodel.cn/api/paas/v4')
-    await wrapper.find('input[list="provider-model-options"]').setValue('glm-4.7')
+    await wrapper.find('[data-testid="default-model"]').setValue('glm-4.7')
     await wrapper.find('form.admin-editor').trigger('submit')
     await flushPromises()
 
@@ -392,7 +392,7 @@ describe('AdminAiProviders Component', () => {
     await wrapper.find('input[type="url"]').setValue('http://127.0.0.1:4096')
     await wrapper.find('input[type="radio"][value="OPENCODE_SERVER"]').setValue(true)
     await wrapper.find('.admin-editor textarea').setValue('opencode-sidecar')
-    await wrapper.find('input[list="provider-model-options"]').setValue('opencode-sidecar')
+    await wrapper.find('[data-testid="default-model"]').setValue('opencode-sidecar')
     await wrapper.find('form.admin-editor').trigger('submit')
     await flushPromises()
 
@@ -449,7 +449,7 @@ describe('AdminAiProviders Component', () => {
     // save must not contain apiKey
     await wrapper.find('input[placeholder="deepseek"]').setValue('test-provider')
     await wrapper.find('input[type="url"]').setValue('https://api.test.com')
-    await wrapper.find('input[list="provider-model-options"]').setValue('test-model')
+    await wrapper.find('[data-testid="default-model"]').setValue('test-model')
     await wrapper.find('form.admin-editor').trigger('submit')
     await flushPromises()
 

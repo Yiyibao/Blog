@@ -100,6 +100,11 @@ export const useAuthStore = defineStore('auth', () => {
   // FD-8：fail-closed——role 缺失一律不算 ADMIN；越权判断绝不给未知角色放行
   const isAdmin = computed(() => isAuthenticated.value && role.value === 'ADMIN')
   const isPartner = computed(() => isAuthenticated.value && role.value === 'PARTNER')
+  // FD-29：管理角色总开关——ADMIN 与 PARTNER 拥有完全一致的后台能力；
+  // isAdmin 继续严格表示角色为 ADMIN（审计、展示标签仍用它）
+  const isStaff = computed(() =>
+    isAuthenticated.value && (role.value === 'ADMIN' || role.value === 'PARTNER'))
+  const hasAdminAccess = computed(() => isStaff.value)
   const canKitchen = computed(() => can(Capabilities.KITCHEN_ACCESS))
   function can(capability: Capability): boolean {
     return isAuthenticated.value && capabilities.value.includes(capability)
@@ -148,5 +153,5 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession()
   }
 
-  return { token, username, expiresAt, role, displayName, capabilities, isAuthenticated, isAdmin, isPartner, canKitchen, can, saveSession, clearSession, getGeneration, isCurrentGeneration }
+  return { token, username, expiresAt, role, displayName, capabilities, isAuthenticated, isAdmin, isPartner, isStaff, hasAdminAccess, canKitchen, can, saveSession, clearSession, getGeneration, isCurrentGeneration }
 })

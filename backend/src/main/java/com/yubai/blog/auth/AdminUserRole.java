@@ -9,6 +9,6 @@ package com.yubai.blog.auth;
 public enum AdminUserRole {
     /** 站长：全部能力。 */
     ADMIN,
-    /** 伴侣：kitchen（今日菜单/打卡）读写，不可触碰 /admin/**。 */
+    /** 伴侣：FD-29 起与站长拥有完全一致的能力（角色身份仍为 PARTNER）。 */
     PARTNER
 }

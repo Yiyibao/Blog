@@ -16,7 +16,7 @@ function destination(): string {
   const raw = route.query.next
   const next = typeof raw === 'string' ? raw : ''
   if (next.startsWith('/') && !next.startsWith('//')) return next
-  return auth.isAdmin ? '/admin' : '/recipes'
+  return auth.isStaff ? '/admin' : '/recipes'
 }
 
 // L-15：人机验证改显性弹窗——提交先过 HumanVerifyModal，通过后才发登录请求

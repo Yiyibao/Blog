@@ -26,17 +26,41 @@ function guardedRouter(): Router {
   const r = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', component: { template: '<div />' } },
+      { path: '/', name: 'home', component: { template: '<div />' } },
+      { path: '/articles', name: 'articles', component: { template: '<div />' } },
+      { path: '/articles/:slug', name: 'article', component: { template: '<div />' } },
+      { path: '/about', name: 'about', component: { template: '<div />' } },
       { path: '/login', name: 'login', component: { template: '<div />' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div />' } },
       { path: '/admin', name: 'admin', component: { template: '<div />' }, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
       { path: '/recipes', name: 'recipes', component: { template: '<div />' } },
+      { path: '/series', name: 'series', component: { template: '<div />' } },
+      { path: '/archive', name: 'archive', component: { template: '<div />' } },
     ],
   })
   r.beforeEach((to, _from, next) => {
-    if (!to.meta.requiresAuth) { next(); return }
     const auth = useAuthStore()
+    const routeName = String(to.name ?? '')
+    const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes', 'about'])
+    const authEntryRoutes = new Set(['login', 'admin-login'])
+    const memberVisibleRoutes = new Set(['articles', 'article', 'recipes'])
+    if (!to.meta.requiresAuth) {
+      if (!auth.isAuthenticated && !guestVisibleRoutes.has(routeName) && !authEntryRoutes.has(routeName)) {
+        next({ name: 'home' })
+        return
+      }
+      if (auth.isAuthenticated && !auth.isStaff && !memberVisibleRoutes.has(routeName)) {
+        next({ name: 'articles' })
+        return
+      }
+      next()
+      return
+    }
     if (!auth.isAuthenticated) { next({ name: 'login', query: { next: to.fullPath } }); return }
+    if (auth.isAuthenticated && !auth.isStaff && !memberVisibleRoutes.has(routeName)) {
+      next({ name: 'articles' })
+      return
+    }
     const required = to.meta.capability as Capability | undefined
     if (required && !auth.can(required)) { next({ path: '/recipes' }); return }
     next()
@@ -53,17 +77,30 @@ describe('FD-8 authStore 角色感知', () => {
     expect(auth.displayName).toBe('站长')
     expect(auth.isAdmin).toBe(true)
     expect(auth.isPartner).toBe(false)
+    expect(auth.isStaff).toBe(true)
+    expect(auth.hasAdminAccess).toBe(true)
     expect(auth.canKitchen).toBe(true)
     expect(sessionStorage.getItem('yubai-admin-role')).toBe('ADMIN')
   })
 
-  it('PARTNER 会话可进 kitchen 但不是 ADMIN', () => {
+  it('PARTNER 会话：isAdmin=false 但 isStaff/hasAdminAccess=true，能力与 ADMIN 一致', () => {
     sessionStorage.clear()
     const auth = freshStore()
     auth.saveSession(result({ role: 'PARTNER', username: 'gf', displayName: '小伙伴' }))
     expect(auth.isAdmin).toBe(false)
     expect(auth.isPartner).toBe(true)
+    expect(auth.isStaff).toBe(true)
+    expect(auth.hasAdminAccess).toBe(true)
     expect(auth.canKitchen).toBe(true)
+    expect(auth.can(Capabilities.AI_USAGE)).toBe(true)
+    expect(auth.can(Capabilities.CONTENT_MANAGE)).toBe(true)
+    expect(auth.can(Capabilities.AI_MANAGE)).toBe(true)
+    expect(auth.can(Capabilities.KITCHEN_DELETE_ANY)).toBe(true)
+    expect(auth.can(Capabilities.DASHBOARD_VIEW)).toBe(true)
+    expect(auth.can(Capabilities.ATTACHMENTS_MANAGE)).toBe(true)
+    expect(auth.can(Capabilities.LIBRARY_MANAGE)).toBe(true)
+    expect(auth.can(Capabilities.METRICS_VIEW)).toBe(true)
+    expect(auth.can(Capabilities.ACCOUNT_ACCESS)).toBe(true)
   })
 
   it('服务端 capabilities 是能力判定事实源', () => {
@@ -91,6 +128,8 @@ describe('FD-8 authStore 角色感知', () => {
     auth.saveSession(result({ role: undefined, displayName: undefined }))
     expect(auth.isAuthenticated).toBe(true)
     expect(auth.isAdmin).toBe(false)
+    expect(auth.isStaff).toBe(false)
+    expect(auth.hasAdminAccess).toBe(false)
     expect(auth.canKitchen).toBe(false)
   })
 
@@ -133,14 +172,14 @@ describe('FD-8 authStore 角色感知', () => {
     expect(router.currentRoute.value.query.next).toBe('/admin')
   })
 
-  it('守卫：PARTNER 访问 /admin 被重定向到 /recipes 而非登录页', async () => {
+  it('守卫：PARTNER 与 ADMIN 同权进入 /admin', async () => {
     sessionStorage.clear()
     const auth = freshStore()
     auth.saveSession(result({ role: 'PARTNER', username: 'gf' }))
     const router = guardedRouter()
     await router.push('/admin')
     await router.isReady()
-    expect(router.currentRoute.value.name).toBe('recipes')
+    expect(router.currentRoute.value.name).toBe('admin')
   })
 
   it('守卫：ADMIN 正常进入 /admin', async () => {
@@ -151,5 +190,29 @@ describe('FD-8 authStore 角色感知', () => {
     await router.push('/admin')
     await router.isReady()
     expect(router.currentRoute.value.name).toBe('admin')
+  })
+
+  it('guest cannot enter other public modules', async () => {
+    sessionStorage.clear()
+    freshStore().clearSession()
+    const router = guardedRouter()
+    await router.push('/series')
+    await router.isReady()
+    expect(router.currentRoute.value.name).toBe('home')
+
+    await router.push('/archive')
+    await router.isReady()
+    expect(router.currentRoute.value.name).toBe('home')
+  })
+
+  it('guest can enter home, articles, recipes, and about', async () => {
+    sessionStorage.clear()
+    freshStore().clearSession()
+    const router = guardedRouter()
+    for (const path of ['/', '/articles', '/articles/hello', '/recipes', '/about']) {
+      await router.push(path)
+      await router.isReady()
+      expect(router.currentRoute.value.path).toBe(path)
+    }
   })
 })

@@ -48,7 +48,7 @@ function chooseGuest() {
 function chooseAdmin() {
   writeChoice('admin')
   dismissed.value = true
-  void router.push({ path: '/login', query: { next: '/' } })
+  void router.push({ path: '/admin/login' })
 }
 </script>
 

@@ -85,11 +85,13 @@ class MonitoringIntegrationTest {
     }
 
     @Test
-    void prometheusReturns403ForNonAdminUsers() throws Exception {
-        String token = loginAs("partner", "partner-pass-12345");
+    void prometheusIsReadableByBothAdminAndPartner() throws Exception {
+        // FD-29：PARTNER 与 ADMIN 同权（metrics:view），prometheus 不再只限 ADMIN
+        String partnerToken = loginAs("partner", "partner-pass-12345");
         mockMvc.perform(get("/actuator/prometheus")
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isForbidden());
+                .header("Authorization", "Bearer " + partnerToken))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN));
     }
 
     @Test

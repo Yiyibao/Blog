@@ -12,12 +12,12 @@ import { refreshReveals, disconnectReveals } from './composables/useReveals'
 import { createSiteConfig } from './config/site'
 
 const GlobalSearch = defineAsyncComponent(() => import('./components/GlobalSearch.vue'))
-const AdminAiSidebar = defineAsyncComponent(() => import('./components/AdminAiSidebar.vue'))
+const AdminPetAssistant = defineAsyncComponent(() => import('./components/admin-pet/AdminPetAssistant.vue'))
 
 const route = useRoute()
 const ui = useUiStore()
 const siteConfig = createSiteConfig()
-// L-16：角色化导航——游客隐藏学习笔记，管理员多一个"进入后台"
+// L-16：角色化导航——游客隐藏学习笔记，管理角色（ADMIN/PARTNER）多一个"进入后台"
 const auth = useAuthStore()
 
 const menuOpen = ref(false)
@@ -26,7 +26,11 @@ const showBackToTop = ref(false)
 let scrollFrame: number | undefined
 
 const isAdminRoute = computed(() => String(route.path).startsWith('/admin'))
-const isRestrictedMember = computed(() => auth.isAuthenticated && !auth.isAdmin)
+const isGuest = computed(() => !auth.isAuthenticated)
+const isLoginRoute = computed(() => route.name === 'login' || route.name === 'admin-login')
+// FD-29：管理角色总开关——ADMIN 与 PARTNER 同权；isAdmin 仅表示严格角色
+const isRestrictedMember = computed(() => auth.isAuthenticated && !auth.isStaff)
+const hasPetAssistant = computed(() => auth.isStaff && !isLoginRoute.value)
 
 function onKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -163,7 +167,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="site-shell" :class="{ 'admin-mode': isAdminRoute, 'restricted-member': isRestrictedMember }" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
+  <div class="site-shell" :class="{ 'admin-mode': isAdminRoute, 'restricted-visitor': isGuest, 'restricted-member': isRestrictedMember, 'has-pet-assistant': hasPetAssistant }" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
     <div v-if="!isAdminRoute" class="reading-progress" :style="{ width: `${readingProgress}%` }" aria-hidden="true" />
     <div v-if="!isAdminRoute" class="sakura-petals" aria-hidden="true">
       <i
@@ -199,7 +203,7 @@ onBeforeUnmount(() => {
       </nav>
       <div class="header-actions">
         <AmbientSound />
-        <RouterLink class="admin-entry-link" :to="auth.isAdmin ? '/admin' : '/login'">进入后台 ↗</RouterLink>
+        <RouterLink class="admin-entry-link" :to="auth.isStaff ? '/admin' : '/login'">进入后台 ↗</RouterLink>
         <button class="icon-button search-trigger" type="button" aria-label="全站搜索" @click="ui.openSearch">⌕ <kbd>⌘K</kbd></button>
         <button class="icon-button" type="button" :aria-label="ui.isDark ? '切换浅色模式' : '切换深色模式'" @click="ui.toggleTheme">{{ ui.isDark ? '☀' : '◐' }}</button>
         <button class="menu-button" type="button" :aria-expanded="menuOpen" aria-label="打开导航" @click="menuOpen = !menuOpen">{{ menuOpen ? '关闭' : '菜单' }}</button>
@@ -214,7 +218,7 @@ onBeforeUnmount(() => {
       <RouterLink to="/recipes">美食 <span>05</span></RouterLink>
       <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记 <span>06</span></RouterLink>
       <RouterLink to="/about">关于 <span>07</span></RouterLink>
-      <RouterLink :to="auth.isAdmin ? '/admin' : '/login'">进入后台 <span>→</span></RouterLink>
+      <RouterLink :to="auth.isStaff ? '/admin' : '/login'">进入后台 <span>→</span></RouterLink>
     </nav>
 
     <main>
@@ -255,8 +259,8 @@ onBeforeUnmount(() => {
     <GlobalSearch v-if="ui.searchOpen" :open="true" @close="ui.closeSearch" />
     <!-- L-16/D-18：入口大屏（组件内部判定：仅根路径 + 无既往选择 + 未登录） -->
     <EntryGate />
-    <!-- 4A-4：AI 助手停靠栏——全 /admin 路由可用（组件内部排除 /admin/ai 全屏页） -->
-    <AdminAiSidebar v-if="isAdminRoute && auth.isAdmin" />
+    <!-- FD-29：宠物助手——仅管理角色（ADMIN/PARTNER）且非登录页挂载；聊天面板仅打开时挂载 AdminAiChat compact -->
+    <AdminPetAssistant v-if="hasPetAssistant" />
     <div class="toast" :class="{ visible: !!ui.toast }" role="status" aria-live="polite">{{ ui.toast }}</div>
   </div>
 </template>
@@ -282,9 +286,18 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-/* Ordinary signed-in members can read only articles and recipes. Keep the
-   guard in the router authoritative while mirroring it in the navigation so
-   hidden destinations are not advertised in the UI. */
+/* Guests can browse only the four public sections; keep the router guard
+   authoritative while mirroring it in the navigation. */
+.restricted-visitor .desktop-nav a[href="/series"],
+.restricted-visitor .desktop-nav a[href="/archive"],
+.restricted-visitor .mobile-nav a[href="/series"],
+.restricted-visitor .mobile-nav a[href="/archive"],
+.restricted-visitor .site-footer a[href="/series"],
+.restricted-visitor .site-footer a[href="/archive"] {
+  display: none;
+}
+
+/* Ordinary signed-in members can read only articles and recipes. */
 .restricted-member .desktop-nav a[href="/"],
 .restricted-member .desktop-nav a[href="/series"],
 .restricted-member .desktop-nav a[href="/archive"],
@@ -303,5 +316,15 @@ onBeforeUnmount(() => {
 .restricted-member .site-footer a[href="/notes"],
 .restricted-member .site-footer a[href="/admin/login"] {
   display: none;
+}
+
+/* FD-29：管理角色在场时宠物固定右下角，"回到顶部"上移避让，不重叠 */
+.site-shell.has-pet-assistant .sakura-back-top {
+  bottom: calc(clamp(18px, 2.4vw, 32px) + 134px);
+}
+@media (max-width: 560px) {
+  .site-shell.has-pet-assistant .sakura-back-top {
+    bottom: calc(16px + 108px);
+  }
 }
 </style>

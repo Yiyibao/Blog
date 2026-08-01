@@ -386,10 +386,17 @@ onMounted(load)
         <div class="admin-form-grid">
           <label>
             默认模型
-            <input v-model="form.defaultModel" required maxlength="120" list="provider-model-options" placeholder="deepseek-chat">
-            <datalist id="provider-model-options">
-              <option v-for="model in parsedModels()" :key="model" :value="model" />
-            </datalist>
+            <select v-if="parsedModels().length" v-model="form.defaultModel" required data-testid="default-model">
+              <option v-for="model in parsedModels()" :key="model" :value="model">{{ model }}</option>
+            </select>
+            <input
+              v-else
+              v-model="form.defaultModel"
+              required
+              maxlength="120"
+              placeholder="deepseek-chat"
+              data-testid="default-model"
+            >
           </label>
           <label class="admin-check"><input v-model="form.enabled" type="checkbox">启用该供应商</label>
           <label>日请求上限<input v-model.number="form.dailyRequestLimit" type="number" min="1" max="100000" required></label>

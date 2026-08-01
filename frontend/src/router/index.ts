@@ -35,12 +35,18 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore()
   const routeName = String(to.name ?? '')
+  const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes', 'about'])
+  const authEntryRoutes = new Set(['login', 'admin-login'])
   const memberVisibleRoutes = new Set(['articles', 'article', 'recipes'])
   // FD-8：requiresAuth + capability——
-  // 未登录去登录页；已登录但缺少所需 capability（如 PARTNER 访问 /admin）重定向 /recipes 而非登录页，
-  // 免得"已登录还被要求登录"的死循环体验
+  // 未登录去登录页；已登录但缺少管理能力（未知角色）重定向 /recipes 而非登录页，
+  // 免得"已登录还被要求登录"的死循环体验；ADMIN 与 PARTNER 同权走 isStaff
   if (!to.meta.requiresAuth) {
-    if (auth.isAuthenticated && !auth.isAdmin && !memberVisibleRoutes.has(routeName)) {
+    if (!auth.isAuthenticated && !guestVisibleRoutes.has(routeName) && !authEntryRoutes.has(routeName)) {
+      next({ name: 'home' })
+      return
+    }
+    if (auth.isAuthenticated && !auth.isStaff && !memberVisibleRoutes.has(routeName)) {
       next({ name: 'articles' })
       return
     }
@@ -55,7 +61,7 @@ router.beforeEach(async (to, _from, next) => {
       return
     }
   }
-  if (auth.isAuthenticated && !auth.isAdmin && !memberVisibleRoutes.has(routeName)) {
+  if (auth.isAuthenticated && !auth.isStaff && !memberVisibleRoutes.has(routeName)) {
     next({ name: 'articles' })
     return
   }

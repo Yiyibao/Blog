@@ -28,9 +28,20 @@ class JwtAuthoritiesTest {
         var authentication = configuration.jwtAuthenticationConverter().convert(jwt(
             "roles", List.of("UNKNOWN", "PARTNER")));
 
+        // FD-29：PARTNER 能力与 ADMIN 恒等；UNKNOWN 仍 fail-closed
         assertThat(authentication.getAuthorities())
             .extracting(Object::toString)
-            .containsExactlyInAnyOrder(Permissions.ACCOUNT_ACCESS, Permissions.KITCHEN_ACCESS);
+            .containsExactlyInAnyOrder(
+                Permissions.ACCOUNT_ACCESS,
+                Permissions.CONTENT_MANAGE,
+                Permissions.AI_MANAGE,
+                Permissions.AI_USAGE,
+                Permissions.KITCHEN_ACCESS,
+                Permissions.KITCHEN_DELETE_ANY,
+                Permissions.DASHBOARD_VIEW,
+                Permissions.ATTACHMENTS_MANAGE,
+                Permissions.LIBRARY_MANAGE,
+                Permissions.METRICS_VIEW);
     }
 
     @Test

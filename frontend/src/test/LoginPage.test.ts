@@ -98,12 +98,13 @@ afterEach(() => {
 })
 
 describe('FD-9 通用登录页', () => {
-  it('PARTNER 登录后落地 /recipes', async () => {
+  it('FD-29：PARTNER 登录后与 ADMIN 一样落地 /admin（同权）', async () => {
     mockLogin.mockResolvedValue(loginResult('PARTNER'))
     const { wrapper, router } = await mountPage()
     await fillAndSubmit(wrapper)
-    expect(router.currentRoute.value.path).toBe('/recipes')
+    expect(router.currentRoute.value.path).toBe('/admin')
     expect(useAuthStore().isPartner).toBe(true)
+    expect(useAuthStore().isStaff).toBe(true)
   })
 
   it('ADMIN 登录后落地 /admin', async () => {
@@ -124,7 +125,7 @@ describe('FD-9 通用登录页', () => {
     mockLogin.mockResolvedValue(loginResult('PARTNER'))
     const { wrapper, router } = await mountPage('/login?next=https%3A%2F%2Fevil.example')
     await fillAndSubmit(wrapper)
-    expect(router.currentRoute.value.path).toBe('/recipes')
+    expect(router.currentRoute.value.path).toBe('/admin')
   })
 
   it('勾选保持登录：remember 传给 login，令牌仅存 sessionStorage', async () => {
@@ -150,7 +151,7 @@ describe('FD-9 通用登录页', () => {
     useAuthStore().saveSession(loginResult('PARTNER') as never)
     const { router } = await mountPage()
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/recipes')
+    expect(router.currentRoute.value.path).toBe('/admin')
   })
 })
 
