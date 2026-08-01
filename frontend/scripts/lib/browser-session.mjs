@@ -277,7 +277,11 @@ export function isAllowedBrowserProcess(commandLine) {
   if (typeof commandLine !== 'string' || !commandLine.trim()) return false
   const match = commandLine.trim().match(/^"([^"]+)"|^(\S+)/)
   const exePath = match ? (match[1] ?? match[2]) : ''
-  const name = basename(exePath.replace(/^"|"$/g, '')).toLowerCase()
+  // The command line always comes from Windows CIM, even when this parser is
+  // exercised by the cross-platform CI test suite. node:path.basename follows
+  // the host platform and therefore treats backslashes as ordinary characters
+  // on Linux. Split on both separators so ownership checks stay deterministic.
+  const name = exePath.replace(/^"|"$/g, '').split(/[\\/]/).pop()?.toLowerCase() ?? ''
   return name === 'msedge.exe' || name === 'chrome.exe'
 }
 
