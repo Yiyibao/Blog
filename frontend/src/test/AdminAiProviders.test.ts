@@ -149,6 +149,8 @@ describe('AdminAiProviders Component', () => {
   })
 
   it('creates a provider with parsed model list and entered api key', async () => {
+    const changed = vi.fn()
+    window.addEventListener(adminApi.AI_PROVIDERS_CHANGED_EVENT, changed, { once: true })
     const wrapper = await mountComponent()
     await wrapper.find('.provider-section > header button.primary').trigger('click')
 
@@ -173,6 +175,7 @@ describe('AdminAiProviders Component', () => {
     })
     expect(wrapper.find('.admin-editor').exists()).toBe(false)
     expect(mockFetchAiProviders).toHaveBeenCalledTimes(2)
+    expect(changed).toHaveBeenCalledTimes(1)
     // 密钥只写不回显：保存后输入过的明文密钥不得出现在页面任何位置
     expect(wrapper.text()).not.toContain('glm-secret-key')
   })

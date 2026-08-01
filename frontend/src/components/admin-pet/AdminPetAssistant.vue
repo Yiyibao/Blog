@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/uiStore'
 import { usePrefersReducedMotion } from '../../composables/usePrefersReducedMotion'
-import { fetchAiProviders, type AiProvider } from '../../api/admin'
+import { AI_PROVIDERS_CHANGED_EVENT, fetchAiProviders, type AiProvider } from '../../api/admin'
 import AdminAiChat from '../AdminAiChat.vue'
 import PetSprite from './PetSprite.vue'
 import type { PetState } from './petAnimations'
@@ -37,7 +37,7 @@ const petSize = ref(DESKTOP_SIZE)
 const providers = ref<AiProvider[]>([])
 const selectedProviderId = ref<number | null>(null)
 const selectedModel = ref<string | null>(null)
-let providersLoaded = false
+let providerRequestId = 0
 
 const gazeDirection = ref(0)
 const gazeNear = ref(false)
@@ -78,19 +78,28 @@ function writeHidden(hidden: boolean) {
 }
 
 async function ensureProviders() {
-  if (providersLoaded) return
-  providersLoaded = true
+  const requestId = ++providerRequestId
+  providers.value = []
+  selectedProviderId.value = null
+  selectedModel.value = null
   try {
-    providers.value = (await fetchAiProviders()).filter((provider) => provider.enabled)
+    const loaded = (await fetchAiProviders()).filter((provider) => provider.enabled)
+    if (requestId !== providerRequestId) return
+    providers.value = loaded
     const preferred = providers.value.find((provider) => provider.isDefault)
       ?? providers.value[0]
       ?? null
     selectedProviderId.value = preferred?.id ?? null
     selectedModel.value = preferred?.defaultModel || preferred?.models?.[0] || null
   } catch {
+    if (requestId !== providerRequestId) return
     // 注册表不可用时走 env 默认供应商，切换器留空
     providers.value = []
   }
+}
+
+function onProvidersChanged() {
+  if (panelOpen.value) void ensureProviders()
 }
 
 const selectedProvider = computed(() =>
@@ -134,8 +143,11 @@ async function openPanel() {
     }
     return
   }
-  panelOpen.value = true
+  // Clear stale selections synchronously, then refresh without delaying panel opening.
+  // Until the registry arrives, AdminAiChat omits provider/model so the backend resolves
+  // the current default instead of submitting an outdated explicit model.
   void ensureProviders()
+  panelOpen.value = true
   await nextTick()
   focusChatInput()
 }
@@ -286,6 +298,7 @@ function syncPetSize() {
 }
 
 onMounted(() => {
+  window.addEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointermove', onPointerMove, { passive: true })
   document.addEventListener('mouseleave', onMouseLeave)
@@ -299,6 +312,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('pointermove', onPointerMove)
   document.removeEventListener('mouseleave', onMouseLeave)

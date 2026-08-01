@@ -4,7 +4,7 @@ import { onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   logout as apiLogout, createAiProvider, deleteAiProvider, fetchAiProviders,
-  hasValidAdminSession, setDefaultAiProvider, testAiProvider, updateAiProvider,
+  hasValidAdminSession, notifyAiProvidersChanged, setDefaultAiProvider, testAiProvider, updateAiProvider,
   type AiProvider, type AiProviderPayload, type AiProviderTestResult, type AiProviderType,
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
@@ -148,6 +148,7 @@ async function save() {
     } else {
       await createAiProvider(providerPayload())
     }
+    notifyAiProvidersChanged()
     saving.value = false
     closeEditor()
     await load()
@@ -178,6 +179,7 @@ async function toggleEnabled(provider: AiProvider) {
       dailyRequestLimit: provider.dailyRequestLimit,
       dailyTokenLimit: provider.dailyTokenLimit,
     })
+    notifyAiProvidersChanged()
     await load()
   } catch (cause) {
     if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '切换启用状态失败，请稍后重试。')
@@ -192,6 +194,7 @@ async function makeDefault(provider: AiProvider) {
   error.value = ''
   try {
     await setDefaultAiProvider(provider.id)
+    notifyAiProvidersChanged()
     await load()
   } catch (cause) {
     if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '设为默认失败，请稍后重试。')
@@ -228,6 +231,7 @@ async function remove(provider: AiProvider) {
   error.value = ''
   try {
     await deleteAiProvider(provider.id)
+    notifyAiProvidersChanged()
     delete testResults[provider.id]
     await load()
   } catch (cause) {

@@ -226,7 +226,8 @@ describe('面板与单实例', () => {
     await wrapper.find('.pet-chat-close').trigger('click')
 
     expect(wrapper.findAllComponents(ChatStub)).toHaveLength(0)
-    expect(mockFetchProviders).toHaveBeenCalledTimes(1)
+    // Each reopen refreshes provider/model configuration to avoid stale selections.
+    expect(mockFetchProviders).toHaveBeenCalledTimes(2)
     // 重复开关仍只有一个宠物与一个面板实例
     expect(wrapper.findAll('[data-testid="pet-button"]')).toHaveLength(1)
     expect(wrapper.findAll('[data-testid="pet-chat-panel"]')).toHaveLength(0)
@@ -519,7 +520,23 @@ describe('P2 面板 provider/model 切换', () => {
     await wrapper.find('[data-testid="pet-button"]').trigger('click')
     await flushPromises()
     expect(wrapper.find('.pet-chat-close').exists()).toBe(true)
-    expect(mockFetchProviders).toHaveBeenCalledTimes(1)
+    expect(mockFetchProviders).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes the open panel when provider settings change', async () => {
+    mockFetchProviders.mockResolvedValue([provider(1, 'deepseek')])
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await openChat(wrapper)
+
+    mockFetchProviders.mockResolvedValue([
+      provider(1, 'deepseek', { models: ['m-new'], defaultModel: 'm-new' }),
+    ])
+    window.dispatchEvent(new Event(adminApi.AI_PROVIDERS_CHANGED_EVENT))
+    await flushPromises()
+
+    const chat = wrapper.findComponent(ChatStub)
+    expect(chat.props('providerId')).toBe(1)
+    expect(chat.props('model')).toBe('m-new')
   })
 })
 

@@ -947,6 +947,14 @@ export interface AiProviderTestResult {
   models: string[]
 }
 
+export const AI_PROVIDERS_CHANGED_EVENT = 'yubai-ai-providers-changed'
+
+export function notifyAiProvidersChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(AI_PROVIDERS_CHANGED_EVENT))
+  }
+}
+
 export function fetchAiProviders() {
   return unwrap<AiProvider[]>(api.get('/admin/ai/providers', { headers: tokenHeader() }))
 }

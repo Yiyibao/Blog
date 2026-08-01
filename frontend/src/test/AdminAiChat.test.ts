@@ -126,6 +126,48 @@ describe('AdminAiChat Component', () => {
     )
   })
 
+  it('switches provider and resets the model to that provider default', async () => {
+    mockFetchAiProviders.mockResolvedValue([
+      { id: 1, name: 'Provider A', models: ['a-1'], defaultModel: 'a-1', enabled: true, isDefault: true },
+      { id: 2, name: 'Provider B', models: ['b-1', 'b-2'], defaultModel: 'b-2', enabled: true, isDefault: false },
+    ])
+    streamResolve('Provider B response')
+
+    const wrapper = await mountComponent()
+    await flushPromises()
+    await wrapper.find('[data-testid="chat-provider-select"]').setValue('2')
+    expect((wrapper.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value).toBe('b-2')
+
+    await wrapper.find('textarea').setValue('Use provider B')
+    await wrapper.find('button.send-btn').trigger('click')
+
+    expect(mockStreamAiChat).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Use provider B' }],
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.objectContaining({ model: 'b-2', providerId: 2, signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('refreshes stale provider models after the provider registry changes', async () => {
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    mockFetchAiProviders.mockResolvedValue([{
+      id: 1,
+      name: 'OpenCode Sidecar',
+      models: ['new-model'],
+      defaultModel: 'new-model',
+      enabled: true,
+      isDefault: true,
+    }])
+    window.dispatchEvent(new Event(adminApi.AI_PROVIDERS_CHANGED_EVENT))
+    await flushPromises()
+
+    expect((wrapper.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value).toBe('new-model')
+    expect(wrapper.findAll('[data-testid="chat-model-select"] option').map((option) => option.text()))
+      .toEqual(['new-model'])
+  })
+
   it('restores stored messages from sessionStorage on mount', async () => {
     const stored = [
       { role: 'user', content: 'Previous question' },

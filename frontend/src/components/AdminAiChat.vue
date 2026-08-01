@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AiStreamHttpError, fetchAiProviders, logout as apiLogout, getAdminSessionName,
+  AI_PROVIDERS_CHANGED_EVENT, AiStreamHttpError, fetchAiProviders, logout as apiLogout, getAdminSessionName,
   streamAiChat, type AiChatMessage, type AiProvider,
 } from '../api/admin'
 import AdminSidebar from './AdminSidebar.vue'
@@ -48,6 +48,7 @@ const streamingStarted = ref(false)
 const error = ref('')
 const chatBoxRef = ref<HTMLElement | null>(null)
 let abortController: AbortController | null = null
+let providerRequestId = 0
 
 const selectedProvider = computed(() =>
   providers.value.find((provider) => provider.id === selectedProviderId.value) ?? null)
@@ -65,18 +66,32 @@ const modelOptions = computed(() => {
 async function loadModelOptions() {
   // 面板宿主（AdminPetAssistant）负责供应商和模型切换，避免重复请求和重复控件。
   if (props.compact) return
+  const requestId = ++providerRequestId
   try {
-    providers.value = (await fetchAiProviders()).filter((provider) => provider.enabled)
+    const loaded = (await fetchAiProviders()).filter((provider) => provider.enabled)
+    if (requestId !== providerRequestId) return
+    providers.value = loaded
     const preferred = providers.value.find((provider) => provider.isDefault)
       ?? providers.value[0]
       ?? null
     selectedProviderId.value = preferred?.id ?? null
     selectedModel.value = preferred?.defaultModel ?? preferred?.models?.[0] ?? null
   } catch {
+    if (requestId !== providerRequestId) return
     providers.value = []
     selectedProviderId.value = null
     selectedModel.value = null
   }
+}
+
+function onProviderChange(raw: string) {
+  selectedProviderId.value = raw ? Number(raw) : null
+  const provider = selectedProvider.value
+  selectedModel.value = provider?.defaultModel ?? provider?.models?.[0] ?? null
+}
+
+function onProvidersChanged() {
+  if (!props.compact) void loadModelOptions()
 }
 
 function loadStoredMessages(): AiChatMessage[] {
@@ -234,12 +249,14 @@ function stopStreaming() {
 }
 
 onMounted(() => {
+  window.addEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
   void loadModelOptions()
   void scrollToBottom()
 })
 
 // 宿主销毁（收起面板 / logout / 路由切换）时立即中止流式请求，避免后台继续消耗配额
 onBeforeUnmount(() => {
+  window.removeEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
   abortController?.abort()
 })
 </script>
@@ -322,6 +339,21 @@ onBeforeUnmount(() => {
               @keydown="handleKeyDown"
             />
             <div v-if="!props.compact" class="chat-model-picker">
+              <label v-if="providers.length > 1" for="ai-chat-provider">供应商</label>
+              <select
+                v-if="providers.length > 1"
+                id="ai-chat-provider"
+                class="chat-model-select"
+                data-testid="chat-provider-select"
+                aria-label="选择供应商"
+                :value="selectedProviderId ?? ''"
+                :disabled="loading"
+                @change="onProviderChange(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="provider in providers" :key="provider.id" :value="provider.id">
+                  {{ provider.name }}
+                </option>
+              </select>
               <label for="ai-chat-model">模型</label>
               <select
                 id="ai-chat-model"
@@ -336,7 +368,7 @@ onBeforeUnmount(() => {
                   {{ modelOption }}
                 </option>
               </select>
-              <span v-if="selectedProvider" class="chat-model-provider">{{ selectedProvider.name }}</span>
+              <span v-if="selectedProvider && providers.length <= 1" class="chat-model-provider">{{ selectedProvider.name }}</span>
             </div>
             <div class="input-footer">
               <span class="char-count" :class="{ 'near-limit': userInput.length > 7500 }">
