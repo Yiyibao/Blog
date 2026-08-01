@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import AdminAiProviders from '../components/AdminAiProviders.vue'
+import AdminAiChat from '../components/AdminAiChat.vue'
+import AdminPetAssistant from '../components/admin-pet/AdminPetAssistant.vue'
 import AdminAiProvidersPage from '../pages/AdminAiProvidersPage.vue'
 import router from '../router/index'
 import * as adminApi from '../api/admin'
 import { useAuthStore } from '../stores/auth'
+
+enableAutoUnmount(afterEach)
 
 const mockFetchAiProviders = vi.fn()
 const mockCreateAiProvider = vi.fn()
@@ -124,6 +128,7 @@ beforeEach(() => {
   mockTestAiProvider.mockReset()
   mockLogout.mockReset()
   window.sessionStorage.clear()
+  window.localStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
   window.sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
   window.sessionStorage.setItem('yubai-admin-role', 'ADMIN')
@@ -174,7 +179,8 @@ describe('AdminAiProviders Component', () => {
       dailyTokenLimit: 200000,
     })
     expect(wrapper.find('.admin-editor').exists()).toBe(false)
-    expect(mockFetchAiProviders).toHaveBeenCalledTimes(2)
+    // 页面加载 + aiStore 同步各 1 次；保存后 notify 事件触发 store 刷新 + 页面 load 各 1 次
+    expect(mockFetchAiProviders).toHaveBeenCalledTimes(4)
     expect(changed).toHaveBeenCalledTimes(1)
     // 密钥只写不回显：保存后输入过的明文密钥不得出现在页面任何位置
     expect(wrapper.text()).not.toContain('glm-secret-key')
@@ -521,6 +527,100 @@ describe('AdminAiProviders Component', () => {
     const payload = mockUpdateAiProvider.mock.calls[0][1]
     expect(payload.providerType).toBe('OPENCODE_SERVER')
     expect(payload).not.toHaveProperty('apiKey')
+  })
+
+  it('供应商页与全屏聊天页共享同一份模型选择并实时同步', async () => {
+    const testRouter = createTestRouter()
+    await testRouter.push('/admin/ai')
+    await testRouter.isReady()
+    const chat = mount(AdminAiChat, { global: { plugins: [testRouter] } })
+    const providersPage = await mountComponent(testRouter)
+    await flushPromises()
+
+    const pageModel = () => (providersPage.find('[data-testid="page-model-select"]').element as HTMLSelectElement).value
+    const chatModel = () => (chat.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value
+
+    // 三处默认一致：isDefault 供应商 deepseek 的默认模型
+    expect(chatModel()).toBe('deepseek-chat')
+    expect(pageModel()).toBe('deepseek-chat')
+    expect((chat.find('[data-testid="chat-provider-select"]').element as HTMLSelectElement).value).toBe('1')
+
+    // 全屏聊天切模型 → 供应商页同步
+    await chat.find('[data-testid="chat-model-select"]').setValue('deepseek-reasoner')
+    await flushPromises()
+    expect(pageModel()).toBe('deepseek-reasoner')
+
+    // 供应商页切供应商 → 全屏聊天同步，模型跟随新供应商默认
+    await providersPage.find('[data-testid="page-provider-select"]').setValue('3')
+    await flushPromises()
+    expect((chat.find('[data-testid="chat-provider-select"]').element as HTMLSelectElement).value).toBe('3')
+    expect(chatModel()).toBe('moonshot-v1-8k')
+    expect(pageModel()).toBe('moonshot-v1-8k')
+
+    // 会话级持久化：重挂载全屏聊天后选择不丢失、不漂移
+    chat.unmount()
+    const chat2 = mount(AdminAiChat, { global: { plugins: [testRouter] } })
+    await flushPromises()
+    expect((chat2.find('[data-testid="chat-provider-select"]').element as HTMLSelectElement).value).toBe('3')
+    expect((chat2.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value).toBe('moonshot-v1-8k')
+    chat2.unmount()
+  })
+
+  it('三处（聊天页/宠物面板/供应商页）同一次选择实时互相同步', async () => {
+    const testRouter = createTestRouter()
+    await testRouter.push('/admin/ai')
+    await testRouter.isReady()
+    const auth = useAuthStore()
+    auth.clearSession()
+    auth.saveSession({
+      token: 'valid-token',
+      tokenType: 'Bearer',
+      username: 'admin',
+      expiresAt: '2099-12-31T23:59:59Z',
+      role: 'ADMIN',
+      displayName: '站长',
+    })
+
+    const chat = mount(AdminAiChat, { global: { plugins: [testRouter] } })
+    const petRouter = createTestRouter()
+    await petRouter.push('/')
+    await petRouter.isReady()
+    const pet = mount(AdminPetAssistant, { global: { plugins: [petRouter] } })
+    const providersPage = await mountComponent(testRouter)
+    await flushPromises()
+
+    const chatModel = () => (chat.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value
+    const pageModel = () => (providersPage.find('[data-testid="page-model-select"]').element as HTMLSelectElement).value
+    const petModel = () => (pet.find('[data-testid="pet-model-select"]').element as HTMLSelectElement).value
+
+    // 初始三处一致：isDefault 供应商 deepseek 的默认模型
+    expect(chatModel()).toBe('deepseek-chat')
+    expect(pageModel()).toBe('deepseek-chat')
+
+    // 打开宠物面板，与全屏聊天同源
+    await pet.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    expect(petModel()).toBe('deepseek-chat')
+
+    // 聊天页切模型 → 宠物面板 + 供应商页跟随
+    await chat.find('[data-testid="chat-model-select"]').setValue('deepseek-reasoner')
+    await flushPromises()
+    expect(petModel()).toBe('deepseek-reasoner')
+    expect(pageModel()).toBe('deepseek-reasoner')
+
+    // 供应商页切供应商 → 聊天页 + 宠物面板跟随，模型改为新供应商默认
+    await providersPage.find('[data-testid="page-provider-select"]').setValue('3')
+    await flushPromises()
+    expect((chat.find('[data-testid="chat-provider-select"]').element as HTMLSelectElement).value).toBe('3')
+    expect((pet.find('[data-testid="pet-provider-select"]').element as HTMLSelectElement).value).toBe('3')
+    // kimi 只有 1 个模型 → 模型下拉隐藏，聊天页展示其默认模型
+    expect(chatModel()).toBe('moonshot-v1-8k')
+
+    // 宠物面板切回 deepseek-reasoner → 全屏聊天 + 供应商页跟随
+    await pet.find('[data-testid="pet-provider-select"]').setValue('1')
+    await flushPromises()
+    expect(chatModel()).toBe('deepseek-chat')
+    expect(pageModel()).toBe('deepseek-chat')
   })
 })
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import AdminAiChat from '../components/AdminAiChat.vue'
@@ -7,6 +7,8 @@ import AdminAiPage from '../pages/AdminAiPage.vue'
 import router from '../router/index'
 import * as adminApi from '../api/admin'
 import { useAuthStore } from '../stores/auth'
+
+enableAutoUnmount(afterEach)
 
 const mockStreamAiChat = vi.fn()
 const mockLogout = vi.fn()
@@ -93,6 +95,7 @@ beforeEach(() => {
   mockStreamAiChat.mockReset()
   mockLogout.mockReset()
   window.sessionStorage.clear()
+  window.localStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
   window.sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
   window.sessionStorage.setItem('yubai-admin-role', 'ADMIN')
@@ -166,6 +169,57 @@ describe('AdminAiChat Component', () => {
     expect((wrapper.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value).toBe('new-model')
     expect(wrapper.findAll('[data-testid="chat-model-select"] option').map((option) => option.text()))
       .toEqual(['new-model'])
+  })
+
+  it('重挂载后保持用户已选的模型（与宠物面板/供应商页同源）', async () => {
+    const wrapper = await mountComponent()
+    await flushPromises()
+    await wrapper.find('[data-testid="chat-model-select"]').setValue('qwen3.7-plus')
+    wrapper.unmount()
+
+    const wrapper2 = await mountComponent()
+    await flushPromises()
+    expect((wrapper2.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value)
+      .toBe('qwen3.7-plus')
+    wrapper2.unmount()
+  })
+
+  it('注册表刷新后自动纠正失效选择，绝不携带过期模型请求', async () => {
+    const wrapper = await mountComponent()
+    await flushPromises()
+    await wrapper.find('[data-testid="chat-model-select"]').setValue('kimi-k2.6')
+
+    // 模型 kimi-k2.6 被移除且 defaultModel 变更 → 自动回退到新的默认模型
+    mockFetchAiProviders.mockResolvedValue([{
+      id: 1,
+      name: 'OpenCode Sidecar',
+      models: ['deepseek-v4-flash'],
+      defaultModel: 'deepseek-v4-flash',
+      enabled: true,
+      isDefault: true,
+    }])
+    window.dispatchEvent(new Event(adminApi.AI_PROVIDERS_CHANGED_EVENT))
+    await flushPromises()
+
+    expect((wrapper.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value)
+      .toBe('deepseek-v4-flash')
+  })
+
+  it('跨标签页同步：另一标签页的选择经 storage 事件实时生效', async () => {
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    // 模拟另一个标签页（如供应商页）写入了选择
+    const fromOtherTab = JSON.stringify({ providerId: 1, model: 'qwen3.7-plus' })
+    window.localStorage.setItem('yubai-admin-ai-selection', fromOtherTab)
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'yubai-admin-ai-selection',
+      newValue: fromOtherTab,
+    }))
+    await flushPromises()
+
+    expect((wrapper.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value)
+      .toBe('qwen3.7-plus')
   })
 
   it('restores stored messages from sessionStorage on mount', async () => {

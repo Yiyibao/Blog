@@ -2,15 +2,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AI_PROVIDERS_CHANGED_EVENT, AiStreamHttpError, fetchAiProviders, logout as apiLogout, getAdminSessionName,
-  streamAiChat, type AiChatMessage, type AiProvider,
+  AiStreamHttpError, logout as apiLogout, getAdminSessionName,
+  streamAiChat, type AiChatMessage,
 } from '../api/admin'
+import { useAiStore } from '../stores/aiStore'
 import AdminSidebar from './AdminSidebar.vue'
 
 /**
  * 4A-4：compact=true 时去掉页面级 chrome（侧导航/顶栏），只渲染对话核心——供 AdminPetAssistant 面板复用；
  * providerId/model 由宿主（宠物助手面板）注入，全屏页缺省走默认供应商。
  * 会话存于 sessionStorage 同一键，面板与全屏两形态天然共享上下文。
+ * 供应商/模型选择统一由 aiStore 维护（全屏页、宠物面板、供应商页三处共享并互相同步）。
  */
 const props = withDefaults(defineProps<{
   compact?: boolean
@@ -37,62 +39,19 @@ const emit = defineEmits<{
 const STORAGE_KEY = 'yubai-admin-ai-messages'
 
 const router = useRouter()
+const ai = useAiStore()
 const username = getAdminSessionName() || 'Admin'
 const userInput = ref('')
 const loading = ref(false)
-const providers = ref<AiProvider[]>([])
-const selectedProviderId = ref<number | null>(props.providerId)
-const selectedModel = ref<string | null>(props.model)
 /** 4A-2：收到首个增量后隐藏「思考中…」占位，改由增量气泡实时呈现 */
 const streamingStarted = ref(false)
 const error = ref('')
 const chatBoxRef = ref<HTMLElement | null>(null)
 let abortController: AbortController | null = null
-let providerRequestId = 0
 
-const selectedProvider = computed(() =>
-  providers.value.find((provider) => provider.id === selectedProviderId.value) ?? null)
+const selectedProvider = computed(() => ai.selectedProvider)
 
-const modelOptions = computed(() => {
-  const provider = selectedProvider.value
-  if (!provider) return []
-  const models = [...(provider.models ?? [])]
-  if (provider.defaultModel && !models.includes(provider.defaultModel)) {
-    models.unshift(provider.defaultModel)
-  }
-  return models
-})
-
-async function loadModelOptions() {
-  // 面板宿主（AdminPetAssistant）负责供应商和模型切换，避免重复请求和重复控件。
-  if (props.compact) return
-  const requestId = ++providerRequestId
-  try {
-    const loaded = (await fetchAiProviders()).filter((provider) => provider.enabled)
-    if (requestId !== providerRequestId) return
-    providers.value = loaded
-    const preferred = providers.value.find((provider) => provider.isDefault)
-      ?? providers.value[0]
-      ?? null
-    selectedProviderId.value = preferred?.id ?? null
-    selectedModel.value = preferred?.defaultModel ?? preferred?.models?.[0] ?? null
-  } catch {
-    if (requestId !== providerRequestId) return
-    providers.value = []
-    selectedProviderId.value = null
-    selectedModel.value = null
-  }
-}
-
-function onProviderChange(raw: string) {
-  selectedProviderId.value = raw ? Number(raw) : null
-  const provider = selectedProvider.value
-  selectedModel.value = provider?.defaultModel ?? provider?.models?.[0] ?? null
-}
-
-function onProvidersChanged() {
-  if (!props.compact) void loadModelOptions()
-}
+const modelOptions = computed(() => ai.modelOptions)
 
 function loadStoredMessages(): AiChatMessage[] {
   try {
@@ -194,8 +153,8 @@ async function sendMessage() {
   emit('stream-start')
 
   try {
-    const providerId = props.providerId ?? selectedProviderId.value
-    const model = props.model ?? selectedModel.value
+    const providerId = props.providerId ?? ai.selectedProviderId
+    const model = props.model ?? ai.selectedModel
     await streamAiChat(history, {
       onDelta: (text) => {
         if (!streamingStarted.value) emit('stream-first-delta')
@@ -249,14 +208,17 @@ function stopStreaming() {
 }
 
 onMounted(() => {
-  window.addEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
-  void loadModelOptions()
+  // 面板宿主（AdminPetAssistant）负责 compact 形态的供应商/模型加载
+  if (!props.compact) {
+    void ai.ensureProviders()
+    ai.subscribe()
+  }
   void scrollToBottom()
 })
 
 // 宿主销毁（收起面板 / logout / 路由切换）时立即中止流式请求，避免后台继续消耗配额
 onBeforeUnmount(() => {
-  window.removeEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
+  if (!props.compact) ai.unsubscribe()
   abortController?.abort()
 })
 </script>
@@ -339,36 +301,37 @@ onBeforeUnmount(() => {
               @keydown="handleKeyDown"
             />
             <div v-if="!props.compact" class="chat-model-picker">
-              <label v-if="providers.length > 1" for="ai-chat-provider">供应商</label>
+              <label v-if="ai.providers.length > 1" for="ai-chat-provider">供应商</label>
               <select
-                v-if="providers.length > 1"
+                v-if="ai.providers.length > 1"
                 id="ai-chat-provider"
                 class="chat-model-select"
                 data-testid="chat-provider-select"
                 aria-label="选择供应商"
-                :value="selectedProviderId ?? ''"
+                :value="ai.selectedProviderId ?? ''"
                 :disabled="loading"
-                @change="onProviderChange(($event.target as HTMLSelectElement).value)"
+                @change="ai.selectProvider(($event.target as HTMLSelectElement).value)"
               >
-                <option v-for="provider in providers" :key="provider.id" :value="provider.id">
+                <option v-for="provider in ai.providers" :key="provider.id" :value="provider.id">
                   {{ provider.name }}
                 </option>
               </select>
               <label for="ai-chat-model">模型</label>
               <select
                 id="ai-chat-model"
-                v-model="selectedModel"
                 class="chat-model-select"
                 data-testid="chat-model-select"
                 aria-label="选择模型"
+                :value="ai.selectedModel ?? ''"
                 :disabled="loading || !modelOptions.length"
+                @change="ai.selectModel(($event.target as HTMLSelectElement).value)"
               >
                 <option v-if="!modelOptions.length" value="">暂无可用模型</option>
                 <option v-for="modelOption in modelOptions" :key="modelOption" :value="modelOption">
                   {{ modelOption }}
                 </option>
               </select>
-              <span v-if="selectedProvider && providers.length <= 1" class="chat-model-provider">{{ selectedProvider.name }}</span>
+              <span v-if="selectedProvider && ai.providers.length <= 1" class="chat-model-provider">{{ selectedProvider.name }}</span>
             </div>
             <div class="input-footer">
               <span class="char-count" :class="{ 'near-limit': userInput.length > 7500 }">

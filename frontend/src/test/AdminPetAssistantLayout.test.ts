@@ -81,8 +81,9 @@ function rule(css: string, selector: string): string {
 describe('P1 移动端聊天面板布局契约', () => {
   const mobile = mediaBlock(style, 'max-width: 720px')
   const panelMobile = rule(mobile, 'pet-chat-panel')
-  const containerMobile = rule(mobile, 'pet-assistant')
   const panelDesktop = rule(style, 'pet-chat-panel')
+  const container = rule(style, 'pet-assistant')
+  const button = rule(style, 'pet-button')
 
   it('移动端面板以 viewport 为定位基准（position: fixed），不再使用 100vw 溢出方案', () => {
     expect(panelMobile).toMatch(/position:\s*fixed/)
@@ -111,13 +112,34 @@ describe('P1 移动端聊天面板布局契约', () => {
     expect(panelMobile).not.toMatch(/width:\s*100vw;[^}]*left:\s*0/)
   })
 
+  it('P5 宠物容器位置由拖动逻辑以内联 left/top 控制，CSS 不再写死右下角偏移', () => {
+    // 容器保持 fixed 浮层，但不再声明 right/bottom 偏移（默认位与拖动均由 JS 计算）
+    expect(container).toMatch(/position:\s*fixed/)
+    expect(container).toMatch(/z-index:\s*320/)
+    expect(container).not.toMatch(/right:\s*\d+px/)
+    expect(container).not.toMatch(/bottom:\s*/)
+  })
+
+  it('P5 宠物按钮支持触屏拖动手势（touch-action: none），拖动中显示 grabbing 光标', () => {
+    expect(button).toMatch(/touch-action:\s*none/)
+    expect(button).toMatch(/cursor:\s*grab/)
+    expect(rule(style, 'pet-button.dragging')).toMatch(/cursor:\s*grabbing/)
+  })
+
+  it('P5 贴顶/贴左时面板翻转规则存在，且移动端规则覆盖翻转（top/bottom 复位）', () => {
+    expect(rule(style, 'pet-chat-panel.panel-below')).toMatch(/top:\s*calc\(100%\s*\+\s*12px\)/)
+    expect(rule(style, 'pet-chat-panel.panel-below')).toMatch(/bottom:\s*auto/)
+    expect(rule(style, 'pet-chat-panel.panel-left')).toMatch(/left:\s*0/)
+    // 移动端固定定位面板必须显式复位 top，防止 panel-below 的 top 泄漏到固定定位
+    expect(panelMobile).toMatch(/top:\s*auto/)
+  })
+
   it('移动端保留 safe area，且面板底部高于宠物栈（宠物与输入框同屏可见）', () => {
-    expect(containerMobile).toMatch(/bottom:\s*calc\(8px\s*\+\s*env\(safe-area-inset-bottom\)\)/)
-    expect(panelMobile).toMatch(/bottom:\s*calc\(8px\s*\+\s*env\(safe-area-inset-bottom\)\s*\+\s*120px\)/)
+    expect(panelMobile).toMatch(/bottom:\s*calc\(8px\s*\+\s*env\(safe-area-inset-bottom\)\s*\+\s*330px\)/)
     expect(panelMobile).toMatch(/height:\s*min\(72dvh,\s*620px\)/)
-    // 面板 bottom 偏移 120px > 移动宠物高度(76 × 208/192 ≈ 82.3px) + 隐藏按钮(≈28px)，
+    // 面板 bottom 偏移 330px > 移动宠物高度(243 × 208/192 ≈ 263.3px) + 隐藏按钮(≈30px)，
     // 保证面板悬浮在宠物栈上方而不遮挡宠物
-    expect(120).toBeGreaterThan(82.3 + 28)
+    expect(330).toBeGreaterThan(263.3 + 30)
   })
 
   it('桌面端 380px 浮层行为不回归（media query 之外保持 absolute + 380px）', () => {

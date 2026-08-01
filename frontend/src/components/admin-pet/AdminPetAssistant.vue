@@ -3,10 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/uiStore'
+import { useAiStore } from '../../stores/aiStore'
 import { usePrefersReducedMotion } from '../../composables/usePrefersReducedMotion'
-import { AI_PROVIDERS_CHANGED_EVENT, fetchAiProviders, type AiProvider } from '../../api/admin'
 import AdminAiChat from '../AdminAiChat.vue'
 import PetSprite from './PetSprite.vue'
+import { ATLAS } from './petAnimations'
 import type { PetState } from './petAnimations'
 
 /**
@@ -15,14 +16,25 @@ import type { PetState } from './petAnimations'
  * - /admin/ai 全屏页不挂载 compact 聊天；点击宠物只聚焦完整页输入框，绝不出现第二个实例。
  * - 隐藏仅存 sessionStorage；Ctrl/Cmd+Shift+A 恢复并打开；logout 清理隐藏状态。
  * - 宠物动画状态由 AdminAiChat 的类型化 emits 驱动，不复制聊天请求逻辑。
+ * - 供应商/模型选择由 aiStore 统一维护，与全屏聊天页、供应商页实时同步。
  */
 const HIDDEN_KEY = 'yubai-admin-pet-hidden'
-const GAZE_RADIUS = 240
-const DESKTOP_SIZE = 96
-const MOBILE_SIZE = 76
+const PET_POS_KEY = 'yubai-admin-pet-pos'
+const GAZE_RADIUS = 420
+/** P5：宠物尺寸——桌面 307、移动 243（当前 384/304 的 0.8 倍）。 */
+const DESKTOP_SIZE = 307
+const MOBILE_SIZE = 243
+/** 小于该位移视为点击而非拖动 */
+const DRAG_CLICK_THRESHOLD = 6
+/** 面板尺寸用于「贴顶时向下翻转」「贴左时向右翻转」的几何判断 */
+const PANEL_MAX_HEIGHT = 620
+const PANEL_MIN_WIDTH = 380
+/** 宠物栈额外部件：隐藏按钮高 ≈30px + 间距 6px */
+const STACK_EXTRA = 36
 
 const auth = useAuthStore()
 const ui = useUiStore()
+const ai = useAiStore()
 const route = useRoute()
 const reduced = usePrefersReducedMotion()
 
@@ -33,11 +45,20 @@ const petButtonRef = ref<HTMLElement | null>(null)
 const oneShot = ref<'waving' | 'failed' | 'review' | null>(null)
 const streaming = ref(false)
 const petSize = ref(DESKTOP_SIZE)
+/** P5：宠物左上角相对视口的位置（position: fixed 的 left/top，拖动实时更新）。 */
+const petPos = ref({ x: 0, y: 0 })
+const dragging = ref(false)
+let dragSession: {
+  startX: number
+  startY: number
+  originX: number
+  originY: number
+  moved: boolean
+} | null = null
+let suppressNextClick = false
 
-const providers = ref<AiProvider[]>([])
-const selectedProviderId = ref<number | null>(null)
-const selectedModel = ref<string | null>(null)
-let providerRequestId = 0
+const petHeight = computed(() => petSize.value * ATLAS.cellHeight / ATLAS.cellWidth)
+const petStackHeight = computed(() => petHeight.value + STACK_EXTRA)
 
 const gazeDirection = ref(0)
 const gazeNear = ref(false)
@@ -51,6 +72,7 @@ const petVisible = computed(() => auth.isStaff && !petHidden.value && !isLoginRo
 
 /** 优先级：failed > running > waiting > waving > review > idle/look（生成中无 gaze）。 */
 const displayState = computed<PetState | 'look'>(() => {
+  if (dragging.value) return 'idle'
   if (oneShot.value === 'failed') return 'failed'
   if (streaming.value) return 'running'
   if (oneShot.value === 'waving') return 'waving'
@@ -58,6 +80,22 @@ const displayState = computed<PetState | 'look'>(() => {
   if (!petVisible.value) return 'idle'
   if (gazeNear.value && !panelOpen.value && !reduced.value) return 'look'
   return panelOpen.value ? 'waiting' : 'idle'
+})
+
+/** 面板贴近顶部空间不足时向下翻转，贴近左缘时向右翻转。 */
+const panelFlippedDown = computed(() => {
+  if (!panelOpen.value || mobileQuery?.matches) return false
+  const vh = window.innerHeight || 0
+  const panelHeight = Math.min(PANEL_MAX_HEIGHT, vh * 0.72)
+  const roomAbove = petPos.value.y
+  const roomBelow = Math.max(0, vh - (petPos.value.y + petStackHeight.value) - 12)
+  // 上方放不下才向下翻；若下方同样放不下（宠物在屏幕底部），保持默认向上展开
+  return roomAbove < panelHeight + 12 && roomBelow > roomAbove
+})
+
+const panelFlippedLeft = computed(() => {
+  if (!panelOpen.value || mobileQuery?.matches) return false
+  return petPos.value.x < PANEL_MIN_WIDTH
 })
 
 function readHidden(): boolean {
@@ -77,49 +115,95 @@ function writeHidden(hidden: boolean) {
   }
 }
 
-async function ensureProviders() {
-  const requestId = ++providerRequestId
-  providers.value = []
-  selectedProviderId.value = null
-  selectedModel.value = null
+// ---- P5：位置持久化 / 视口夹紧 / 拖动 ----
+function readSavedPos(): { x: number; y: number } | null {
   try {
-    const loaded = (await fetchAiProviders()).filter((provider) => provider.enabled)
-    if (requestId !== providerRequestId) return
-    providers.value = loaded
-    const preferred = providers.value.find((provider) => provider.isDefault)
-      ?? providers.value[0]
-      ?? null
-    selectedProviderId.value = preferred?.id ?? null
-    selectedModel.value = preferred?.defaultModel || preferred?.models?.[0] || null
+    const raw = window.localStorage?.getItem(PET_POS_KEY)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object'
+      && typeof (parsed as { x?: unknown }).x === 'number'
+      && typeof (parsed as { y?: unknown }).y === 'number') {
+      return parsed as { x: number; y: number }
+    }
   } catch {
-    if (requestId !== providerRequestId) return
-    // 注册表不可用时走 env 默认供应商，切换器留空
-    providers.value = []
+    // 脏数据：忽略
+  }
+  return null
+}
+
+function savePos() {
+  try {
+    window.localStorage?.setItem(PET_POS_KEY, JSON.stringify(petPos.value))
+  } catch {
+    // 隐私模式：仅本次内存状态生效
   }
 }
 
-function onProvidersChanged() {
-  if (panelOpen.value) void ensureProviders()
+function clampPos(pos: { x: number; y: number }): { x: number; y: number } {
+  const margin = 4
+  const maxX = Math.max(margin, window.innerWidth - petSize.value - margin)
+  const maxY = Math.max(margin, window.innerHeight - petStackHeight.value - margin)
+  return {
+    x: Math.min(Math.max(pos.x, margin), maxX),
+    y: Math.min(Math.max(pos.y, margin), maxY),
+  }
 }
 
-const selectedProvider = computed(() =>
-  providers.value.find((provider) => provider.id === selectedProviderId.value) ?? null)
+function defaultPos(): { x: number; y: number } {
+  const mobile = mobileQuery?.matches === true
+  return clampPos({
+    x: window.innerWidth - petSize.value - (mobile ? 8 : 20),
+    y: window.innerHeight - petStackHeight.value - (mobile ? 8 : 18),
+  })
+}
 
-/** model 选项始终包含 defaultModel，即使它未出现在 models 数组中。 */
-const modelOptions = computed(() => {
-  const provider = selectedProvider.value
-  if (!provider) return []
-  const models = [...(provider.models ?? [])]
-  if (provider.defaultModel && !models.includes(provider.defaultModel)) {
-    models.unshift(provider.defaultModel)
+function onPetPointerDown(event: PointerEvent) {
+  suppressNextClick = false
+  dragSession = {
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: petPos.value.x,
+    originY: petPos.value.y,
+    moved: false,
   }
-  return models
-})
+  dragging.value = true
+  cancelGaze()
+  window.addEventListener('pointermove', onDragPointerMove)
+  window.addEventListener('pointerup', onDragPointerUp)
+  window.addEventListener('pointercancel', onDragPointerUp)
+}
 
-function onProviderChange(raw: string) {
-  selectedProviderId.value = raw ? Number(raw) : null
-  const provider = selectedProvider.value
-  selectedModel.value = provider?.defaultModel || provider?.models?.[0] || null
+function onDragPointerMove(event: PointerEvent) {
+  if (!dragSession) return
+  const dx = event.clientX - dragSession.startX
+  const dy = event.clientY - dragSession.startY
+  if (Math.abs(dx) + Math.abs(dy) > DRAG_CLICK_THRESHOLD) dragSession.moved = true
+  petPos.value = clampPos({ x: dragSession.originX + dx, y: dragSession.originY + dy })
+}
+
+function onDragPointerUp() {
+  if (!dragSession) return
+  if (dragSession.moved) suppressNextClick = true
+  dragSession = null
+  dragging.value = false
+  window.removeEventListener('pointermove', onDragPointerMove)
+  window.removeEventListener('pointerup', onDragPointerUp)
+  window.removeEventListener('pointercancel', onDragPointerUp)
+  savePos()
+}
+
+/** 拖动结束时抑制紧随其后的 click；键盘激活（Enter/Space）不受影响。 */
+function onPetButtonClick() {
+  if (suppressNextClick) {
+    suppressNextClick = false
+    return
+  }
+  togglePanel()
+}
+
+function onViewportResize() {
+  petPos.value = clampPos(petPos.value)
 }
 
 function focusChatInput() {
@@ -146,7 +230,7 @@ async function openPanel() {
   // Clear stale selections synchronously, then refresh without delaying panel opening.
   // Until the registry arrives, AdminAiChat omits provider/model so the backend resolves
   // the current default instead of submitting an outdated explicit model.
-  void ensureProviders()
+  void ai.ensureProviders()
   panelOpen.value = true
   await nextTick()
   focusChatInput()
@@ -200,9 +284,9 @@ function onStreamAbort() {
   oneShot.value = null
 }
 
-// ---- 指针视线（16 方向，仅非触屏/非 reduced-motion/未聊天/可见时启用，rAF 节流）----
+// ---- 指针视线（16 方向，仅非触屏/非 reduced-motion/未聊天/未拖动/可见时启用，rAF 节流）----
 function onPointerMove(event: PointerEvent) {
-  if (event.pointerType === 'touch') return
+  if (event.pointerType === 'touch' || dragging.value) return
   if (!petVisible.value || panelOpen.value || streaming.value || reduced.value) {
     gazeNear.value = false
     return
@@ -295,28 +379,36 @@ let mobileQuery: MediaQueryList | null = null
 /** P4：回调引用提升到组件作用域，卸载时用同一引用移除监听。 */
 function syncPetSize() {
   petSize.value = mobileQuery?.matches ? MOBILE_SIZE : DESKTOP_SIZE
+  petPos.value = clampPos(petPos.value)
 }
 
 onMounted(() => {
-  window.addEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
+  ai.subscribe()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('pointermove', onPointerMove, { passive: true })
+  window.addEventListener('resize', onViewportResize)
   document.addEventListener('mouseleave', onMouseLeave)
   document.addEventListener('visibilitychange', onVisibilityChange)
   if (typeof window.matchMedia === 'function') {
     mobileQuery = window.matchMedia('(max-width: 720px)')
-    syncPetSize()
+    petSize.value = mobileQuery.matches ? MOBILE_SIZE : DESKTOP_SIZE
     mobileQuery.addEventListener?.('change', syncPetSize)
   }
+  // P5：恢复上次拖动位置（夹紧到视口内），无保存值时落在右下角默认位
+  petPos.value = clampPos(readSavedPos() ?? defaultPos())
   if (!petHidden.value) oneShot.value = 'waving'
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener(AI_PROVIDERS_CHANGED_EVENT, onProvidersChanged)
+  ai.unsubscribe()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('resize', onViewportResize)
   document.removeEventListener('mouseleave', onMouseLeave)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('pointermove', onDragPointerMove)
+  window.removeEventListener('pointerup', onDragPointerUp)
+  window.removeEventListener('pointercancel', onDragPointerUp)
   mobileQuery?.removeEventListener?.('change', syncPetSize)
   mobileQuery = null
   cancelGaze()
@@ -325,36 +417,43 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="petVisible" class="pet-assistant" data-testid="admin-pet-assistant">
+  <div
+    v-if="petVisible"
+    class="pet-assistant"
+    data-testid="admin-pet-assistant"
+    :style="{ left: `${petPos.x}px`, top: `${petPos.y}px` }"
+  >
     <aside
       v-if="panelOpen && !isAdminAiRoute"
       id="pet-chat-panel"
       class="pet-chat-panel"
+      :class="{ 'panel-below': panelFlippedDown, 'panel-left': panelFlippedLeft }"
       role="complementary"
       aria-label="AI 宠物助手对话"
       data-testid="pet-chat-panel"
     >
       <header class="pet-chat-header">
         <strong>✦ Xinn 宠物助手</strong>
-        <div v-if="providers.length > 1 || modelOptions.length > 1" class="pet-chat-switchers">
+        <div v-if="ai.providers.length > 1 || ai.modelOptions.length > 1" class="pet-chat-switchers">
           <select
-            v-if="providers.length > 1"
+            v-if="ai.providers.length > 1"
             class="pet-chat-select"
-            :value="selectedProviderId ?? ''"
+            :value="ai.selectedProviderId ?? ''"
             aria-label="选择供应商"
             data-testid="pet-provider-select"
-            @change="onProviderChange(($event.target as HTMLSelectElement).value)"
+            @change="ai.selectProvider(($event.target as HTMLSelectElement).value)"
           >
-            <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+            <option v-for="p in ai.providers" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
           <select
-            v-if="modelOptions.length > 1"
-            v-model="selectedModel"
+            v-if="ai.modelOptions.length > 1"
             class="pet-chat-select"
+            :value="ai.selectedModel ?? ''"
             aria-label="选择模型"
             data-testid="pet-model-select"
+            @change="ai.selectModel(($event.target as HTMLSelectElement).value)"
           >
-            <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
+            <option v-for="m in ai.modelOptions" :key="m" :value="m">{{ m }}</option>
           </select>
         </div>
         <button type="button" class="pet-chat-close" aria-label="收起聊天面板" @click="closePanel">×</button>
@@ -362,8 +461,8 @@ onBeforeUnmount(() => {
       <div class="pet-chat-body">
         <AdminAiChat
           compact
-          :provider-id="selectedProviderId"
-          :model="selectedModel"
+          :provider-id="ai.selectedProviderId"
+          :model="ai.selectedModel"
           @stream-start="onStreamStart"
           @stream-first-delta="onStreamFirstDelta"
           @stream-complete="onStreamComplete"
@@ -385,11 +484,13 @@ onBeforeUnmount(() => {
         ref="petButtonRef"
         type="button"
         class="pet-button"
+        :class="{ dragging }"
         data-testid="pet-button"
         :aria-label="isAdminAiRoute ? '宠物助手：聚焦全屏聊天输入框' : (panelOpen ? '收起 AI 宠物助手' : '打开 AI 宠物助手')"
         :aria-expanded="!isAdminAiRoute ? panelOpen : undefined"
         :aria-controls="!isAdminAiRoute ? 'pet-chat-panel' : undefined"
-        @click="togglePanel"
+        @pointerdown="onPetPointerDown"
+        @click="onPetButtonClick"
       >
         <PetSprite
           :state="displayState"
@@ -405,8 +506,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .pet-assistant {
   position: fixed;
-  right: 20px;
-  bottom: calc(18px + env(safe-area-inset-bottom));
+  /* P5：left/top 由拖动逻辑以内联样式写入，此处仅作 JS 失效时的兜底 */
+  left: 0;
+  top: 0;
   z-index: 320;
   display: flex;
   flex-direction: column;
@@ -425,9 +527,16 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: grab;
   border-radius: 12px;
   line-height: 0;
+  /* P5：触屏拖动手势不触发页面滚动/缩放 */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.pet-button.dragging {
+  cursor: grabbing;
 }
 .pet-button:focus-visible {
   outline: 3px solid var(--accent, #d5b18a);
@@ -538,21 +647,28 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
+/* P5：宠物被拖到贴近顶部时面板向下展开；贴近左缘时面板向右展开 */
+.pet-chat-panel.panel-below {
+  bottom: auto;
+  top: calc(100% + 12px);
+}
+.pet-chat-panel.panel-left {
+  right: auto;
+  left: 0;
+}
+
 @media (max-width: 720px) {
   /* P1：移动端面板直接以 viewport 为定位基准（position: fixed + 双侧 inset），
-     不再从右下角宠物容器向外延伸；bottom 偏移 = 宠物(≈82px) + 隐藏按钮(≈28px) + 间距，
-     保证面板与宠物、输入框同屏可见。 */
-  .pet-assistant {
-    right: 8px;
-    bottom: calc(8px + env(safe-area-inset-bottom));
-  }
+     不再从右下角宠物容器向外延伸；bottom 偏移 = 宠物(≈263px) + 隐藏按钮(≈30px) + 间距，
+     保证面板与宠物、输入框同屏可见。宠物容器位置由拖动逻辑控制，不再用 CSS 定位。 */
   .pet-chat-panel {
     position: fixed;
     left: 8px;
     right: 8px;
     width: auto;
     max-width: none;
-    bottom: calc(8px + env(safe-area-inset-bottom) + 120px);
+    top: auto;
+    bottom: calc(8px + env(safe-area-inset-bottom) + 330px);
     height: min(72dvh, 620px);
     border-radius: 16px 16px 0 0;
   }

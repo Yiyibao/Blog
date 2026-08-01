@@ -4,6 +4,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import AdminPetAssistant from '../components/admin-pet/AdminPetAssistant.vue'
+import AdminAiChat from '../components/AdminAiChat.vue'
 import { totalDuration } from '../components/admin-pet/petAnimations'
 import { useAuthStore, type LoginResult } from '../stores/auth'
 import { useUiStore } from '../stores/uiStore'
@@ -89,6 +90,7 @@ async function mountAssistant(
 beforeEach(() => {
   setActivePinia(createPinia())
   window.sessionStorage.clear()
+  window.localStorage.clear()
   mockFetchProviders.mockReset()
   mockFetchProviders.mockResolvedValue([provider(1, 'deepseek'), provider(2, 'glm', { isDefault: false })])
   mockStreamAiChat.mockReset()
@@ -538,6 +540,29 @@ describe('P2 面板 provider/model 切换', () => {
     expect(chat.props('providerId')).toBe(1)
     expect(chat.props('model')).toBe('m-new')
   })
+
+  it('宠物面板切换的模型与全屏聊天页共享（同一 aiStore）', async () => {
+    mockStreamAiChat.mockResolvedValue(undefined)
+    const { wrapper, router } = await mountAssistant('ADMIN', '/', { stubChat: false })
+    await openChat(wrapper)
+
+    // 宠物面板选择模型 m-b
+    await wrapper.find('[data-testid="pet-model-select"]').setValue('m-b')
+    await flushPromises()
+
+    // 全屏聊天页挂载后读取到同一份选择
+    const fullChat = mount(AdminAiChat, { global: { plugins: [router] } })
+    await flushPromises()
+    expect((fullChat.find('[data-testid="chat-model-select"]').element as HTMLSelectElement).value)
+      .toBe('m-b')
+
+    // 全屏聊天页切回 m-a → 宠物面板跟随
+    await fullChat.find('[data-testid="chat-model-select"]').setValue('m-a')
+    await flushPromises()
+    expect((wrapper.find('[data-testid="pet-model-select"]').element as HTMLSelectElement).value)
+      .toBe('m-a')
+    fullChat.unmount()
+  })
 })
 
 describe('P3 路由转换清理（进入 /admin/ai 收起面板）', () => {
@@ -661,5 +686,122 @@ describe('P4 matchMedia 监听器清理', () => {
     wrapper.unmount()
     expect(removed.length).toBeGreaterThan(0)
     vi.unstubAllGlobals()
+  })
+})
+
+describe('P5 宠物尺寸与拖动', () => {
+  function dispatchPointer(el: Element, type: string, x?: number, y?: number) {
+    el.dispatchEvent(new MouseEvent(type, {
+      clientX: x,
+      clientY: y,
+      bubbles: true,
+      cancelable: true,
+    }))
+  }
+
+  function dragPet(
+    wrapper: Awaited<ReturnType<typeof mountAssistant>>['wrapper'],
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ) {
+    const button = wrapper.find('[data-testid="pet-button"]').element
+    dispatchPointer(button, 'pointerdown', from.x, from.y)
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: to.x, clientY: to.y }))
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    return nextTick()
+  }
+
+  async function openPanel(wrapper: Awaited<ReturnType<typeof mountAssistant>>['wrapper']) {
+    vi.advanceTimersByTime(totalDuration('waving'))
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+  }
+
+  it('宠物 0.8 倍：桌面渲染 307px 宽（384 → 307）', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    const sprite = wrapper.find('.pet-sprite')
+    expect(sprite.attributes('style')).toContain('width: 307px')
+  })
+
+  it('默认落点：右下角（视口内），以内联 left/top 定位', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    const container = wrapper.find('[data-testid="admin-pet-assistant"]')
+    const style = container.attributes('style') ?? ''
+    // jsdom 视口 1024×768：x = 1024-307-20 = 697；y = 768-(307×208/192+36)-18
+    const stackH = 307 * 208 / 192 + 36
+    expect(style).toContain('left: 697px')
+    expect(style).toContain(`top: ${768 - stackH - 18}px`)
+  })
+
+  it('拖动手势把宠物移到新位置，位移超过阈值后不触发打开面板', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    vi.advanceTimersByTime(totalDuration('waving'))
+    const container = wrapper.find('[data-testid="admin-pet-assistant"]')
+
+    // 拖到 (300, 250)：起点 (100,100) → 位移 (+200,+150)，起点默认在右下角 → 越界后夹紧到视口内
+    await dragPet(wrapper, { x: 100, y: 100 }, { x: 300, y: 250 })
+    const style = container.attributes('style') ?? ''
+    const maxX = 1024 - 307 - 4
+    const maxY = 768 - (307 * 208 / 192 + 36) - 4
+    expect(style).toContain(`left: ${maxX}px`)
+    expect(style).toContain(`top: ${maxY}px`)
+
+    // 拖动结束后位置已保存
+    expect(JSON.parse(window.localStorage.getItem('yubai-admin-pet-pos')!)).toEqual({ x: maxX, y: maxY })
+
+    // 拖动结束的 click 被抑制：面板不打开
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(false)
+  })
+
+  it('位移小于阈值视为点击：打开面板', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    vi.advanceTimersByTime(totalDuration('waving'))
+
+    const button = wrapper.find('[data-testid="pet-button"]').element
+    dispatchPointer(button, 'pointerdown', 100, 100)
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 103, clientY: 100 }))
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(true)
+  })
+
+  it('重挂载后恢复上次拖动位置（并夹紧到视口内）', async () => {
+    window.localStorage.setItem('yubai-admin-pet-pos', JSON.stringify({ x: 300, y: 200 }))
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    const style = wrapper.find('[data-testid="admin-pet-assistant"]').attributes('style') ?? ''
+    expect(style).toContain('left: 300px')
+    expect(style).toContain('top: 200px')
+
+    // 超出夹紧边界的旧数据同样被拉回视口内
+    window.localStorage.setItem('yubai-admin-pet-pos', JSON.stringify({ x: 99999, y: 99999 }))
+    const { wrapper: wrapper2 } = await mountAssistant('ADMIN', '/')
+    const style2 = wrapper2.find('[data-testid="admin-pet-assistant"]').attributes('style') ?? ''
+    expect(style2).toContain('left: 713px') // 1024-307-4
+    expect(style2).toContain(`top: ${768 - (307 * 208 / 192 + 36) - 4}px`)
+  })
+
+  it('损坏的位置数据被忽略，回落默认右下角', async () => {
+    window.localStorage.setItem('yubai-admin-pet-pos', 'not-json{{{')
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    const style = wrapper.find('[data-testid="admin-pet-assistant"]').attributes('style') ?? ''
+    expect(style).toContain('left: 697px')
+    expect(style).toContain(`top: ${768 - (307 * 208 / 192 + 36) - 18}px`)
+  })
+
+  it('面板打开时把宠物拖到顶部 → 面板向下翻转（panel-below）', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await openPanel(wrapper)
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(true)
+
+    // 起点默认 y=506，拖到顶部（夹紧为 4）→ 上方空间不足 → 向下翻转
+    await dragPet(wrapper, { x: 500, y: 600 }, { x: 500, y: 20 })
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').classes()).toContain('panel-below')
+
+    // 拖回底部（夹紧 y=520，下方无空间）→ 恢复向上展开
+    await dragPet(wrapper, { x: 500, y: 20 }, { x: 500, y: 700 })
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').classes()).not.toContain('panel-below')
   })
 })

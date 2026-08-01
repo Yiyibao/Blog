@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   logout as apiLogout, createAiProvider, deleteAiProvider, fetchAiProviders,
   hasValidAdminSession, notifyAiProvidersChanged, setDefaultAiProvider, testAiProvider, updateAiProvider,
   type AiProvider, type AiProviderPayload, type AiProviderTestResult, type AiProviderType,
 } from '../api/admin'
+import { useAiStore } from '../stores/aiStore'
 import AdminSidebar from './AdminSidebar.vue'
 
 const router = useRouter()
+const ai = useAiStore()
 
 const providers = ref<AiProvider[]>([])
 const loading = ref(true)
@@ -241,7 +243,15 @@ async function remove(provider: AiProvider) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void ai.ensureProviders()
+  ai.subscribe()
+})
+
+onBeforeUnmount(() => {
+  ai.unsubscribe()
+})
 </script>
 
 <template>
@@ -269,6 +279,32 @@ onMounted(load)
           <p class="provider-hint">密钥加密入库、永不回显；默认供应商用于未显式指定时的对话请求。</p>
           <button class="button primary" type="button" @click="newProvider">＋ 新建供应商</button>
         </header>
+
+        <div v-if="ai.providers.length" class="page-model-switcher">
+          <span class="page-model-label">当前对话模型</span>
+          <select
+            v-if="ai.providers.length > 1"
+            class="page-model-select"
+            data-testid="page-provider-select"
+            aria-label="选择供应商"
+            :value="ai.selectedProviderId ?? ''"
+            @change="ai.selectProvider(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="p in ai.providers" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <select
+            v-if="ai.modelOptions.length"
+            class="page-model-select"
+            :value="ai.selectedModel ?? ''"
+            aria-label="选择模型"
+            data-testid="page-model-select"
+            @change="ai.selectModel(($event.target as HTMLSelectElement).value)"
+          >
+            <option v-if="!ai.modelOptions.length" value="">暂无可用模型</option>
+            <option v-for="m in ai.modelOptions" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <span class="page-model-sync">与 AI 助手、宠物面板实时同步</span>
+        </div>
 
         <p v-if="error" class="admin-error admin-page-error" role="alert">{{ error }}</p>
 
@@ -420,6 +456,41 @@ onMounted(load)
 <style scoped>
 .provider-section > header {
   grid-template-columns: 1fr minmax(0, 1.2fr) auto;
+}
+.page-model-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--line, #d9d6cf);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--line, #d9d6cf) 8%, transparent);
+  font-size: 13px;
+  color: var(--console-muted, #7f7e77);
+}
+.page-model-label {
+  font-weight: 600;
+  color: var(--ink, #20211e);
+  white-space: nowrap;
+}
+.page-model-select {
+  min-width: 0;
+  max-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong, #d9d6cf);
+  border-radius: 8px;
+  background: var(--surface-solid, #ffffff);
+  color: var(--ink, #20211e);
+  font: 13px/1.5 inherit;
+  outline: none;
+}
+.page-model-select:focus-visible {
+  border-color: var(--accent, #d5b18a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #d5b18a) 18%, transparent);
+}
+.page-model-sync {
+  margin-left: auto;
+  font-size: 12px;
 }
 .provider-hint {
   margin: 0;
