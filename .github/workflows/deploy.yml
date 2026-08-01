@@ -148,7 +148,15 @@ jobs:
             for i in $(seq 1 30); do
               if curl -sf http://127.0.0.1:8080/actuator/health | grep -q '"UP"'; then
                 echo "health check passed"
-                ls -1t "${DEPLOY_PATH}/releases" | tail -n +6 | xargs -r -I{} rm -rf "${DEPLOY_PATH}/releases/{}"
+                # Historical releases may be owned by root/yubai. Restrict
+                # cleanup to generated release names, then use the deployment
+                # account's narrowly granted sudo capability.
+                ls -1t "${DEPLOY_PATH}/releases" | tail -n +6 | while IFS= read -r old_release; do
+                  case "$old_release" in
+                    release-*) sudo rm -rf -- "${DEPLOY_PATH}/releases/${old_release}" ;;
+                    *) echo "Skipping unexpected release entry: ${old_release}" >&2 ;;
+                  esac
+                done
                 exit 0
               fi
               sleep 2
