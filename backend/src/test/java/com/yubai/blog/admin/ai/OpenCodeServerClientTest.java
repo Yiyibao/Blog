@@ -109,12 +109,30 @@ class OpenCodeServerClientTest {
         server.expect(requestTo(MESSAGE_URL))
             .andExpect(method(POST))
             .andExpect(content().json("""
-                {"model":{"providerID":"opencode-go","modelID":"deepseek-v4-flash"},"agent":"blog-ai","tools":{},"parts":[{"type":"text","text":"hello"}]}
+                {"model":{"providerID":"opencode-go","modelID":"deepseek-v4-flash"},"agent":"blog-ai","system":"Answer the user's current request directly and completely in this response. Do not announce plans, future work, connection-test progress, or ask the user to start another run. Provide concise and accurate responses.","tools":{},"parts":[{"type":"text","text":"hello"}]}
                 """, false))
             .andRespond(withSuccess(SUCCESS_RESPONSE_JSON, APPLICATION_JSON));
         expectSessionDelete();
 
         client.chat(endpoint, List.of(new ChatMessage("user", "hello")));
+        server.verify();
+    }
+
+    @Test
+    void forcedMaxStepsSummaryMapsToRetryableUpstreamError() {
+        expectSessionCreate();
+        server.expect(requestTo(MESSAGE_URL))
+            .andExpect(method(POST))
+            .andRespond(withSuccess("""
+                {"info":{"id":"msg-limit"},"parts":[{"type":"text","text":"Maximum steps for this agent have been reached.\\n\\nRemaining tasks not completed: none.\\n\\nRecommendation for next steps: start another run."}]}
+                """, APPLICATION_JSON));
+        expectSessionDelete();
+
+        var error = assertThrows(AiServiceException.class,
+            () -> client.chat(endpoint, List.of(new ChatMessage("user", "test connection"))));
+
+        assertEquals(502, error.getStatus().value());
+        assertEquals("AI response limit reached. Please retry.", error.getMessage());
         server.verify();
     }
 

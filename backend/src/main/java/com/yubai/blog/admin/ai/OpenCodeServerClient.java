@@ -31,7 +31,10 @@ public class OpenCodeServerClient implements AiClient {
 
     static final int MAX_RESPONSE_BYTES = 8_000_000;
     private static final String SYSTEM_PROMPT =
-        "You are a helpful assistant. Provide concise and accurate responses.";
+        "Answer the user's current request directly and completely in this response. "
+            + "Do not announce plans, future work, connection-test progress, or ask the user to start another run. "
+            + "Provide concise and accurate responses.";
+    private static final String MAX_STEPS_MARKER = "Maximum steps for this agent have been reached.";
 
     private final Function<AiEndpoint, RestClient> restClientFactory;
 
@@ -276,6 +279,9 @@ public class OpenCodeServerClient implements AiClient {
         if (content.isBlank()) {
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Empty response from OpenCode Server");
         }
+        if (isForcedTerminationSummary(content)) {
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI response limit reached. Please retry.");
+        }
         ChatResponse.Usage usage = null;
         if (info != null && !info.isNull()) {
             var tokens = info.get("tokens");
@@ -288,6 +294,12 @@ public class OpenCodeServerClient implements AiClient {
         var modelName = info != null && info.has("modelID")
             ? info.get("modelID").asText(endpoint.model()) : endpoint.model();
         return new ChatResponse(content, modelName, usage);
+    }
+
+    private boolean isForcedTerminationSummary(String content) {
+        return content.contains(MAX_STEPS_MARKER)
+            && content.contains("Remaining tasks not completed:")
+            && content.contains("Recommendation for next steps:");
     }
 
     private static int getInt(JsonNode node, String field) {

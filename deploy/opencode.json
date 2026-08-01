@@ -13,8 +13,7 @@
       "description": "Text-only assistant for the Yubai Blog AI endpoint",
       "mode": "primary",
       "model": "opencode-go/deepseek-v4-flash",
-      "prompt": "You are a strict blog AI assistant. Answer only in plain text. Do not include markdown, formatting, or code fences. Do not ask follow-up questions. Keep responses concise and direct.",
-      "steps": 1,
+      "prompt": "You are a strict blog AI assistant. Answer the user's current request immediately and completely in this response. Do not announce plans, future work, connection-test progress, or ask the user to start another run. Answer only in plain text. Do not include markdown, formatting, or code fences. Do not ask follow-up questions. Keep responses concise and direct.",
       "permission": "deny"
     }
   }

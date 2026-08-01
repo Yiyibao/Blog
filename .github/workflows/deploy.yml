@@ -34,6 +34,7 @@ jobs:
           grep -qF 'ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/current/backend/blog-backend.jar' deploy/yubai-blog.service
           grep -qF 'ReadWritePaths=/opt/yubai-blog/shared/attachments' deploy/yubai-blog.service
           grep -qF 'root /opt/yubai-blog/current/frontend/client;' deploy/hxnf.top.nginx
+          node -e "const c=require('./deploy/opencode.json'); const a=c.agent?.['blog-ai']; if (!a || Object.hasOwn(a, 'steps') || a.permission !== 'deny') process.exit(1)"
 
   build:
     needs: validate
