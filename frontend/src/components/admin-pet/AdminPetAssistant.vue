@@ -7,8 +7,10 @@ import { useAiStore } from '../../stores/aiStore'
 import { usePrefersReducedMotion } from '../../composables/usePrefersReducedMotion'
 import AdminAiChat from '../AdminAiChat.vue'
 import PetSprite from './PetSprite.vue'
-import { ATLAS } from './petAnimations'
+import { ATLAS, HD_SOURCE } from './petAnimations'
 import type { PetState } from './petAnimations'
+import { createIdleScheduler } from './petIdleScheduler'
+import type { IdleActionId } from './petIdleScheduler'
 
 /**
  * 全局宠物/紧凑聊天宿主（全站唯一实例，App.vue 仅在 auth.isStaff 且非登录页时挂载）。
@@ -17,6 +19,9 @@ import type { PetState } from './petAnimations'
  * - 隐藏仅存 sessionStorage；Ctrl/Cmd+Shift+A 恢复并打开；logout 清理隐藏状态。
  * - 宠物动画状态由 AdminAiChat 的类型化 emits 驱动，不复制聊天请求逻辑。
  * - 供应商/模型选择由 aiStore 统一维护，与全屏聊天页、供应商页实时同步。
+ * - 无互动时默认原版 idle（微晃呼吸）；待机调度器以随机间隔（默认 12-36 秒）
+ *   触发一次待机动作；hover 即清零；点击打开聊天面板时播放一次 chat-open
+ *   （面板立即挂载，动画不阻塞交互，播完落回 waiting，不循环）。
  */
 const HIDDEN_KEY = 'yubai-admin-pet-hidden'
 const PET_POS_KEY = 'yubai-admin-pet-pos'
@@ -70,16 +75,58 @@ const isAdminAiRoute = computed(() => route.name === 'admin-ai')
 
 const petVisible = computed(() => auth.isStaff && !petHidden.value && !isLoginRoute.value)
 
-/** 优先级：failed > running > waiting > waving > review > idle/look（生成中无 gaze）。 */
+/** 正在播放的待机动作（随机间隔触发一次，一轮后回 idle）。 */
+const idleAction = ref<IdleActionId | null>(null)
+/** 点击打开聊天面板时播放一次的 chat-open 动作。 */
+const chatOpen = ref(false)
+/** 指针是否悬浮在宠物按钮命中区域内（悬浮期间不启动待机计时）。 */
+const hovered = ref(false)
+const pageVisible = ref(typeof document === 'undefined' || document.visibilityState === 'visible')
+
+/** 待机计时必要条件：可见/未悬浮/未拖动/面板关/未流式/无一次性动作/未禁用动画。 */
+const idleEligible = computed(() =>
+  petVisible.value
+  && !panelOpen.value
+  && !streaming.value
+  && !dragging.value
+  && !hovered.value
+  && !reduced.value
+  && pageVisible.value
+  && oneShot.value === null
+  && !chatOpen.value)
+
+const scheduler = createIdleScheduler({
+  onStart: (action) => {
+    idleAction.value = action
+  },
+  onFinish: () => {
+    // 计时已由调度器内部从零重启；父级无需额外处理
+  },
+  onCancel: (action) => {
+    if (idleAction.value === action) idleAction.value = null
+  },
+})
+
+/** 待机资格翻转：恢复后从零重新计时；条件不满足则停止并取消正在播放的动作。 */
+watch(idleEligible, (eligible) => {
+  if (eligible) scheduler.restart()
+  else scheduler.stop()
+}, { immediate: true })
+
+/** 状态优先级：dragging > failed > running > chat-open > waving/review > idle-action > look > idle。
+ *  面板打开时回归常态 idle（微晃呼吸）——点击动作播完即停，不循环 waiting。 */
 const displayState = computed<PetState | 'look'>(() => {
   if (dragging.value) return 'idle'
+  // reduced-motion：跳过所有动画状态，稳定显示 idle 首帧（业务交互不受影响）
+  if (reduced.value) return 'idle'
   if (oneShot.value === 'failed') return 'failed'
   if (streaming.value) return 'running'
-  if (oneShot.value === 'waving') return 'waving'
-  if (oneShot.value === 'review') return 'review'
+  if (chatOpen.value) return 'chat-open'
+  if (oneShot.value === 'waving' || oneShot.value === 'review') return oneShot.value
+  if (idleAction.value) return idleAction.value
   if (!petVisible.value) return 'idle'
   if (gazeNear.value && !panelOpen.value && !reduced.value) return 'look'
-  return panelOpen.value ? 'waiting' : 'idle'
+  return 'idle'
 })
 
 /** 面板贴近顶部空间不足时向下翻转，贴近左缘时向右翻转。 */
@@ -160,6 +207,8 @@ function defaultPos(): { x: number; y: number } {
 
 function onPetPointerDown(event: PointerEvent) {
   suppressNextClick = false
+  // 用户主动接触：中断启动 waving / 流式 review / failed 等一次性动画残留
+  oneShot.value = null
   dragSession = {
     startX: event.clientX,
     startY: event.clientY,
@@ -199,7 +248,28 @@ function onPetButtonClick() {
     suppressNextClick = false
     return
   }
+  const willOpen = !panelOpen.value
+  // 用户主动点击：中断启动 waving / review / failed 等一次性动画残留，
+  // 保证 chat-open 播完后直接衔接 waiting，不出现"动作重复播放"观感
+  oneShot.value = null
   togglePanel()
+  // 打开时播放一次 chat-open（动画不阻塞面板挂载与输入框聚焦）；关闭不反向播放
+  if (willOpen) playChatOpen()
+}
+
+/** chat-open：点击瞬间的欢迎动作，恰好播放一次后由 finished 清除；reduced-motion 下不播放。 */
+function playChatOpen() {
+  if (reduced.value) return
+  chatOpen.value = true
+}
+
+function onPetPointerEnter() {
+  hovered.value = true
+  gazeNear.value = false
+}
+
+function onPetPointerLeave() {
+  hovered.value = false
 }
 
 function onViewportResize() {
@@ -215,6 +285,7 @@ function closePanel() {
   panelOpen.value = false
   gazeNear.value = false
   streaming.value = false
+  chatOpen.value = false
 }
 
 async function openPanel() {
@@ -254,8 +325,20 @@ function restoreAndOpen() {
   void openPanel()
 }
 
-function onPetFinished() {
-  oneShot.value = null
+/** PetSprite finished(id)：只清理仍匹配的动作；idle 动作结束同时推进调度器回到计时。 */
+function onPetFinished(id: string) {
+  if (id === 'chat-open') {
+    chatOpen.value = false
+    return
+  }
+  if (id === 'idle-curious' || id === 'idle-sleeve' || id === 'idle-sway') {
+    if (idleAction.value === id) {
+      idleAction.value = null
+      scheduler.handleActionFinished(id)
+    }
+    return
+  }
+  if (oneShot.value === id) oneShot.value = null
 }
 
 // ---- AdminAiChat 事件 → 宠物动画 ----
@@ -347,7 +430,8 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 function onVisibilityChange() {
-  if (document.visibilityState !== 'visible') cancelGaze()
+  pageVisible.value = document.visibilityState === 'visible'
+  if (!pageVisible.value) cancelGaze()
 }
 
 // ---- 登录态 / 路由清理 ----
@@ -397,9 +481,15 @@ onMounted(() => {
   // P5：恢复上次拖动位置（夹紧到视口内），无保存值时落在右下角默认位
   petPos.value = clampPos(readSavedPos() ?? defaultPos())
   if (!petHidden.value) oneShot.value = 'waving'
+  // 流畅优化：预热关键行图（chat-open/waiting），点击开窗动作与面板状态切换不闪烁
+  for (const rowId of ['chat-open', 'waiting'] as const) {
+    const img = new Image()
+    img.src = HD_SOURCE(rowId).url
+  }
 })
 
 onBeforeUnmount(() => {
+  scheduler.dispose()
   ai.unsubscribe()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('pointermove', onPointerMove)
@@ -490,6 +580,8 @@ onBeforeUnmount(() => {
         :aria-expanded="!isAdminAiRoute ? panelOpen : undefined"
         :aria-controls="!isAdminAiRoute ? 'pet-chat-panel' : undefined"
         @pointerdown="onPetPointerDown"
+        @pointerenter="onPetPointerEnter"
+        @pointerleave="onPetPointerLeave"
         @click="onPetButtonClick"
       >
         <PetSprite

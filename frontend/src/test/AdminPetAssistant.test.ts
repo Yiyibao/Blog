@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+﻿import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { defineComponent, nextTick } from 'vue'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
@@ -27,6 +27,22 @@ vi.mock('../api/admin', async (importOriginal) => {
     ...actual,
     fetchAiProviders: (...args: unknown[]) => mockFetchProviders(...args),
     streamAiChat: (...args: unknown[]) => mockStreamAiChat(...args),
+  }
+})
+
+/** P6：调度器随机函数与触发间隔可注入——测试用固定 30 秒间隔做边界验证。 */
+const mockIdleRandom = vi.fn(() => 0)
+const IDLE_TEST_MS = 30_000
+vi.mock('../components/admin-pet/petIdleScheduler', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/admin-pet/petIdleScheduler')>()
+  return {
+    ...actual,
+    createIdleScheduler: (options: Parameters<typeof actual.createIdleScheduler>[0]) =>
+      actual.createIdleScheduler({
+        ...options,
+        random: () => mockIdleRandom(),
+        nextIntervalMs: () => IDLE_TEST_MS,
+      }),
   }
 })
 
@@ -94,8 +110,19 @@ beforeEach(() => {
   mockFetchProviders.mockReset()
   mockFetchProviders.mockResolvedValue([provider(1, 'deepseek'), provider(2, 'glm', { isDefault: false })])
   mockStreamAiChat.mockReset()
+  mockIdleRandom.mockReset()
+  mockIdleRandom.mockReturnValue(0)
   vi.useFakeTimers()
 })
+
+/** jsdom 不加载真实行图：手动派发 load，等价于当前行图已就绪。 */
+async function loadPetSprite(wrapper: Awaited<ReturnType<typeof mountAssistant>>['wrapper']) {
+  const img = wrapper.find('.pet-sprite img')
+  if (img.exists()) {
+    await img.trigger('load')
+    await nextTick()
+  }
+}
 
 describe('鉴权挂载边界（FD-29）', () => {
   it('游客不渲染宠物，也不挂载聊天组件', async () => {
@@ -151,13 +178,15 @@ describe('面板与单实例', () => {
     const { wrapper } = await mountAssistant('ADMIN', '/')
     const sprite = wrapper.find('.pet-sprite')
     expect(sprite.attributes('data-state')).toBe('waving')
+    await loadPetSprite(wrapper)
     await vi.advanceTimersByTimeAsync(totalDuration('waving'))
     await nextTick()
     expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
   })
 
-  it('单击宠物打开面板：恰好一个 AdminAiChat compact，注入 provider/model；关闭后宠物仍在', async () => {
+  it('单击宠物打开面板：恰好一个 AdminAiChat compact，注入 provider/model；播放 chat-open 后落回 waiting；关闭后宠物仍在', async () => {
     const { wrapper } = await mountAssistant('ADMIN', '/')
+    await loadPetSprite(wrapper)
     vi.advanceTimersByTime(totalDuration('waving'))
     await wrapper.find('[data-testid="pet-button"]').trigger('click')
     await flushPromises()
@@ -168,7 +197,14 @@ describe('面板与单实例', () => {
     expect(chats[0].props('compact')).toBe(true)
     expect(chats[0].props('providerId')).toBe(1)
     expect(chats[0].props('model')).toBe('m-a')
-    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('waiting')
+    // 点击即播放 chat-open（面板已挂载，动画不阻塞交互）
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+    // chat-open 播完后自然落回 waiting
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
 
     await wrapper.find('.pet-chat-close').trigger('click')
     expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(false)
@@ -292,6 +328,7 @@ describe('隐藏 / 恢复 / 登出清理', () => {
 
 describe('SSE 事件驱动动画状态', () => {
   async function openChat(wrapper: Awaited<ReturnType<typeof mountAssistant>>['wrapper']) {
+    await loadPetSprite(wrapper)
     vi.advanceTimersByTime(totalDuration('waving'))
     await wrapper.find('[data-testid="pet-button"]').trigger('click')
     await flushPromises()
@@ -300,6 +337,11 @@ describe('SSE 事件驱动动画状态', () => {
   it('stream-start → running；stream-complete → review 一轮后回 waiting', async () => {
     const { wrapper } = await mountAssistant('ADMIN', '/')
     await openChat(wrapper)
+    // chat-open 播完落回 waiting，再进入流式
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
 
     const chat = wrapper.findComponent(ChatStub)
     chat.vm.$emit('stream-start')
@@ -310,27 +352,40 @@ describe('SSE 事件驱动动画状态', () => {
     await nextTick()
     expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('review')
 
+    // review 一轮播完（加载行图）→ 回 waiting
+    await loadPetSprite(wrapper)
     await vi.advanceTimersByTimeAsync(totalDuration('review'))
     await nextTick()
-    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('waiting')
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
   })
 
   it('stream-error → failed 一轮后回 waiting；面板内错误条仍由聊天组件显示', async () => {
     const { wrapper } = await mountAssistant('PARTNER', '/')
     await openChat(wrapper)
+    // chat-open 先播完落回 waiting
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
     const chat = wrapper.findComponent(ChatStub)
 
     chat.vm.$emit('stream-error')
     await nextTick()
     expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('failed')
+    await loadPetSprite(wrapper)
     await vi.advanceTimersByTimeAsync(totalDuration('failed'))
     await nextTick()
-    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('waiting')
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
   })
 
   it('stream-abort 立即回 waiting（面板打开）', async () => {
     const { wrapper } = await mountAssistant('ADMIN', '/')
     await openChat(wrapper)
+    // chat-open 先播完落回 waiting，再进入流式
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
     const chat = wrapper.findComponent(ChatStub)
 
     chat.vm.$emit('stream-start')
@@ -338,7 +393,7 @@ describe('SSE 事件驱动动画状态', () => {
     expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('running')
     chat.vm.$emit('stream-abort')
     await nextTick()
-    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('waiting')
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
   })
 
   it('stream-first-delta 保持 running', async () => {
@@ -370,6 +425,7 @@ describe('指针视线与 reduced-motion', () => {
     }
 
     // 1) 确定性驱动首次 waving 播完 → 回 idle（不依赖真实墙钟）
+    await loadPetSprite(wrapper)
     await vi.advanceTimersByTimeAsync(totalDuration('waving'))
     await nextTick()
     expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
@@ -407,8 +463,8 @@ describe('指针视线与 reduced-motion', () => {
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: 200, clientY: 50 }))
     vi.advanceTimersByTime(1000)
     const sprite = wrapper.find('.pet-sprite')
-    // reduced-motion 静态退化：停留在 waving 首帧且不启动任何 timer
-    expect(sprite.attributes('data-state')).toBe('waving')
+    // reduced-motion 静态退化：直接稳定显示 idle 首帧且不启动任何 timer
+    expect(sprite.attributes('data-state')).toBe('idle')
     expect(sprite.attributes('data-col')).toBe('0')
     expect(vi.getTimerCount()).toBe(0)
     vi.unstubAllGlobals()
@@ -417,6 +473,7 @@ describe('指针视线与 reduced-motion', () => {
 
 describe('P2 面板 provider/model 切换', () => {
   async function openChat(wrapper: Awaited<ReturnType<typeof mountAssistant>>['wrapper']) {
+    await loadPetSprite(wrapper)
     await vi.advanceTimersByTimeAsync(totalDuration('waving'))
     await wrapper.find('[data-testid="pet-button"]').trigger('click')
     await flushPromises()
@@ -619,6 +676,7 @@ describe('P3 路由转换清理（进入 /admin/ai 收起面板）', () => {
 
   it('流式生成中导航到 /admin/ai：compact 卸载并清理流状态，宠物回 idle', async () => {
     const { wrapper, router } = await mountAssistant('ADMIN', '/')
+    await loadPetSprite(wrapper)
     await vi.advanceTimersByTimeAsync(totalDuration('waving'))
     await wrapper.find('[data-testid="pet-button"]').trigger('click')
     await flushPromises()
@@ -803,5 +861,264 @@ describe('P5 宠物尺寸与拖动', () => {
     // 拖回底部（夹紧 y=520，下方无空间）→ 恢复向上展开
     await dragPet(wrapper, { x: 500, y: 20 }, { x: 500, y: 700 })
     expect(wrapper.find('[data-testid="pet-chat-panel"]').classes()).not.toContain('panel-below')
+  })
+})
+
+describe('P6 随机间隔待机与点击聊天动作', () => {
+  /** waving 播完 → 回 idle，待机计时开始。 */
+  async function idleReady(wrapper: Awaited<ReturnType<typeof mountAssistant>>['wrapper']) {
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('waving'))
+    await nextTick()
+  }
+
+  it('无互动时保持 idle（微晃），随机间隔到点触发一次待机动作', async () => {
+    mockIdleRandom.mockReturnValue(0.67) // → idle-sway
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await idleReady(wrapper)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    expect(wrapper.find('.pet-sprite').attributes('data-src')).toBe('idle')
+
+    // 29_999ms 不触发；30_000ms 恰好触发一次待机动作
+    await vi.advanceTimersByTimeAsync(IDLE_TEST_MS - 1)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    await vi.advanceTimersByTimeAsync(1)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle-sway')
+
+    // 待机动作播完 → 回 idle，重新开始随机间隔计时
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('idle-sway'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+  })
+
+  it('三组待机动作都可通过随机注入覆盖，动作完成后从零重新计时', async () => {
+    for (const [value, action, duration] of [
+      [0, 'idle-curious', totalDuration('idle-curious')],
+      [0.34, 'idle-sleeve', totalDuration('idle-sleeve')],
+      [0.67, 'idle-sway', totalDuration('idle-sway')],
+    ] as const) {
+      mockIdleRandom.mockReturnValue(value)
+      const { wrapper } = await mountAssistant('ADMIN', '/')
+      await idleReady(wrapper)
+      await vi.advanceTimersByTimeAsync(IDLE_TEST_MS)
+      await nextTick()
+      expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe(action)
+      expect(wrapper.find('.pet-sprite').attributes('data-src')).toBe(action)
+      await loadPetSprite(wrapper)
+      await vi.advanceTimersByTimeAsync(duration)
+      await nextTick()
+      expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+
+      // 动作完成后重新完整等待随机间隔
+      await vi.advanceTimersByTimeAsync(IDLE_TEST_MS - 1)
+      expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+      await vi.advanceTimersByTimeAsync(1)
+      await nextTick()
+      expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe(action)
+    }
+  })
+
+  it('hover 清零：pointerenter 取消正在播放的待机动作并重置计时；pointerleave 后重新完整等待', async () => {
+    mockIdleRandom.mockReturnValue(0)
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await idleReady(wrapper)
+
+    // 触发第一次待机动作并播放到一半
+    await vi.advanceTimersByTimeAsync(IDLE_TEST_MS)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle-curious')
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(800)
+
+    // pointerenter → 立即取消待机动作
+    const button = wrapper.find('[data-testid="pet-button"]').element
+    button.dispatchEvent(new MouseEvent('pointerenter', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+
+    // 长时间悬浮不触发
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+
+    // pointerleave → 重新完整等待
+    button.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }))
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(IDLE_TEST_MS - 1)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    await vi.advanceTimersByTimeAsync(1)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle-curious')
+  })
+
+  it('面板打开时待机 timer 被清理；关闭后重新从零计时', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await idleReady(wrapper)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    // 面板打开期间等待 60 秒：不触发待机动作
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+    await wrapper.find('.pet-chat-close').trigger('click')
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(IDLE_TEST_MS - 1)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    await vi.advanceTimersByTimeAsync(1)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle-curious')
+  })
+
+  it('点击宠物：面板立即挂载 + 输入框聚焦（动画不阻塞），chat-open 恰好播一次后落回 waiting 且不重复', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/', { stubChat: false })
+    await idleReady(wrapper)
+
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(true)
+    expect(document.activeElement).toBe(wrapper.find('[data-testid="ai-chat-input"]').element)
+    const sprite = wrapper.find('.pet-sprite')
+    expect(sprite.attributes('data-state')).toBe('chat-open')
+    expect(sprite.attributes('data-col')).toBe('0')
+
+    // 恰好播放一次：播完落回 waiting，且后续长时间内不再出现 chat-open
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open') - 1)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+    await vi.advanceTimersByTimeAsync(1)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+  })
+
+  it('关闭面板不反向播放 chat-open，直接回 idle', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await idleReady(wrapper)
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+    // 关闭面板：chat-open 立即停止，不反向播放
+    await wrapper.find('.pet-chat-close').trigger('click')
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+  })
+
+  it('点击中断未播完的启动 waving：chat-open 播完后直接衔接 waiting，绝不重复播放动作', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    // 启动 waving 尚未播完（行图未加载），oneShot='waving' 残留
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('waving')
+
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+    // chat-open 恰好播完 → 直接 waiting（不再经过 waving / 不重复播放）
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+
+    // 后续 3 秒保持 waiting，动作绝不循环
+    await vi.advanceTimersByTimeAsync(3000)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+  })
+
+  it('点击发生在待机动作播放中：动作被取消，chat-open 从第 0 帧开始', async () => {
+    mockIdleRandom.mockReturnValue(0)
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await idleReady(wrapper)
+    await vi.advanceTimersByTimeAsync(IDLE_TEST_MS)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle-curious')
+
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    const sprite = wrapper.find('.pet-sprite')
+    expect(sprite.attributes('data-state')).toBe('chat-open')
+    expect(sprite.attributes('data-src')).toBe('chat-open')
+    expect(sprite.attributes('data-col')).toBe('0')
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(true)
+  })
+
+  it('SSE running/failed/review 优先级高于待机动作与 chat-open', async () => {
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await idleReady(wrapper)
+    await vi.advanceTimersByTimeAsync(IDLE_TEST_MS)
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle-curious')
+
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+    const chat = wrapper.findComponent(ChatStub)
+    chat.vm.$emit('stream-start')
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('running')
+
+    chat.vm.$emit('stream-error')
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('failed')
+
+    // failed 一轮播完（加载行图）→ 回到被压住的 chat-open
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('failed'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+    // chat-open 随后自然播完落回 waiting
+    await loadPetSprite(wrapper)
+    await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+    await nextTick()
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+  })
+
+  it('reduced-motion 下不播放待机动作与 chat-open，点击仍立即打开面板', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    const { wrapper } = await mountAssistant('ADMIN', '/')
+    await vi.advanceTimersByTimeAsync(totalDuration('waving') * 3 + IDLE_TEST_MS * 2)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    expect(vi.getTimerCount()).toBe(0)
+
+    await wrapper.find('[data-testid="pet-button"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(true)
+    expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    vi.unstubAllGlobals()
+  })
+
+  it('/admin/ai 点击宠物：不创建面板，播放 chat-open 且输入框立即聚焦', async () => {
+    const input = document.createElement('textarea')
+    input.setAttribute('data-testid', 'ai-chat-input')
+    document.body.appendChild(input)
+    try {
+      const { wrapper } = await mountAssistant('ADMIN', '/admin/ai')
+      await idleReady(wrapper)
+      await wrapper.find('[data-testid="pet-button"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(false)
+      expect(document.activeElement).toBe(input)
+      expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('chat-open')
+
+      await loadPetSprite(wrapper)
+      await vi.advanceTimersByTimeAsync(totalDuration('chat-open'))
+      await nextTick()
+      expect(wrapper.find('.pet-sprite').attributes('data-state')).toBe('idle')
+    } finally {
+      document.body.removeChild(input)
+    }
   })
 })

@@ -1,0 +1,221 @@
+{
+  "ok": true,
+  "generatedBy": "built-in imagegen",
+  "placeholder": false,
+  "cell": [
+    384,
+    416
+  ],
+  "rows": [
+    {
+      "id": "idle",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-source-alpha.png",
+      "sourceSha256": "03cc0eb8f5499abc1cab57211377d70cec72be4a80eb31800e776631045ab7d9",
+      "sourceDimensions": [
+        1681,
+        935
+      ],
+      "minimumSourcePoseHeight": 604,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\idle.webp",
+      "outputSha256": "8a90da3ba7a94ec8c0b58273e900dd5cb22fdb3d08cb3f3e6edc32d92b1194b4",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "running-right",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\running-right-source-alpha.png",
+      "sourceSha256": "5818401a384ae1e76c038c7df069506c3eaa9b995afc559123a4ea14aeeb43d9",
+      "sourceDimensions": [
+        1895,
+        830
+      ],
+      "minimumSourcePoseHeight": 395,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\running-right.webp",
+      "outputSha256": "bfeefd123bed1c67f969416145f166441e1a067af2ef82214339d8f1535ad46e",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "running-left",
+      "source": "public/pets/xinn/hd/running-right.webp",
+      "sourceSha256": "bfeefd123bed1c67f969416145f166441e1a067af2ef82214339d8f1535ad46e",
+      "sourceDimensions": [
+        3072,
+        416
+      ],
+      "minimumSourcePoseHeight": null,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\running-left.webp",
+      "outputSha256": "469159b3e8688974312cd6b80c53203adeaf77d7e9157548c6bb4e8ee3c02c50",
+      "derivation": "approved running-right frames mirrored individually; temporal order preserved"
+    },
+    {
+      "id": "waving",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\waving-source-alpha.png",
+      "sourceSha256": "9136f00b8ed80d62ec7be2a7d60e23d39b65f4c82a174ffb33528d9ff61495b5",
+      "sourceDimensions": [
+        2172,
+        724
+      ],
+      "minimumSourcePoseHeight": 670,
+      "frames": 4,
+      "output": "public\\pets\\xinn\\hd\\waving.webp",
+      "outputSha256": "da2f610d58cd627f84081932a7117e851605181d7222dc95a1881edabe4b08d2",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "jumping",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\jumping-source-alpha.png",
+      "sourceSha256": "becfcaf016ab93a17c91eb839d1055d50f1564d68032d89948a9835aca4bb0ba",
+      "sourceDimensions": [
+        1842,
+        854
+      ],
+      "minimumSourcePoseHeight": 465,
+      "frames": 5,
+      "output": "public\\pets\\xinn\\hd\\jumping.webp",
+      "outputSha256": "7e586ac6ae197e769296e5dda05552ea83ec337d5a2ecab5065026818529b2e9",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "failed",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\failed-source-alpha.png",
+      "sourceSha256": "c4128d224cba601babe88ad51a97a0508f12e2493804e793dfb2a584adfd795e",
+      "sourceDimensions": [
+        1942,
+        809
+      ],
+      "minimumSourcePoseHeight": 551,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\failed.webp",
+      "outputSha256": "9f5db032e6a4762d3aeed8c3f7d7dc3fb4d46f6dfd4a0adbee3f5bdf9240984d",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "waiting",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\waiting-source-alpha.png",
+      "sourceSha256": "dd1892187685631e6a57c82c2de09346f5420d2aa7db535e8f227ccdb7151d4c",
+      "sourceDimensions": [
+        1683,
+        935
+      ],
+      "minimumSourcePoseHeight": 630,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\waiting.webp",
+      "outputSha256": "3fff74df11f40bc8c6303f238debd9aad391b3896c752314a71c39f065a239db",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "running",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\running-source-alpha.png",
+      "sourceSha256": "a4c3057d09d2feefb73be127a4e9d278372caffab6074de4a8fcd9adf1246787",
+      "sourceDimensions": [
+        1681,
+        935
+      ],
+      "minimumSourcePoseHeight": 611,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\running.webp",
+      "outputSha256": "cdd436ec435ce0bf0a324a633025cd7e868bced157dece7090486179e7d9eb7c",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "review",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\review-source-alpha.png",
+      "sourceSha256": "826ed04e67ee0ebd5479897b71612d97f0550834de940a944984837404feda9f",
+      "sourceDimensions": [
+        1942,
+        809
+      ],
+      "minimumSourcePoseHeight": 675,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\review.webp",
+      "outputSha256": "b1c8ae2cd44aace1b06143fc3cdda3bd39b8264411e1842dafb3751677d0c490",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "look-row-9",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\look-row-9-source-alpha.png",
+      "sourceSha256": "da9d9c556a5b9f93f8594c184a1783e1832c9688576d4ec3ef910f753ac9e0e0",
+      "sourceDimensions": [
+        1983,
+        793
+      ],
+      "minimumSourcePoseHeight": 503,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\look-row-9.webp",
+      "outputSha256": "3545573bd4eafdcb8baa657ed9bda111e3dfcec59907daf55f16530f95e7a353",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "look-row-10",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\look-row-10-source-alpha.png",
+      "sourceSha256": "e6845b6b6d65680411b536a92495847b42fb7ebeeee39d8a123dd51ce4942c58",
+      "sourceDimensions": [
+        1773,
+        887
+      ],
+      "minimumSourcePoseHeight": 461,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\look-row-10.webp",
+      "outputSha256": "8935915242f9760b132a954b819e492b30efe514a333faf5fface83fc2cc5356",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "idle-curious",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-curious-source-alpha.png",
+      "sourceSha256": "a9172534f5b962af8277a862e9bf5c4ba76c06475ced746a7adf0cc4bfb54ca2",
+      "sourceDimensions": [
+        1586,
+        992
+      ],
+      "minimumSourcePoseHeight": 475,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\idle-curious.webp",
+      "outputSha256": "da20e3f70f56028e787ba36cb0397ec2747ecb0d628578fd4f66cfb92c5446a8",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "idle-sleeve",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-sleeve-source-alpha.png",
+      "sourceSha256": "65f425b6533aa973425217361b2f5fb7fad52ecba2f2d425c7e905c44c9cbfdc",
+      "sourceDimensions": [
+        2172,
+        724
+      ],
+      "minimumSourcePoseHeight": 501,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\idle-sleeve.webp",
+      "outputSha256": "a856bec6dbc7d5284c1048f2a831b404f55c1172a5b2c4a8c2e14bdcec29d81f",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "idle-sway",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-sway-source-alpha.png",
+      "sourceSha256": "c9f50dfd6b188a8143e6d5f4ea95f908093e4e363b8c11789900016d2291076b",
+      "sourceDimensions": [
+        2172,
+        724
+      ],
+      "minimumSourcePoseHeight": 399,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\idle-sway.webp",
+      "outputSha256": "743a1771d54780783e0a8f71c372959899e26a28c35da63fcdb507c6cd844e26",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "chat-open",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\chat-open-source-alpha.png",
+      "sourceSha256": "bab7d8fe1509e35d9e4c9e6c8c9db0fa352d2b314e9c84eb7c0a7090528637eb",
+      "sourceDimensions": [
+        1858,
+        846
+      ],
+      "minimumSourcePoseHeight": 445,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\chat-open.webp",
+      "outputSha256": "5d2fd0b684106dfb66d72e7dd3e597aeaa4642d4d2d0063e8a9ce7665ebfca57",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    }
+  ]
+}

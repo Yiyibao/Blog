@@ -1,0 +1,221 @@
+{
+  "ok": true,
+  "generatedBy": "built-in imagegen",
+  "placeholder": false,
+  "cell": [
+    384,
+    416
+  ],
+  "rows": [
+    {
+      "id": "idle",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-source-alpha.png",
+      "sourceSha256": "03cc0eb8f5499abc1cab57211377d70cec72be4a80eb31800e776631045ab7d9",
+      "sourceDimensions": [
+        1681,
+        935
+      ],
+      "minimumSourcePoseHeight": 604,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\idle.webp",
+      "outputSha256": "d065fc8bef5381e024d4585c92741f6177a043849ffb89e43e1485f30aa23454",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "running-right",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\running-right-source-alpha.png",
+      "sourceSha256": "5818401a384ae1e76c038c7df069506c3eaa9b995afc559123a4ea14aeeb43d9",
+      "sourceDimensions": [
+        1895,
+        830
+      ],
+      "minimumSourcePoseHeight": 395,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\running-right.webp",
+      "outputSha256": "135c99996d9289be118fa952b51f5fa311888edfba67a1d8a826ee58e5f8f94f",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "running-left",
+      "source": "public/pets/xinn/hd/running-right.webp",
+      "sourceSha256": "bfeefd123bed1c67f969416145f166441e1a067af2ef82214339d8f1535ad46e",
+      "sourceDimensions": [
+        3072,
+        416
+      ],
+      "minimumSourcePoseHeight": null,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\running-left.webp",
+      "outputSha256": "ddf700da0a59313b697629e5a3bfcf86d31122a6dda316f799c7b11494c8e5fe",
+      "derivation": "approved running-right frames mirrored individually; temporal order preserved -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "waving",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\waving-source-alpha.png",
+      "sourceSha256": "9136f00b8ed80d62ec7be2a7d60e23d39b65f4c82a174ffb33528d9ff61495b5",
+      "sourceDimensions": [
+        2172,
+        724
+      ],
+      "minimumSourcePoseHeight": 670,
+      "frames": 4,
+      "output": "public\\pets\\xinn\\hd\\waving.webp",
+      "outputSha256": "6134e165b64e5cbdd39a257830ad6d077ebed81fcd57802a4b0c7a6ac787a90d",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "jumping",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\jumping-source-alpha.png",
+      "sourceSha256": "becfcaf016ab93a17c91eb839d1055d50f1564d68032d89948a9835aca4bb0ba",
+      "sourceDimensions": [
+        1842,
+        854
+      ],
+      "minimumSourcePoseHeight": 465,
+      "frames": 5,
+      "output": "public\\pets\\xinn\\hd\\jumping.webp",
+      "outputSha256": "c969e710e1c2077047ce0b3d269d5b6cb60854e8baba5f7d136290996d7e359b",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "failed",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\failed-source-alpha.png",
+      "sourceSha256": "c4128d224cba601babe88ad51a97a0508f12e2493804e793dfb2a584adfd795e",
+      "sourceDimensions": [
+        1942,
+        809
+      ],
+      "minimumSourcePoseHeight": 551,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\failed.webp",
+      "outputSha256": "a4e450452d62e3feb03fc0ba2e3ce87f7c4e6500083063e30d59a3742d86bd1b",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "waiting",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\waiting-source-alpha.png",
+      "sourceSha256": "dd1892187685631e6a57c82c2de09346f5420d2aa7db535e8f227ccdb7151d4c",
+      "sourceDimensions": [
+        1683,
+        935
+      ],
+      "minimumSourcePoseHeight": 630,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\waiting.webp",
+      "outputSha256": "1955a159a920a6248d6e75cda53ebcadedb27091c82f87aa44b61e36af2e8c24",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "running",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\running-source-alpha.png",
+      "sourceSha256": "a4c3057d09d2feefb73be127a4e9d278372caffab6074de4a8fcd9adf1246787",
+      "sourceDimensions": [
+        1681,
+        935
+      ],
+      "minimumSourcePoseHeight": 611,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\running.webp",
+      "outputSha256": "90154e1b8d1be981aef09c603857cdef96b4d4c2439438079457e6b00b44de55",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "review",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\review-source-alpha.png",
+      "sourceSha256": "826ed04e67ee0ebd5479897b71612d97f0550834de940a944984837404feda9f",
+      "sourceDimensions": [
+        1942,
+        809
+      ],
+      "minimumSourcePoseHeight": 675,
+      "frames": 6,
+      "output": "public\\pets\\xinn\\hd\\review.webp",
+      "outputSha256": "d5ba4c612d7a8c7d7d617543dd6d9c62c0214464d094f79a76f8a0ca94e8ebfe",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "look-row-9",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\look-row-9-source-alpha.png",
+      "sourceSha256": "da9d9c556a5b9f93f8594c184a1783e1832c9688576d4ec3ef910f753ac9e0e0",
+      "sourceDimensions": [
+        1983,
+        793
+      ],
+      "minimumSourcePoseHeight": 503,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\look-row-9.webp",
+      "outputSha256": "3545573bd4eafdcb8baa657ed9bda111e3dfcec59907daf55f16530f95e7a353",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "look-row-10",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\look-row-10-source-alpha.png",
+      "sourceSha256": "e6845b6b6d65680411b536a92495847b42fb7ebeeee39d8a123dd51ce4942c58",
+      "sourceDimensions": [
+        1773,
+        887
+      ],
+      "minimumSourcePoseHeight": 461,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\look-row-10.webp",
+      "outputSha256": "8935915242f9760b132a954b819e492b30efe514a333faf5fface83fc2cc5356",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample"
+    },
+    {
+      "id": "idle-curious",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-curious-source-alpha.png",
+      "sourceSha256": "a9172534f5b962af8277a862e9bf5c4ba76c06475ced746a7adf0cc4bfb54ca2",
+      "sourceDimensions": [
+        1586,
+        992
+      ],
+      "minimumSourcePoseHeight": 475,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\idle-curious.webp",
+      "outputSha256": "67dec3382dbb8b56edc0613fbf01d52f20b23755d45ac5c9e3870214c52da90f",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "idle-sleeve",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-sleeve-source-alpha.png",
+      "sourceSha256": "65f425b6533aa973425217361b2f5fb7fad52ecba2f2d425c7e905c44c9cbfdc",
+      "sourceDimensions": [
+        2172,
+        724
+      ],
+      "minimumSourcePoseHeight": 501,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\idle-sleeve.webp",
+      "outputSha256": "e005bbd410c64cdddf79355382086675501beb7e9c73e346673d0e5fa7672d11",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "idle-sway",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\idle-sway-source-alpha.png",
+      "sourceSha256": "c9f50dfd6b188a8143e6d5f4ea95f908093e4e363b8c11789900016d2291076b",
+      "sourceDimensions": [
+        2172,
+        724
+      ],
+      "minimumSourcePoseHeight": 399,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\idle-sway.webp",
+      "outputSha256": "a91e936977b8b00af6fff02e4c9ae7d890e00a463d7b7970ddda62ac9d74f144",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    },
+    {
+      "id": "chat-open",
+      "source": "outputs\\xinn-hd-final-20260802\\decoded\\alpha\\chat-open-source-alpha.png",
+      "sourceSha256": "bab7d8fe1509e35d9e4c9e6c8c9db0fa352d2b314e9c84eb7c0a7090528637eb",
+      "sourceDimensions": [
+        1858,
+        846
+      ],
+      "minimumSourcePoseHeight": 445,
+      "frames": 8,
+      "output": "public\\pets\\xinn\\hd\\chat-open.webp",
+      "outputSha256": "d07a4c19e7b17d6d3bc4c45002ae2bdc7406abf133710b9523908c89cc48dc57",
+      "derivation": "imagegen-native-strip -> chroma removal -> shared-crop single-resample -> motion-smooth (centroid-x/y align, semantic motion preserved)"
+    }
+  ]
+}

@@ -358,7 +358,61 @@ async function main() {
     check('/admin/ai 深色输入框文字为亮色', isWhitelike(fullThemeDark.textareaColor) || !isDarklike(fullThemeDark.textareaColor), fullThemeDark.textareaColor)
     await evaluate(`document.documentElement.classList.remove('dark'); true`)
 
-    // ---- 10. 游客：不渲染宠物、不请求图集 ----
+    // ---- 10. P6：chat-open 点击动作 + 高清行图资源 ----
+    await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+    await waitFor(`document.readyState === 'complete'`)
+    await waitFor(`!!document.querySelector('[data-testid="pet-button"]')`, WAIT_TIMEOUT_MS, '宠物按钮(P6)')
+    await sleep(400)
+    await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
+
+    // 点击宠物 → chat-open 立即成为显示状态，面板立即挂载
+    await evaluate(`document.querySelector('[data-testid="pet-button"]').click()`)
+    await waitFor(`!!document.querySelector('[data-testid="pet-chat-panel"]')`, WAIT_TIMEOUT_MS, '面板(P6)')
+    const openState = await evaluate(`document.querySelector('.pet-sprite').dataset.state`)
+    check('点击宠物立即播放 chat-open', openState === 'chat-open', `state=${openState}`)
+    // chat-open 恰好播放一次不循环：5 秒采样序列只含 chat-open 与 idle
+    // （chat-open 总长 1130ms，500ms 采样会连续命中 2-3 次），其后回归常态 idle，
+    // 绝不出现 waiting/其他状态穿插（用户交互会中断启动动画残留）
+    const sequence = []
+    for (let index = 0; index < 10; index += 1) {
+      sequence.push(await evaluate(`document.querySelector('.pet-sprite').dataset.state`))
+      await sleep(500)
+    }
+    const chatOpenCount = sequence.filter((state) => state === 'chat-open').length
+    const lastChatOpen = sequence.lastIndexOf('chat-open')
+    const afterChatOpen = sequence.slice(lastChatOpen + 1)
+    check('chat-open 恰好播放一次并回归常态',
+      chatOpenCount >= 1 && chatOpenCount <= 3
+      && sequence.every((state) => state === 'chat-open' || state === 'idle')
+      && afterChatOpen.every((state) => state === 'idle'),
+      `seq=${JSON.stringify(sequence)}`)
+    await evaluate(`document.querySelector('.pet-chat-close').click()`)
+    await sleep(300)
+
+    // staff 侧已请求高清行图（关键行 idle + chat-open 按需加载，非一次性全量）
+    const hdLoaded = await evaluate(`performance.getEntriesByType('resource')
+      .filter((entry) => entry.name.includes('/pets/xinn/hd/'))
+      .map((entry) => entry.name.split('/pets/xinn/hd/')[1])`)
+    check('staff 请求高清行图资源', hdLoaded.some((name) => name.includes('idle')) && hdLoaded.some((name) => name.includes('chat-open')),
+      `hd=${JSON.stringify(hdLoaded)}`)
+
+    // 待机动作：随机间隔（12-36 秒）到点触发一次；hover 立即清零。
+    // 轮询等待触发（动作播完会回 idle，不能单点采样）
+    const idleTriggered = await waitFor(
+      `['idle-curious','idle-sleeve','idle-sway'].includes(document.querySelector('.pet-sprite').dataset.state)`,
+      40_000,
+      '待机动作触发',
+    ).then(() => true).catch(() => false)
+    const idleStateNow = await evaluate(`document.querySelector('.pet-sprite').dataset.state`)
+    check('随机间隔到点触发待机动作', idleTriggered, `state=${idleStateNow}`)
+    await evaluate(`document.querySelector('[data-testid="pet-button"]').dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }))`)
+    await sleep(300)
+    const afterHover = await evaluate(`document.querySelector('.pet-sprite').dataset.state`)
+    check('hover 立即清零待机动作', afterHover === 'idle', `state=${afterHover}`)
+    await evaluate(`document.querySelector('[data-testid="pet-button"]').dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))`)
+    await sleep(300)
+
+    // ---- 11. 游客：不渲染宠物、不请求图集 ----
     await evaluate(`sessionStorage.clear(); true`)
     await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?guest=1` })
     await waitFor(`document.readyState === 'complete'`)
@@ -367,9 +421,12 @@ async function main() {
       petMounted: !!document.querySelector('[data-testid="admin-pet-assistant"]'),
       petAssetRequested: performance.getEntriesByType('resource')
         .some((entry) => entry.name.includes('spritesheet.webp')),
+      hdAssetRequested: performance.getEntriesByType('resource')
+        .some((entry) => entry.name.includes('/pets/xinn/hd/')),
     })`)
     check('游客不渲染宠物', !guest.petMounted)
     check('游客不请求宠物图集', !guest.petAssetRequested)
+    check('游客不请求高清行图', !guest.hdAssetRequested)
 
     // ---- 11. 汇总 ----
     const failed = checks.filter((entry) => !entry.ok)

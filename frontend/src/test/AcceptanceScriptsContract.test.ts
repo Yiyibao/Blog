@@ -7,6 +7,7 @@ const scriptsDir = resolve(process.cwd(), 'scripts')
 const acceptance = readFileSync(resolve(scriptsDir, 'acceptance-run.mjs'), 'utf8')
 const realChat = readFileSync(resolve(scriptsDir, 'real-chat-check.mjs'), 'utf8')
 const layout = readFileSync(resolve(scriptsDir, 'pet-panel-layout-check.mjs'), 'utf8')
+const assetCheck = readFileSync(resolve(scriptsDir, 'pet-animation-asset-check.mjs'), 'utf8')
 
 describe('真实验收脚本安全契约', () => {
   it('不终止启动前已经存在的端口监听进程', () => {
@@ -49,5 +50,27 @@ describe('真实验收脚本安全契约', () => {
       expect(source).toContain('parseFloat(')
     }
     expect(realChat).toContain('document.activeElement === el')
+  })
+
+  it('素材结构检查：像素级契约、15 行元数据与安全清理齐全', () => {
+    // 用与 petAnimations.ts 同源的 15 行元数据做双向校验（键可能带引号或不带）
+    for (const rowId of ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed',
+      'waiting', 'running', 'review', 'look-row-9', 'look-row-10',
+      'idle-curious', 'idle-sleeve', 'idle-sway', 'chat-open']) {
+      expect(assetCheck).toMatch(new RegExp(`['"]?${rowId}['"]?\\s*:`))
+    }
+    expect(assetCheck).toContain('3072')
+    expect(assetCheck).toContain('416')
+    expect(assetCheck).toContain('SAFE_MARGIN')
+    expect(assetCheck).toContain('getImageData')
+    expect(assetCheck).toContain('verifyNativeHdProvenance')
+    expect(assetCheck).toContain("manifest.placeholder !== false")
+    expect(assetCheck).toContain('minimumSourcePoseHeight < 384')
+    expect(assetCheck).toContain('pet-hd-placeholder-assets.py')
+    // 生命周期契约：统一清理浏览器会话与残留 profile，不终止既有进程
+    expect(assetCheck).toContain('initBrowserSession')
+    expect(assetCheck).toContain('cleanupStaleProfiles')
+    expect(assetCheck).not.toContain('taskkill.exe')
+    expect(assetCheck).toContain("process.exitCode = 1")
   })
 })
