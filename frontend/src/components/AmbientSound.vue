@@ -11,27 +11,34 @@ interface Track {
   coverUrl?: string
 }
 
-// Built-in fallback light music tracks (Instrumental / Piano / Acoustic)
+// Built-in fallback light music tracks (self-hosted WAV, always playable)
+// 历史外链（pixabay CDN）返回 403、库内 seed 曾为占位地址，均不可播；
+// 默认曲目改由本站 /audio/ 自托管，管理端可随时替换为真实音乐。
 const fallbackTracks: Track[] = [
   {
     id: 'track-1',
     title: '雨的印记 (Kiss the Rain)',
     artist: '钢琴纯音乐',
-    audioUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=soft-piano-10988.mp3',
+    audioUrl: '/audio/calm-piano-1.wav',
   },
   {
     id: 'track-2',
     title: '安妮的仙境 (Annie\'s Wonderland)',
     artist: '舒缓吉他与长笛',
-    audioUrl: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=relaxing-light-music-10874.mp3',
+    audioUrl: '/audio/calm-piano-2.wav',
   },
   {
     id: 'track-3',
     title: '静谧森林 (Forest Acoustic)',
     artist: '自然轻音乐',
-    audioUrl: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=ambient-piano-10781.mp3',
+    audioUrl: '/audio/calm-piano-3.wav',
   },
 ]
+
+/** 占位地址（管理端标记过的 cdn.example.com 假外链）不可播，一律过滤。 */
+function isPlaceholderUrl(url: string) {
+  return url.includes('cdn.example.com')
+}
 
 const tracks = ref<Track[]>(fallbackTracks)
 const currentTrackIndex = ref(0)
@@ -39,6 +46,8 @@ const isPlaying = ref(false)
 const volume = ref(0.4)
 const isOpen = ref(false)
 const isLoading = ref(false)
+/** 连续失败跳曲计数：避免全库不可播时无限循环。 */
+let errorSkipCount = 0
 
 let audioEl: HTMLAudioElement | null = null
 
@@ -48,8 +57,12 @@ const currentTrack = computed(() => tracks.value[currentTrackIndex.value] || fal
 async function fetchRemoteTracks() {
   try {
     const data = await fetchMusicTracks()
-    if (Array.isArray(data) && data.length > 0) {
-      tracks.value = data
+    const playable = Array.isArray(data)
+      ? data.filter((track) => track.audioUrl && !isPlaceholderUrl(track.audioUrl))
+      : []
+    // 过滤占位曲目；全部不可用时保留内置自托管曲目
+    if (playable.length > 0) {
+      tracks.value = playable
     }
   } catch {
     // Keep fallback tracks on error
@@ -68,6 +81,11 @@ function initAudio() {
     audioEl.onerror = () => {
       isLoading.value = false
       isPlaying.value = false
+      // 当前曲目不可播（404/403/编解码失败）→ 自动尝试下一首（有界，不重置计数）
+      if (errorSkipCount < tracks.value.length) {
+        errorSkipCount += 1
+        skipToNext()
+      }
     }
   }
 }
@@ -89,6 +107,11 @@ function playTrack(index: number) {
   }).catch(() => {
     isPlaying.value = false
     isLoading.value = false
+    // 自动播放被浏览器拦截（需用户手势）或不可播：有界跳过
+    if (errorSkipCount < tracks.value.length) {
+      errorSkipCount += 1
+      skipToNext()
+    }
   })
 }
 
@@ -97,16 +120,25 @@ function togglePlay() {
     isPlaying.value = false
     if (audioEl) audioEl.pause()
   } else {
+    errorSkipCount = 0
     playTrack(currentTrackIndex.value)
   }
 }
 
 function prevTrack() {
   const next = (currentTrackIndex.value - 1 + tracks.value.length) % tracks.value.length
+  errorSkipCount = 0
   playTrack(next)
 }
 
+/** 用户手动切歌 / 正常播完：重置失败计数后切下一首。 */
 function nextTrack() {
+  errorSkipCount = 0
+  skipToNext()
+}
+
+/** 内部跳曲（失败自动跳过时保留计数，防止全库不可播时无限循环）。 */
+function skipToNext() {
   const next = (currentTrackIndex.value + 1) % tracks.value.length
   playTrack(next)
 }
