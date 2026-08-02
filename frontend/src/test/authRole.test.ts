@@ -29,7 +29,6 @@ function guardedRouter(): Router {
       { path: '/', name: 'home', component: { template: '<div />' } },
       { path: '/articles', name: 'articles', component: { template: '<div />' } },
       { path: '/articles/:slug', name: 'article', component: { template: '<div />' } },
-      { path: '/about', name: 'about', component: { template: '<div />' } },
       { path: '/login', name: 'login', component: { template: '<div />' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div />' } },
       { path: '/admin', name: 'admin', component: { template: '<div />' }, meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
@@ -41,7 +40,7 @@ function guardedRouter(): Router {
   r.beforeEach((to, _from, next) => {
     const auth = useAuthStore()
     const routeName = String(to.name ?? '')
-    const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes', 'about'])
+    const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes'])
     const authEntryRoutes = new Set(['login', 'admin-login'])
     const memberVisibleRoutes = new Set(['articles', 'article', 'recipes'])
     if (!to.meta.requiresAuth) {
@@ -205,11 +204,11 @@ describe('FD-8 authStore 角色感知', () => {
     expect(router.currentRoute.value.name).toBe('home')
   })
 
-  it('guest can enter home, articles, recipes, and about', async () => {
+  it('guest can enter home, articles, and recipes', async () => {
     sessionStorage.clear()
     freshStore().clearSession()
     const router = guardedRouter()
-    for (const path of ['/', '/articles', '/articles/hello', '/recipes', '/about']) {
+    for (const path of ['/', '/articles', '/articles/hello', '/recipes']) {
       await router.push(path)
       await router.isReady()
       expect(router.currentRoute.value.path).toBe(path)

@@ -125,7 +125,6 @@ watch(() => route.fullPath, () => {
       'series-detail': { title: '合集详情', description: '', canonicalPath: '' },
       tag: { title: '标签', description: '', canonicalPath: '' },
       recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
-      about: { title: '关于', description: '关于作者和这个博客', canonicalPath: '/about' },
       archive: { title: '内容归档', description: '按时间浏览所有公开的文章、学习笔记和菜谱', canonicalPath: '/archive' },
     }
     const pm = pageMeta[name] || { title: '', description: '', canonicalPath: '' }
@@ -199,7 +198,6 @@ onBeforeUnmount(() => {
         <RouterLink to="/archive"><i>☰</i>归档</RouterLink>
         <RouterLink to="/recipes"><i>♨</i>美食</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/notes"><i>☘</i>学习笔记</RouterLink>
-        <RouterLink to="/about"><i>○</i>关于</RouterLink>
       </nav>
       <div class="header-actions">
         <AmbientSound />
@@ -217,7 +215,6 @@ onBeforeUnmount(() => {
       <RouterLink to="/archive">归档 <span>04</span></RouterLink>
       <RouterLink to="/recipes">美食 <span>05</span></RouterLink>
       <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记 <span>06</span></RouterLink>
-      <RouterLink to="/about">关于 <span>07</span></RouterLink>
       <RouterLink :to="auth.isStaff ? '/admin' : '/login'">进入后台 <span>→</span></RouterLink>
     </nav>
 
@@ -233,7 +230,6 @@ onBeforeUnmount(() => {
         <RouterLink to="/archive">归档</RouterLink>
         <RouterLink to="/recipes">美食</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记</RouterLink>
-        <RouterLink to="/about">关于</RouterLink>
         <RouterLink to="/admin/login">管理</RouterLink>
       </div>
       <SiteFooter />
@@ -301,18 +297,15 @@ onBeforeUnmount(() => {
 .restricted-member .desktop-nav a[href="/"],
 .restricted-member .desktop-nav a[href="/series"],
 .restricted-member .desktop-nav a[href="/archive"],
-.restricted-member .desktop-nav a[href="/about"],
 .restricted-member .desktop-nav a[href="/notes"],
 .restricted-member .admin-entry-link,
 .restricted-member .mobile-nav a[href="/"],
 .restricted-member .mobile-nav a[href="/series"],
 .restricted-member .mobile-nav a[href="/archive"],
-.restricted-member .mobile-nav a[href="/about"],
 .restricted-member .mobile-nav a[href="/notes"],
 .restricted-member .mobile-nav a[href="/admin"],
 .restricted-member .site-footer a[href="/series"],
 .restricted-member .site-footer a[href="/archive"],
-.restricted-member .site-footer a[href="/about"],
 .restricted-member .site-footer a[href="/notes"],
 .restricted-member .site-footer a[href="/admin/login"] {
   display: none;

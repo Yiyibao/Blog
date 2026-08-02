@@ -9,7 +9,6 @@ const router = createRouter({
     { path: '/', name: 'home', component: () => import('../pages/HomePage.vue') },
     { path: '/articles', name: 'articles', component: () => import('../pages/ArticlesPage.vue') },
     { path: '/articles/:slug', name: 'article', component: () => import('../pages/ArticlePage.vue') },
-    { path: '/about', name: 'about', component: () => import('../pages/AboutPage.vue') },
     // L-16/D-17：学习笔记对游客真隐藏——需登录（任意角色），深链未登录会被送去 /login?next= 接续
     { path: '/notes', name: 'notes', component: () => import('../pages/NotesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.ACCOUNT_ACCESS } },
     { path: '/login', name: 'login', component: () => import('../pages/LoginPage.vue') },
@@ -35,7 +34,7 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore()
   const routeName = String(to.name ?? '')
-  const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes', 'about'])
+  const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes'])
   const authEntryRoutes = new Set(['login', 'admin-login'])
   const memberVisibleRoutes = new Set(['articles', 'article', 'recipes'])
   // FD-8：requiresAuth + capability——

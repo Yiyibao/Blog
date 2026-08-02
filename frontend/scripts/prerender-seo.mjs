@@ -180,7 +180,6 @@ const STATIC_ROUTES_CONFIG = [
   { path: '/', title: '', ogType: 'website', jsonLdType: 'WebSite' },
   { path: '/articles', title: '文章', description: '阅读所有技术文章与日常随笔', ogType: 'website' },
   { path: '/recipes', title: '美食', description: '家常菜谱与美食记录', ogType: 'website' },
-  { path: '/about', title: '关于', description: '关于作者和这个博客', ogType: 'website' },
 ]
 
 const NOINDEX_ROUTES_CONFIG = [

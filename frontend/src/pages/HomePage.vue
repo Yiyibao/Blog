@@ -72,7 +72,6 @@ onBeforeUnmount(() => {
         <p class="hero-intro hero-enter" style="--enter-delay: 160ms">拾起代码、阅读、料理与日常生活里的微光，记录思考，也珍藏时间。</p>
         <div class="hero-actions hero-enter" style="--enter-delay: 220ms">
           <RouterLink class="button primary" to="/articles">开始阅读 <span>→</span></RouterLink>
-          <RouterLink class="button secondary" to="/about">关于这里</RouterLink>
         </div>
       </div>
       <a class="hero-scroll" href="#home-content" aria-label="向下浏览"><span>SCROLL TO DISCOVER</span><i /></a>

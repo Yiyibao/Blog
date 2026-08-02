@@ -1,0 +1,312 @@
+{
+  "format": "webp",
+  "dimensions": [
+    1200,
+    800
+  ],
+  "count": 20,
+  "generatedBy": "OpenAI image generation, normalized with Pillow",
+  "placeholder": false,
+  "items": [
+    {
+      "slug": "authentic-mapo-tofu",
+      "source": "frontend/outputs/food-real-20260803/sources/authentic-mapo-tofu.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/authentic-mapo-tofu.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 215232,
+      "sha256": "178aaa806e8fedecc67456e0954557d1575c4776938762354135c72bc5afb8e8"
+    },
+    {
+      "slug": "kung-pao-chicken",
+      "source": "frontend/outputs/food-real-20260803/sources/kung-pao-chicken.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/kung-pao-chicken.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 259152,
+      "sha256": "4e45c367e7bda45ea25563152ed8a5a494aac1c527394e854d8a0086ea279dff"
+    },
+    {
+      "slug": "dongpo-pork",
+      "source": "frontend/outputs/food-real-20260803/sources/dongpo-pork.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/dongpo-pork.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 155720,
+      "sha256": "244492380b0691b9c1c05d8e0a21e5669b85fbed8443d0232b94d1599dc8aa02"
+    },
+    {
+      "slug": "lotus-root-pork-rib-soup",
+      "source": "frontend/outputs/food-real-20260803/sources/lotus-root-pork-rib-soup.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/lotus-root-pork-rib-soup.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 133156,
+      "sha256": "5ba84fa98d2f97ff19e8e471ad086bc7f1f32192942b3d1990a839477b869ffc"
+    },
+    {
+      "slug": "handmade-jiaozi",
+      "source": "frontend/outputs/food-real-20260803/sources/handmade-jiaozi.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/handmade-jiaozi.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 140076,
+      "sha256": "9468f790b3b240cd7252c14109d48c3d0d73f1c8788528f448a4b65966314533"
+    },
+    {
+      "slug": "scallion-oil-noodles",
+      "source": "frontend/outputs/food-real-20260803/sources/scallion-oil-noodles.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/scallion-oil-noodles.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 200292,
+      "sha256": "b73a3a9aa11e45cc001279ada23545262ada8e5764a3fabf141b113c25366bc9"
+    },
+    {
+      "slug": "garlic-broccoli",
+      "source": "frontend/outputs/food-real-20260803/sources/garlic-broccoli.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/garlic-broccoli.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 184090,
+      "sha256": "95be29ea7bbaa34fd10336c9330aaeef7aa0bc76d13ee082f85b02e8cf6f4c70"
+    },
+    {
+      "slug": "tomato-scrambled-eggs",
+      "source": "frontend/outputs/food-real-20260803/sources/tomato-scrambled-eggs.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/tomato-scrambled-eggs.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 206054,
+      "sha256": "fa895629a84929e227022248552bf900150f1a6667668b74d8fd6695707d037b"
+    },
+    {
+      "slug": "sweet-sour-pork",
+      "source": "frontend/outputs/food-real-20260803/sources/sweet-sour-pork.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/sweet-sour-pork.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 160702,
+      "sha256": "303b26aa215dc9d825d92815e0b1da1d28f4c32e370acf0b03f29b33ac7cadb8"
+    },
+    {
+      "slug": "steamed-sea-bass",
+      "source": "frontend/outputs/food-real-20260803/sources/steamed-sea-bass.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/steamed-sea-bass.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 192668,
+      "sha256": "c8911ae454a0a24af41715dedebe3add7bf56d5a9f005efcd959da5ca1b5a262"
+    },
+    {
+      "slug": "soy-sauce-chicken",
+      "source": "frontend/outputs/food-real-20260803/sources/soy-sauce-chicken.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/soy-sauce-chicken.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 207228,
+      "sha256": "ee02a85cbe057b2b1514c596c942e4e1b96ffb3ae223449e524d7c6a8ffe8d16"
+    },
+    {
+      "slug": "winter-melon-soup",
+      "source": "frontend/outputs/food-real-20260803/sources/winter-melon-soup.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/winter-melon-soup.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 122280,
+      "sha256": "b2ebcd5d8ac4bb164f20bda51b5e118b28c855c44f101029137f39c445ba2e78"
+    },
+    {
+      "slug": "tea-fragrant-ribs",
+      "source": "frontend/outputs/food-real-20260803/sources/tea-fragrant-ribs.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/tea-fragrant-ribs.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 209642,
+      "sha256": "224bbf308502c97f5da47731d50a2fed6a3d6a54710e30fc392fb5f7c726aa60"
+    },
+    {
+      "slug": "pan-fried-mushroom",
+      "source": "frontend/outputs/food-real-20260803/sources/pan-fried-mushroom.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/pan-fried-mushroom.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 162410,
+      "sha256": "bea65c6aeff18577e15d170834a05ffc75c3a96cc5cdd1e385a1b71b478dbee2"
+    },
+    {
+      "slug": "pumpkin-millet-porridge",
+      "source": "frontend/outputs/food-real-20260803/sources/pumpkin-millet-porridge.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/pumpkin-millet-porridge.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 174902,
+      "sha256": "4755001203093611f0f426e8a64342a1a7fb214331cc64749ed39a842c37bbe1"
+    },
+    {
+      "slug": "cucumber-shrimp",
+      "source": "frontend/outputs/food-real-20260803/sources/cucumber-shrimp.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/cucumber-shrimp.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 127890,
+      "sha256": "09bd3e0366b3e8292fffc344e2cc57604041805fd40c0f262d419eea0ebd70b7"
+    },
+    {
+      "slug": "scallion-pancake",
+      "source": "frontend/outputs/food-real-20260803/sources/scallion-pancake.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/scallion-pancake.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 227042,
+      "sha256": "61122cf125453413f94020a405dfdc02b5709a34df7b30c03f691742c8b3480d"
+    },
+    {
+      "slug": "three-cup-chicken",
+      "source": "frontend/outputs/food-real-20260803/sources/three-cup-chicken.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/three-cup-chicken.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 266860,
+      "sha256": "f118daf49baef5af2e7a4fe284042ff1f47dc8cf9d8db115a6de011280f275b9"
+    },
+    {
+      "slug": "miso-salmon",
+      "source": "frontend/outputs/food-real-20260803/sources/miso-salmon.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/miso-salmon.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 132340,
+      "sha256": "8c9e90037a527e299060d3e8a08072ec28e3fc875446c5bbbcdf4dc1e9fefa6e"
+    },
+    {
+      "slug": "red-bean-rice-cake",
+      "source": "frontend/outputs/food-real-20260803/sources/red-bean-rice-cake.png",
+      "sourceDimensions": [
+        1536,
+        1024
+      ],
+      "output": "/food/real/red-bean-rice-cake.webp",
+      "dimensions": [
+        1200,
+        800
+      ],
+      "bytes": 160128,
+      "sha256": "9d5f88c0f0ef17702e0b1b3332c46fa9f84a2fa49c5558b20b5eae6950d625a5"
+    }
+  ]
+}

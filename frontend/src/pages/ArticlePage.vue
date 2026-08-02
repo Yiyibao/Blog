@@ -240,7 +240,7 @@ onUnmounted(() => {
               {{ item.title }}
             </a>
           </div>
-          <div class="article-share"><p>分享文章</p><button type="button" @click="copyCurrentLink">复制链接</button><RouterLink to="/about">关于作者</RouterLink></div>
+          <div class="article-share"><p>分享文章</p><button type="button" @click="copyCurrentLink">复制链接</button></div>
         </aside>
         <!-- 3A-4：MARKDOWN 篇走受控渲染（Tiptap 只读 + lowlight，与笔记同管线）；HTML 存量篇维持消毒 v-html -->
         <ControlledMarkdown
