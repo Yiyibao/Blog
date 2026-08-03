@@ -44,6 +44,7 @@ public class OpenAiImageClient {
     private static final int MAX_ENVELOPE_BYTES = 32_000_000;
     private static final int MAX_DIMENSION = 16_384;
     private static final long MAX_PIXELS = 80_000_000L;
+    private static final int MAX_DOWNLOAD_REDIRECTS = 3;
 
     private final Function<AiImageEndpoint, RestClient> apiClientFactory;
 
@@ -165,7 +166,23 @@ public class OpenAiImageClient {
         } catch (IllegalArgumentException exception) {
             throw invalidResponse();
         }
-        validateRemoteUrl(uri);
+        var current = uri;
+        for (var redirect = 0; redirect <= MAX_DOWNLOAD_REDIRECTS; redirect++) {
+            // Validate every hop.  Image relays commonly return a short-lived CDN
+            // URL which redirects once or twice; following it blindly would turn
+            // this server-side fetch into an SSRF primitive.
+            validateRemoteUrl(current);
+            var attempt = requestDownload(current, maxBytes);
+            if (attempt.downloaded() != null) return attempt.downloaded();
+            if (attempt.redirect() == null || redirect == MAX_DOWNLOAD_REDIRECTS) {
+                throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image download failed");
+            }
+            current = attempt.redirect();
+        }
+        throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image download failed");
+    }
+
+    private static DownloadAttempt requestDownload(URI uri, long maxBytes) {
         var factory = new NoRedirectRequestFactory();
         var timeout = (int) Duration.ofSeconds(30).toMillis();
         factory.setConnectTimeout(timeout);
@@ -173,12 +190,23 @@ public class OpenAiImageClient {
         try {
             return RestClient.builder().requestFactory(factory).build()
                 .get().uri(uri).exchange((request, response) -> {
+                    if (response.getStatusCode().is3xxRedirection()) {
+                        var location = response.getHeaders().getFirst(HttpHeaders.LOCATION);
+                        if (location == null || location.isBlank()) {
+                            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image download failed");
+                        }
+                        try {
+                            return new DownloadAttempt(null, uri.resolve(location));
+                        } catch (IllegalArgumentException exception) {
+                            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image download failed");
+                        }
+                    }
                     if (!response.getStatusCode().is2xxSuccessful()) {
                         throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image download failed");
                     }
                     var bytes = readBounded(response.getBody(), maxBytes);
                     var contentType = response.getHeaders().getContentType();
-                    return new Downloaded(bytes, contentType == null ? null : contentType.toString());
+                    return new DownloadAttempt(new Downloaded(bytes, contentType == null ? null : contentType.toString()), null);
                 });
         } catch (AiServiceException exception) {
             throw exception;
@@ -324,6 +352,7 @@ public class OpenAiImageClient {
 
     private record Candidate(String kind, String value) {}
     private record Downloaded(byte[] bytes, String mediaType) {}
+    private record DownloadAttempt(Downloaded downloaded, URI redirect) {}
 
     private static final class NoRedirectRequestFactory extends SimpleClientHttpRequestFactory {
         @Override
