@@ -2,11 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  AiStreamHttpError, logout as apiLogout, getAdminSessionName,
-  streamAiChat, type AiChatMessage,
+  AiStreamHttpError, appendAiChatMessages, createAiChatSession, deleteAiChatSession,
+  fetchAiChatSessionMessages, fetchAiChatSessions, logout as apiLogout, getAdminSessionName,
+  streamAiChat, type AiChatMessage, type AiChatSession, type AiReasoningSelection,
 } from '../api/admin'
 import { useAiStore } from '../stores/aiStore'
 import AdminSidebar from './AdminSidebar.vue'
+import { AI_CHAT_MAX_INPUT_CHARS } from '../config/aiLimits'
 
 /**
  * 4A-4：compact=true 时去掉页面级 chrome（侧导航/顶栏），只渲染对话核心——供 AdminPetAssistant 面板复用；
@@ -53,6 +55,33 @@ const selectedProvider = computed(() => ai.selectedProvider)
 
 const modelOptions = computed(() => ai.modelOptions)
 
+const reasoningOptions: Array<{ value: AiReasoningSelection; label: string }> = [
+  { value: 'auto', label: '自动（供应商默认）' },
+  { value: 'none', label: '关闭' },
+  { value: 'minimal', label: '极低' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '极高' },
+]
+
+/**
+ * The selected effort is sent only to protocols that have a real effort
+ * parameter. OpenCode's session API does not expose a portable effort field;
+ * leaving its control disabled is preferable to pretending that a UI toggle
+ * changes the model.
+ */
+const reasoningSupported = computed(() => {
+  const provider = selectedProvider.value
+  if (!provider || !provider.providerType) return true
+  if (provider.providerType === 'OPENCODE_SERVER') return false
+  if (provider.providerType === 'OPENAI_COMPATIBLE'
+    && provider.baseUrl.toLowerCase().includes('deepseek')) return false
+  return provider.providerType === 'OPENAI_RESPONSES'
+    || provider.providerType === 'OPENAI_COMPATIBLE'
+    || provider.providerType === 'ANTHROPIC'
+})
+
 function loadStoredMessages(): AiChatMessage[] {
   try {
     const raw = window.sessionStorage?.getItem(STORAGE_KEY)
@@ -67,7 +96,7 @@ function loadStoredMessages(): AiChatMessage[] {
         (item.role === 'user' || item.role === 'assistant') &&
         typeof item.content === 'string' &&
         item.content.trim() &&
-        item.content.length <= 8000
+        item.content.length <= AI_CHAT_MAX_INPUT_CHARS
       ) {
         valid.push({ role: item.role as 'user' | 'assistant', content: item.content })
       } else {
@@ -96,6 +125,11 @@ function saveMessagesToStorage(msgList: AiChatMessage[]) {
 }
 
 const messages = ref<AiChatMessage[]>(loadStoredMessages())
+const sessions = ref<AiChatSession[]>([])
+const sessionsLoading = ref(false)
+const sessionsError = ref('')
+const currentSessionId = ref<number | null>(null)
+const sidebarOpen = ref(true)
 
 async function scrollToBottom() {
   await nextTick()
@@ -113,10 +147,79 @@ function clearConversation() {
   if (!window.confirm('确认清空所有对话记录？')) return
   messages.value = []
   error.value = ''
+  currentSessionId.value = null
   try {
     window.sessionStorage?.removeItem(STORAGE_KEY)
   } catch {
     // ignore
+  }
+}
+
+async function loadSessions() {
+  sessionsLoading.value = true
+  sessionsError.value = ''
+  try {
+    sessions.value = await fetchAiChatSessions()
+  } catch (cause) {
+    sessionsError.value = cause instanceof Error ? cause.message : '聊天记录加载失败'
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+function newChat() {
+  abortController?.abort()
+  currentSessionId.value = null
+  messages.value = []
+  error.value = ''
+  saveMessagesToStorage([])
+  void nextTick(() => scrollToBottom())
+}
+
+async function openSession(session: AiChatSession) {
+  if (loading.value) abortController?.abort()
+  if (currentSessionId.value === session.id) return
+  currentSessionId.value = session.id
+  error.value = ''
+  try {
+    const records = await fetchAiChatSessionMessages(session.id)
+    messages.value = records
+      .map(record => ({ role: record.role, content: record.content }))
+      .slice(-100)
+    saveMessagesToStorage(messages.value)
+  } catch (cause) {
+    currentSessionId.value = null
+    error.value = cause instanceof Error ? cause.message : '聊天记录加载失败'
+  }
+  await scrollToBottom()
+}
+
+async function deleteSession(session: AiChatSession) {
+  if (!window.confirm('确认删除这条聊天记录？')) return
+  try {
+    await deleteAiChatSession(session.id)
+    if (currentSessionId.value === session.id) newChat()
+    await loadSessions()
+  } catch (cause) {
+    sessionsError.value = cause instanceof Error ? cause.message : '删除聊天记录失败'
+  }
+}
+
+function formatSessionTime(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(value))
+}
+
+async function persistExchange(sessionId: number, userMsg: AiChatMessage, assistantContent: string) {
+  const batch = assistantContent.trim()
+    ? [userMsg, { role: 'assistant' as const, content: assistantContent }]
+    : [userMsg]
+  try {
+    await appendAiChatMessages(sessionId, batch)
+    await loadSessions()
+  } catch {
+    // 历史保存失败不阻断对话主流程
   }
 }
 
@@ -129,7 +232,7 @@ function handleKeyDown(event: KeyboardEvent) {
 
 async function sendMessage() {
   const content = userInput.value.trim()
-  if (!content || loading.value || content.length > 8000) return
+  if (!content || loading.value || content.length > AI_CHAT_MAX_INPUT_CHARS) return
 
   const userMsg: AiChatMessage = { role: 'user', content }
   // 发送给后端的历史窗口维持 20 条（与服务端限额一致）；
@@ -148,6 +251,23 @@ async function sendMessage() {
   const liveSeed: AiChatMessage = { role: 'assistant', content: '' }
   messages.value = [...messages.value, liveSeed].slice(-100)
   const live = messages.value[messages.value.length - 1]!
+
+  // 首次发送时先创建会话记录，流式结束再把本轮问答写入历史（仅全屏形态）
+  let sessionId = currentSessionId.value
+  if (!props.compact && sessionId == null) {
+    try {
+      const session = await createAiChatSession()
+      sessionId = session.id
+      currentSessionId.value = session.id
+    } catch {
+      messages.value = messages.value.filter((msg) => msg !== live)
+      error.value = '无法创建聊天记录，请稍后重试。'
+      loading.value = false
+      await scrollToBottom()
+      return
+    }
+  }
+
   const controller = new AbortController()
   abortController = controller
   emit('stream-start')
@@ -155,6 +275,7 @@ async function sendMessage() {
   try {
     const providerId = props.providerId ?? ai.selectedProviderId
     const model = props.model ?? ai.selectedModel
+    const reasoningEffort = ai.selectedReasoningEffort
     await streamAiChat(history, {
       onDelta: (text) => {
         if (!streamingStarted.value) emit('stream-first-delta')
@@ -166,6 +287,7 @@ async function sendMessage() {
       signal: controller.signal,
       ...(providerId != null ? { providerId } : {}),
       ...(model ? { model } : {}),
+      ...(reasoningSupported.value && reasoningEffort !== 'auto' ? { reasoningEffort } : {}),
     })
     if (!live.content.trim()) {
       throw new AiStreamHttpError(502, 'empty response')
@@ -199,6 +321,7 @@ async function sendMessage() {
     loading.value = false
     streamingStarted.value = false
     abortController = null
+    if (!props.compact && sessionId != null) void persistExchange(sessionId, userMsg, live.content)
     await scrollToBottom()
   }
 }
@@ -212,6 +335,7 @@ onMounted(() => {
   if (!props.compact) {
     void ai.ensureProviders()
     ai.subscribe()
+    void loadSessions()
   }
   void scrollToBottom()
 })
@@ -243,8 +367,45 @@ onBeforeUnmount(() => {
         <button class="clear-btn" type="button" @click="clearConversation">清空对话</button>
       </div>
 
-      <div class="ai-chat-container">
-        <div ref="chatBoxRef" class="chat-messages" role="log" aria-live="polite">
+      <div class="ai-chat-container" :class="{ 'sidebar-hidden': !sidebarOpen }">
+        <template v-if="!props.compact">
+          <aside class="chat-history-panel">
+            <div class="chat-history-inner">
+              <button class="new-chat-btn" type="button" @click="newChat">＋ 新建聊天</button>
+              <p v-if="sessionsError" class="sessions-error" role="alert">{{ sessionsError }}</p>
+              <ul v-if="sessions.length" class="session-list">
+                <li
+                  v-for="session in sessions"
+                  :key="session.id"
+                  class="session-item"
+                  :class="{ active: session.id === currentSessionId }"
+                >
+                  <button type="button" class="session-entry" @click="openSession(session)">
+                    <span class="session-title">{{ session.title || '新对话' }}</span>
+                    <span class="session-time">{{ formatSessionTime(session.updatedAt) }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="session-delete"
+                    title="删除这条聊天记录"
+                    aria-label="删除聊天记录"
+                    @click="deleteSession(session)"
+                  >×</button>
+                </li>
+              </ul>
+              <p v-else-if="!sessionsLoading" class="sessions-empty">暂无聊天记录</p>
+            </div>
+          </aside>
+          <button
+            type="button"
+            class="sidebar-toggle"
+            :aria-label="sidebarOpen ? '隐藏聊天记录' : '展开聊天记录'"
+            @click="sidebarOpen = !sidebarOpen"
+          >{{ sidebarOpen ? '◀' : '▶' }}</button>
+        </template>
+
+        <div class="chat-main-col">
+          <div ref="chatBoxRef" class="chat-messages" role="log" aria-live="polite">
           <div v-if="!messages.length && !loading" class="chat-welcome">
             <div class="welcome-icon">🤖</div>
             <h2>管理员 AI 助手</h2>
@@ -295,7 +456,7 @@ onBeforeUnmount(() => {
               class="chat-textarea"
               data-testid="ai-chat-input"
               placeholder="输入消息，按 Ctrl + Enter 或 Cmd + Enter 快速发送…"
-              maxlength="8000"
+              :maxlength="AI_CHAT_MAX_INPUT_CHARS"
               rows="3"
               :disabled="loading"
               @keydown="handleKeyDown"
@@ -331,11 +492,26 @@ onBeforeUnmount(() => {
                   {{ modelOption }}
                 </option>
               </select>
+              <label for="ai-chat-reasoning">推理强度</label>
+              <select
+                id="ai-chat-reasoning"
+                class="chat-model-select chat-reasoning-select"
+                data-testid="chat-reasoning-select"
+                aria-label="选择推理强度"
+                :value="ai.selectedReasoningEffort"
+                :disabled="loading || !reasoningSupported"
+                @change="ai.selectReasoningEffort(($event.target as HTMLSelectElement).value as AiReasoningSelection)"
+              >
+                <option v-for="option in reasoningOptions" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+              <span v-if="!reasoningSupported" class="chat-model-provider">当前供应商不支持可调推理</span>
               <span v-if="selectedProvider && ai.providers.length <= 1" class="chat-model-provider">{{ selectedProvider.name }}</span>
             </div>
             <div class="input-footer">
-              <span class="char-count" :class="{ 'near-limit': userInput.length > 7500 }">
-                {{ userInput.length.toLocaleString() }} / 8,000 字
+              <span class="char-count" :class="{ 'near-limit': userInput.length > AI_CHAT_MAX_INPUT_CHARS - 1_000 }">
+                {{ userInput.length.toLocaleString() }} / {{ AI_CHAT_MAX_INPUT_CHARS.toLocaleString() }} 字
               </span>
               <div class="footer-actions">
                 <button
@@ -349,13 +525,14 @@ onBeforeUnmount(() => {
                 <button
                   class="send-btn"
                   type="button"
-                  :disabled="loading || !userInput.trim() || userInput.length > 8000"
+                  :disabled="loading || !userInput.trim() || userInput.length > AI_CHAT_MAX_INPUT_CHARS"
                   @click="sendMessage"
                 >
                   {{ loading ? '发送中…' : '发送 ↗' }}
                 </button>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -411,15 +588,172 @@ onBeforeUnmount(() => {
 
 .ai-chat-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
+  position: relative;
   margin-top: 16px;
   border: 1px solid var(--line-strong, #d9d6cf);
   border-radius: 16px;
   background: var(--surface-solid, #fffdfb);
   box-shadow: 0 10px 40px rgba(34, 32, 27, 0.04);
   overflow: hidden;
+}
+
+.chat-history-panel {
+  flex-shrink: 0;
+  width: 250px;
+  overflow: hidden;
+  border-right: 1px solid var(--line-strong, #d9d6cf);
+  background: var(--surface, #faf8f5);
+  transition: width 0.25s ease, border-right-width 0.25s ease;
+}
+.chat-history-inner {
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  height: 100%;
+  padding: 14px 12px;
+  box-sizing: border-box;
+}
+.ai-chat-container.sidebar-hidden .chat-history-panel {
+  width: 0;
+  border-right-width: 0;
+}
+.new-chat-btn {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong, #d9d6cf);
+  border-radius: 10px;
+  background: var(--surface-solid, #ffffff);
+  color: var(--ink, #20211e);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+.new-chat-btn:hover {
+  border-color: var(--accent, #a17450);
+  background: color-mix(in srgb, var(--accent, #a17450) 8%, var(--surface-solid, #ffffff));
+  transform: translateY(-1px);
+}
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+.session-item:hover {
+  background: color-mix(in srgb, var(--ink, #20211e) 4%, transparent);
+}
+.session-item.active {
+  background: color-mix(in srgb, var(--accent, #a17450) 12%, var(--surface-solid, #ffffff));
+  border-color: color-mix(in srgb, var(--accent, #a17450) 35%, transparent);
+}
+.session-entry {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ink, #20211e);
+}
+.session-time {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted, #7f7e77);
+}
+.session-delete {
+  flex-shrink: 0;
+  margin-right: 6px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #7f7e77);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.session-item:hover .session-delete,
+.session-item.active .session-delete {
+  opacity: 1;
+}
+.session-delete:hover {
+  background: color-mix(in srgb, #b84f48 12%, transparent);
+  color: color-mix(in srgb, #b84f48 74%, var(--ink, #20211e));
+}
+.sessions-empty {
+  margin: 18px 0 0;
+  color: var(--muted, #7f7e77);
+  font-size: 12px;
+  text-align: center;
+}
+.sessions-error {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #b84f48 10%, var(--surface-solid, #fffdfb));
+  color: color-mix(in srgb, #b84f48 74%, var(--ink, #20211e));
+  font-size: 12px;
+}
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: 250px;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 26px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line-strong, #d9d6cf);
+  border-radius: 8px;
+  background: var(--surface-solid, #ffffff);
+  color: var(--muted, #7f7e77);
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(34, 32, 27, 0.12);
+  transition: left 0.25s ease, color 0.2s, border-color 0.2s;
+}
+.sidebar-toggle:hover {
+  color: var(--accent, #a17450);
+  border-color: var(--accent, #a17450);
+}
+.ai-chat-container.sidebar-hidden .sidebar-toggle {
+  left: 0;
+}
+
+.chat-main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-messages {

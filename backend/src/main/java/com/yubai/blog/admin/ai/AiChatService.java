@@ -1,8 +1,11 @@
 package com.yubai.blog.admin.ai;
 
 import com.yubai.blog.config.AiProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * 4A-1：聊天编排——解析供应商端点（注册表优先、env 回退）后调用对应类型客户端。
@@ -13,36 +16,56 @@ public class AiChatService {
     private final AiProperties properties;
     private final AiProviderService providerService;
     private final OpenAiCompatibleClient openaiClient;
+    private final OpenAiResponsesClient responsesClient;
     private final AnthropicClient anthropicClient;
     private final OpenCodeServerClient opencodeClient;
     private final AiUsageService usageService;
 
+    @Autowired
     public AiChatService(AiProperties properties, AiProviderService providerService,
                          OpenAiCompatibleClient openaiClient, AnthropicClient anthropicClient,
-                         OpenCodeServerClient opencodeClient,
+                         OpenCodeServerClient opencodeClient, OpenAiResponsesClient responsesClient,
                          AiUsageService usageService) {
         this.properties = properties;
         this.providerService = providerService;
         this.openaiClient = openaiClient;
+        this.responsesClient = responsesClient;
         this.anthropicClient = anthropicClient;
         this.opencodeClient = opencodeClient;
         this.usageService = usageService;
     }
 
+    /** Source-compatible constructor used by focused unit tests and small integrations. */
+    public AiChatService(AiProperties properties, AiProviderService providerService,
+                         OpenAiCompatibleClient openaiClient, AnthropicClient anthropicClient,
+                         OpenCodeServerClient opencodeClient, AiUsageService usageService) {
+        this(properties, providerService, openaiClient, anthropicClient, opencodeClient,
+            new OpenAiResponsesClient(properties), usageService);
+    }
+
     public ChatResponse chat(ChatRequest request) {
         var endpoint = resolveValidated(request);
-        return audited(endpoint, () -> clientFor(endpoint).chat(endpoint, request.messages()));
+        var reasoningEffort = resolveReasoningEffort(request, endpoint);
+        return audited(endpoint, () -> reasoningEffort == null
+            ? clientFor(endpoint).chat(endpoint, request.messages())
+            : clientFor(endpoint).chat(endpoint, request.messages(), reasoningEffort));
     }
 
     /** 4A-2：流式对话，校验与端点解析复用非流式路径。 */
     public ChatResponse stream(ChatRequest request, AiStreamListener listener) {
         var endpoint = resolveValidated(request);
-        return audited(endpoint, () -> clientFor(endpoint).stream(endpoint, request.messages(), listener));
+        var reasoningEffort = resolveReasoningEffort(request, endpoint);
+        return audited(endpoint, () -> reasoningEffort == null
+            ? clientFor(endpoint).stream(endpoint, request.messages(), listener)
+            : clientFor(endpoint).stream(endpoint, request.messages(), listener, reasoningEffort));
     }
 
     private AiClient clientFor(AiEndpoint endpoint) {
         if (endpoint.providerType() == AiProviderType.OPENCODE_SERVER) {
             return opencodeClient;
+        }
+        if (endpoint.providerType() == AiProviderType.OPENAI_RESPONSES) {
+            return responsesClient;
         }
         if (endpoint.providerType() == AiProviderType.ANTHROPIC) {
             return anthropicClient;
@@ -91,5 +114,26 @@ public class AiChatService {
     private AiEndpoint resolveValidated(ChatRequest request) {
         validateLimits(request);
         return providerService.resolveEndpoint(request.providerId(), request.model());
+    }
+
+    private String resolveReasoningEffort(ChatRequest request, AiEndpoint endpoint) {
+        if (request.reasoningEffort() == null || request.reasoningEffort().isBlank()) {
+            return null;
+        }
+        var effort = request.reasoningEffort().trim().toLowerCase(Locale.ROOT);
+        if (!Set.of("none", "minimal", "low", "medium", "high", "xhigh").contains(effort)) {
+            throw new AiServiceException(HttpStatus.BAD_REQUEST, "推理强度值无效");
+        }
+        if (endpoint.providerType() == AiProviderType.OPENCODE_SERVER) {
+            throw new AiServiceException(HttpStatus.BAD_REQUEST,
+                "当前供应商不支持推理强度选择");
+        }
+        if (endpoint.providerType() == AiProviderType.OPENAI_COMPATIBLE
+            && OpenAiCompatibleClient.isDeepSeekEndpoint(endpoint.baseUrl())
+            && !"none".equals(effort)) {
+            throw new AiServiceException(HttpStatus.BAD_REQUEST,
+                "DeepSeek 兼容端点仅支持推理开关，不支持强度等级");
+        }
+        return effort;
     }
 }

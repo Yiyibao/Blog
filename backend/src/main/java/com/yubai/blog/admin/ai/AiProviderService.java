@@ -4,6 +4,7 @@ import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.config.AiProperties;
 import java.util.Arrays;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -20,26 +21,39 @@ import org.springframework.transaction.annotation.Transactional;
 public class AiProviderService {
     private static final Logger log = LoggerFactory.getLogger(AiProviderService.class);
     private static final String ANTHROPIC_ENV_PROVIDER_NAME = "Anthropic (env)";
+    private static final String RESPONSES_ENV_PROVIDER_NAME = "GPT (Responses)";
 
     private final AiProviderRepository repository;
     private final AiCrypto crypto;
     private final AiBaseUrlValidator baseUrlValidator;
     private final OpenAiCompatibleClient openaiClient;
+    private final OpenAiResponsesClient responsesClient;
     private final AnthropicClient anthropicClient;
     private final OpenCodeServerClient opencodeClient;
     private final AiProperties properties;
 
+    @Autowired
     public AiProviderService(AiProviderRepository repository, AiCrypto crypto,
                              AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient openaiClient,
                              AnthropicClient anthropicClient, OpenCodeServerClient opencodeClient,
-                             AiProperties properties) {
+                             OpenAiResponsesClient responsesClient, AiProperties properties) {
         this.repository = repository;
         this.crypto = crypto;
         this.baseUrlValidator = baseUrlValidator;
         this.openaiClient = openaiClient;
+        this.responsesClient = responsesClient;
         this.anthropicClient = anthropicClient;
         this.opencodeClient = opencodeClient;
         this.properties = properties;
+    }
+
+    /** Source-compatible constructor used by focused unit tests and small integrations. */
+    public AiProviderService(AiProviderRepository repository, AiCrypto crypto,
+                             AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient openaiClient,
+                             AnthropicClient anthropicClient, OpenCodeServerClient opencodeClient,
+                             AiProperties properties) {
+        this(repository, crypto, baseUrlValidator, openaiClient, anthropicClient, opencodeClient,
+            new OpenAiResponsesClient(properties), properties);
     }
 
     @Transactional(readOnly = true)
@@ -192,6 +206,7 @@ public class AiProviderService {
     @Transactional
     public void seedFromLegacyEnv() {
         seedFromAnthropicEnv();
+        seedFromResponsesEnv();
         if (!crypto.isReady() || repository.count() > 0) {
             return;
         }
@@ -279,6 +294,71 @@ public class AiProviderService {
         log.info("Anthropic provider materialized from environment configuration at {} (default={})", baseUrl, entity.isDefault());
     }
 
+    /**
+     * Materialize the environment-backed OpenAI Responses relay as a normal
+     * provider row while preserving an existing active default such as OpenCode.
+     */
+    @Transactional
+    public void seedFromResponsesEnv() {
+        if (!properties.isResponsesEnabled()
+            || !hasText(properties.getResponsesBaseUrl())
+            || !hasText(properties.getResponsesApiKey())) {
+            return;
+        }
+        if (!crypto.isReady()) {
+            log.warn("APP_AI_RESPONSES_API_KEY is configured but APP_AI_MASTER_KEY is unavailable; provider was not materialized");
+            return;
+        }
+        var baseUrl = baseUrlValidator.validate(properties.getResponsesBaseUrl());
+        var configuredModel = hasText(properties.getResponsesModel())
+            ? properties.getResponsesModel().trim()
+            : "";
+        var models = normalizeModels(properties.getResponsesModels(), configuredModel);
+        var model = configuredModel;
+        if (!hasText(model) || !AiProviderResponse.parseModels(models).contains(model)) {
+            model = firstModel(models);
+        }
+        var encryptedKey = crypto.encrypt(properties.getResponsesApiKey().trim());
+        var hadActiveDefault = repository.findFirstByIsDefaultTrueAndEnabledTrue().isPresent();
+        var entity = repository.findByNameIgnoreCase(RESPONSES_ENV_PROVIDER_NAME).orElse(null);
+        var shouldMakeDefault = !hadActiveDefault || (entity != null && entity.isDefault());
+        if (entity == null) {
+            entity = AiProviderEntity.create(
+                RESPONSES_ENV_PROVIDER_NAME,
+                baseUrl,
+                encryptedKey,
+                models,
+                model,
+                true,
+                200,
+                200_000,
+                AiProviderType.OPENAI_RESPONSES);
+            entity.markDefault(false);
+            repository.save(entity);
+            repository.flush();
+        } else {
+            entity.update(RESPONSES_ENV_PROVIDER_NAME, baseUrl, models, model,
+                true, 200, 200_000, AiProviderType.OPENAI_RESPONSES);
+            entity.replaceApiKey(encryptedKey);
+            repository.save(entity);
+        }
+
+        if (shouldMakeDefault) {
+            for (var other : repository.findAll()) {
+                if (other.isDefault() && other != entity) {
+                    other.markDefault(false);
+                    repository.save(other);
+                }
+            }
+            repository.flush();
+            entity.markDefault(true);
+            repository.save(entity);
+        }
+        repository.flush();
+        log.info("OpenAI Responses provider materialized from environment configuration at {} (default={})",
+            baseUrl, entity.isDefault());
+    }
+
     private String resolveModel(AiProviderEntity entity, String requestedModel) {
         if (requestedModel == null || requestedModel.isBlank()) {
             return entity.getDefaultModel();
@@ -307,6 +387,9 @@ public class AiProviderService {
     private AiClient clientFor(AiProviderType providerType) {
         if (providerType == AiProviderType.OPENCODE_SERVER) {
             return opencodeClient;
+        }
+        if (providerType == AiProviderType.OPENAI_RESPONSES) {
+            return responsesClient;
         }
         if (providerType == AiProviderType.ANTHROPIC) {
             return anthropicClient;

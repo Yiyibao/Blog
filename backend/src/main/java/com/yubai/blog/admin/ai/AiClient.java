@@ -10,7 +10,20 @@ import java.util.List;
 public interface AiClient {
     ChatResponse chat(AiEndpoint endpoint, List<ChatMessage> messages);
 
+    /**
+     * Optional per-request reasoning override. Existing clients keep their
+     * provider default when no override is supplied.
+     */
+    default ChatResponse chat(AiEndpoint endpoint, List<ChatMessage> messages, String reasoningEffort) {
+        return chat(endpoint, messages);
+    }
+
     ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages, AiStreamListener listener);
+
+    default ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages,
+                                AiStreamListener listener, String reasoningEffort) {
+        return stream(endpoint, messages, listener);
+    }
 
     List<String> listModels(AiEndpoint endpoint);
 }

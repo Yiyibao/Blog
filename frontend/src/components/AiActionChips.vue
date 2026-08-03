@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { streamAiChat, type AiChatMessage } from '../api/admin'
+import { AI_ACTION_CONTEXT_CHARS } from '../config/aiLimits'
 
 /**
  * 4A-5：编辑场景化 AI 动作 chips——总结/标题/标签/润色/续写。
- * 自动附当前编辑内容为上下文（客户端截断适配服务端单条 8000 字限额），
+ * 自动附当前编辑内容为上下文（客户端截断适配服务端单条 AI_CHAT_MAX_INPUT_CHARS 字限额），
  * 结果面板一键回填宿主表单：**只填入不保存**，保存永远是作者的显式动作。
  */
 export type AiActionKind = 'summary' | 'title' | 'tags' | 'polish' | 'continue'
@@ -18,8 +19,8 @@ const emit = defineEmits<{
   apply: [action: AiActionKind, text: string]
 }>()
 
-/** 单条消息服务端限 8000 字——指令预留后按 7000 字截断上下文 */
-const MAX_CONTEXT_CHARS = 7000
+/** 单条消息服务端限额减去指令预留后的上下文上限。 */
+const MAX_CONTEXT_CHARS = AI_ACTION_CONTEXT_CHARS
 
 const ACTIONS: ReadonlyArray<{ id: AiActionKind; label: string; prompt: string }> = [
   { id: 'summary', label: '✦ 总结', prompt: '用不超过 120 字为以下内容写一段中文摘要，直接输出摘要文本，不要任何前后缀说明：' },

@@ -204,6 +204,35 @@ class AiProviderServiceTest {
     }
 
     @Test
+    void seedFromResponsesEnvEncryptsKeyAndPreservesOpenCodeDefault() {
+        build(MASTER_KEY, false, false, null);
+        properties.setResponsesEnabled(true);
+        properties.setResponsesBaseUrl("https://xinyue.mom");
+        properties.setResponsesApiKey("test-responses-key");
+        properties.setResponsesModel("gpt-5.5");
+        properties.setResponsesModels("gpt-5.5,gpt-5.4");
+        var opencode = AiProviderEntity.create("OpenCode", "http://127.0.0.1:4096", null,
+            "gpt-5.6-luna", "gpt-5.6-luna", true, 200, 200_000, AiProviderType.OPENCODE_SERVER);
+        opencode.markDefault(true);
+        when(repository.findFirstByIsDefaultTrueAndEnabledTrue()).thenReturn(Optional.of(opencode));
+        when(repository.findByNameIgnoreCase("GPT (Responses)")).thenReturn(Optional.empty());
+
+        service.seedFromResponsesEnv();
+
+        var captor = ArgumentCaptor.forClass(AiProviderEntity.class);
+        verify(repository, atLeastOnce()).save(captor.capture());
+        var saved = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        assertEquals(AiProviderType.OPENAI_RESPONSES, saved.getProviderType());
+        assertEquals("https://xinyue.mom", saved.getBaseUrl());
+        assertEquals("gpt-5.5", saved.getDefaultModel());
+        assertFalse(saved.isDefault());
+        assertTrue(opencode.isDefault());
+        assertTrue(saved.getApiKeyEncrypted().startsWith("v1:"));
+        assertFalse(saved.getApiKeyEncrypted().contains("test-responses-key"));
+        verify(repository, never()).findAll();
+    }
+
+    @Test
     void testConnectionReturnsFailureAsResultInsteadOfThrowing() {
         build(MASTER_KEY, false, false, null);
         var entity = AiProviderEntity.create("p", "https://93.184.216.34", null, "", "m", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);

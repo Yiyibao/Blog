@@ -12,7 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.ai.image")
 public class AiImageProperties {
     private boolean enabled;
-    private int maxPromptChars = 4000;
+    private int maxPromptChars = 32_000;
     private int maxImages = 1;
     private long maxImageBytes = 15_000_000L;
     private int requestTimeout = 120;

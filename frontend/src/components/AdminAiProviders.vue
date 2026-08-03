@@ -47,18 +47,21 @@ function isOpenCodeType(providerType: AiProviderType) {
 function providerProtocolLabel(providerType: AiProviderType) {
   if (providerType === 'OPENCODE_SERVER') return 'OpenCode'
   if (providerType === 'ANTHROPIC') return 'Anthropic'
+  if (providerType === 'OPENAI_RESPONSES') return 'Responses'
   return 'OpenAI'
 }
 
 function providerProtocolTitle(providerType: AiProviderType) {
   if (providerType === 'OPENCODE_SERVER') return 'OpenCode Server 协议'
   if (providerType === 'ANTHROPIC') return 'Anthropic Messages API'
+  if (providerType === 'OPENAI_RESPONSES') return 'OpenAI Responses API'
   return 'OpenAI 兼容协议'
 }
 
 function baseUrlPlaceholder(providerType: AiProviderType) {
   if (providerType === 'OPENCODE_SERVER') return 'http://127.0.0.1:4096'
   if (providerType === 'ANTHROPIC') return 'https://api.anthropic.com'
+  if (providerType === 'OPENAI_RESPONSES') return 'https://xinyue.mom'
   return 'https://api.deepseek.com'
 }
 
@@ -420,6 +423,10 @@ onBeforeUnmount(() => {
             <span>OpenAI 兼容</span>
           </label>
           <label class="admin-type-radio">
+            <input type="radio" v-model="form.providerType" value="OPENAI_RESPONSES">
+            <span>OpenAI Responses</span>
+          </label>
+          <label class="admin-type-radio">
             <input type="radio" v-model="form.providerType" value="ANTHROPIC">
             <span>Anthropic Claude</span>
           </label>
@@ -440,7 +447,11 @@ onBeforeUnmount(() => {
               : '本地无鉴权端点可留空'"
           >
         </label>
-        <div v-if="form.providerType === 'ANTHROPIC'" class="provider-guidance">
+        <div v-if="form.providerType === 'OPENAI_RESPONSES'" class="provider-guidance">
+          <p>使用 OpenAI Responses API，后端请求 <code>/responses</code>，Base URL 可填 <code>https://xinyue.mom</code>。</p>
+          <p>服务器环境会附加配置的自定义请求头；密钥只在服务端加密保存，不会返回浏览器。</p>
+        </div>
+        <div v-else-if="form.providerType === 'ANTHROPIC'" class="provider-guidance">
           <p>Base URL 填写 <code>https://api.anthropic.com</code>（也支持填写带 <code>/v1</code> 的网关地址）。</p>
           <p>服务端会使用 Anthropic Messages API，并通过 <code>x-api-key</code> 和 <code>anthropic-version: 2023-06-01</code> 发送密钥。</p>
           <p>模型 ID 示例：<code>claude-sonnet-4-20250514</code>；密钥会加密保存，编辑时留空可保留原密钥。</p>

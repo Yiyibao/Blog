@@ -54,12 +54,18 @@ public class OpenAiCompatibleClient implements AiClient {
         this.restClientFactory = restClientFactory;
     }
 
+    @Override
     public ChatResponse chat(AiEndpoint endpoint, List<ChatMessage> messages) {
+        return chat(endpoint, messages, null);
+    }
+
+    @Override
+    public ChatResponse chat(AiEndpoint endpoint, List<ChatMessage> messages, String reasoningEffort) {
         try {
             var body = restClientFactory.apply(endpoint)
                 .post()
                 .uri("/chat/completions")
-                .body(buildChatBody(endpoint, messages, false))
+                .body(buildChatBody(endpoint, messages, false, reasoningEffort))
                 .retrieve()
                 .toEntity(JsonNode.class)
                 .getBody();
@@ -85,12 +91,19 @@ public class OpenAiCompatibleClient implements AiClient {
      * 4A-2：流式对话。SSE 帧逐段回调 listener.onDelta，流结束回调 onComplete 并返回完整响应。
      * 上游状态码与网络异常的映射与非流式保持一致。
      */
+    @Override
     public ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages, AiStreamListener listener) {
+        return stream(endpoint, messages, listener, null);
+    }
+
+    @Override
+    public ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages,
+                               AiStreamListener listener, String reasoningEffort) {
         try {
             return restClientFactory.apply(endpoint)
                 .post()
                 .uri("/chat/completions")
-                .body(buildChatBody(endpoint, messages, true))
+                .body(buildChatBody(endpoint, messages, true, reasoningEffort))
                 .exchange((request, response) -> {
                     var status = response.getStatusCode();
                     if (status.value() == HttpStatus.TOO_MANY_REQUESTS.value()) {
@@ -259,7 +272,8 @@ public class OpenAiCompatibleClient implements AiClient {
         }
     }
 
-    private static Map<String, Object> buildChatBody(AiEndpoint endpoint, List<ChatMessage> messages, boolean stream) {
+    private static Map<String, Object> buildChatBody(AiEndpoint endpoint, List<ChatMessage> messages,
+                                                      boolean stream, String reasoningEffort) {
         var payload = new ArrayList<Map<String, String>>();
         payload.add(Map.of("role", "system", "content", SYSTEM_PROMPT));
         for (var message : messages) {
@@ -272,6 +286,10 @@ public class OpenAiCompatibleClient implements AiClient {
         // tool_choice 未附带 tools 时 OpenAI 同样报错——均不能无条件下发。
         if (isDeepSeekEndpoint(endpoint.baseUrl())) {
             body.put("thinking", Map.of("type", "disabled"));
+        } else if (reasoningEffort != null && !reasoningEffort.isBlank()) {
+            // OpenAI-compatible reasoning models use the standard
+            // Chat Completions reasoning_effort field.
+            body.put("reasoning_effort", reasoningEffort.trim());
         }
         body.put("stream", stream);
         body.put("max_tokens", endpoint.maxOutputTokens());

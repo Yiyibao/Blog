@@ -32,6 +32,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * OpenAI-compatible image client used by both the Grok and GPT relay profiles.
@@ -45,7 +46,12 @@ public class OpenAiImageClient {
     private static final int MAX_DIMENSION = 16_384;
     private static final long MAX_PIXELS = 80_000_000L;
     private static final int MAX_DOWNLOAD_REDIRECTS = 3;
-    private static final int TRANSIENT_RETRY_COUNT = 1;
+    /**
+     * Image relays can briefly return 502/503/504 while the provider is warming
+     * up a generation worker.  A few bounded retries make that transient state
+     * invisible to the admin UI without retrying client errors.
+     */
+    private static final int TRANSIENT_RETRY_COUNT = 3;
     private static final long TRANSIENT_RETRY_DELAY_MILLIS = 750L;
 
     private final Function<AiImageEndpoint, RestClient> apiClientFactory;
@@ -75,7 +81,7 @@ public class OpenAiImageClient {
                     return parseResponse(endpoint.model(), response, maxImageBytes);
                 } catch (HttpServerErrorException exception) {
                     if (!isTransient(exception) || attempt == TRANSIENT_RETRY_COUNT) throw exception;
-                    pauseBeforeRetry();
+                    pauseBeforeRetry(attempt);
                 }
             }
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service returned an error");
@@ -83,11 +89,14 @@ public class OpenAiImageClient {
             throw exception;
         } catch (HttpClientErrorException exception) {
             if (exception.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
-                throw new AiServiceException(HttpStatus.TOO_MANY_REQUESTS, "AI image service rate limit exceeded");
+                throw new AiServiceException(HttpStatus.TOO_MANY_REQUESTS,
+                    upstreamFailureMessage("AI image service rate limit exceeded", exception));
             }
-            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service request failed");
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY,
+                upstreamFailureMessage("AI image service request failed", exception));
         } catch (HttpServerErrorException exception) {
-            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service returned an error");
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY,
+                upstreamFailureMessage("AI image service returned an error", exception));
         } catch (ResourceAccessException exception) {
             if (exception.getCause() instanceof java.net.SocketTimeoutException) {
                 throw new AiServiceException(HttpStatus.GATEWAY_TIMEOUT, "AI image service request timed out");
@@ -105,13 +114,45 @@ public class OpenAiImageClient {
             || status == HttpStatus.GATEWAY_TIMEOUT.value();
     }
 
-    private static void pauseBeforeRetry() {
+    private static void pauseBeforeRetry(int attempt) {
         try {
-            Thread.sleep(TRANSIENT_RETRY_DELAY_MILLIS);
+            var multiplier = 1L << Math.min(attempt, 3);
+            Thread.sleep(TRANSIENT_RETRY_DELAY_MILLIS * multiplier);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service request interrupted");
         }
+    }
+
+    private static String upstreamFailureMessage(String fallback, RestClientResponseException exception) {
+        var body = exception.getResponseBodyAsString();
+        if (!notBlank(body)) return fallback;
+        try {
+            var message = findErrorMessage(MAPPER.readTree(body));
+            if (notBlank(message)) return fallback + ": " + compactSafeMessage(message);
+        } catch (IOException ignored) {
+            // Keep the stable fallback when a relay returns non-JSON text.
+        }
+        return fallback;
+    }
+
+    private static String findErrorMessage(JsonNode node) {
+        if (node == null || node.isNull()) return null;
+        if (node.isTextual()) return node.asText();
+        if (!node.isObject()) return null;
+        for (var field : List.of("message", "detail", "error")) {
+            var message = findErrorMessage(node.get(field));
+            if (notBlank(message)) return message;
+        }
+        return null;
+    }
+
+    private static String compactSafeMessage(String raw) {
+        var message = raw.replaceAll("\\s+", " ").trim();
+        message = message.replaceAll(
+            "(?i)(api[_-]?key|authorization|token)\\s*[:=]\\s*[^\\s,;}]+",
+            "$1=[redacted]");
+        return message.length() <= 240 ? message : message.substring(0, 240) + "…";
     }
 
     static Map<String, Object> buildBody(AiImageEndpoint endpoint, AiImageGenerationRequest request, String wireApi) {
@@ -130,10 +171,12 @@ public class OpenAiImageClient {
         }
         body.put("prompt", request.prompt());
         body.put("n", request.count());
-        if (notBlank(request.size())) body.put("size", request.size());
-        if (notBlank(request.quality())) body.put("quality", request.quality());
-        // Grok relays use these optional fields; GPT relays safely ignore them
-        // only when the model accepts the OpenAI-compatible image request.
+        // Grok Imagine uses aspect_ratio/resolution and selects the quality tier
+        // through the model name.  size/quality are GPT-image fields and some
+        // Grok-compatible relays reject them as unknown request properties.
+        if (isGrok(endpoint)) body.put("response_format", "b64_json");
+        if (!isGrok(endpoint) && notBlank(request.size())) body.put("size", request.size());
+        if (!isGrok(endpoint) && notBlank(request.quality())) body.put("quality", request.quality());
         if (notBlank(request.aspectRatio())) body.put("aspect_ratio", request.aspectRatio());
         if (notBlank(request.resolution())) body.put("resolution", request.resolution());
         return body;
@@ -358,6 +401,10 @@ public class OpenAiImageClient {
     }
 
     private static boolean notBlank(String value) { return value != null && !value.isBlank(); }
+
+    private static boolean isGrok(AiImageEndpoint endpoint) {
+        return "grok".equalsIgnoreCase(endpoint.provider());
+    }
 
     private static boolean isUniqueLocalIpv6(InetAddress address) {
         var bytes = address.getAddress();

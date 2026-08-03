@@ -5,6 +5,7 @@ import { useAuthStore } from '../../stores/auth'
 import { useUiStore } from '../../stores/uiStore'
 import { useAiStore } from '../../stores/aiStore'
 import { usePrefersReducedMotion } from '../../composables/usePrefersReducedMotion'
+import type { AiReasoningSelection } from '../../api/admin'
 import AdminAiChat from '../AdminAiChat.vue'
 import PetSprite from './PetSprite.vue'
 import { ATLAS, HD_SOURCE } from './petAnimations'
@@ -72,6 +73,16 @@ let lastGazeEvent = 0
 
 const isLoginRoute = computed(() => route.name === 'login' || route.name === 'admin-login')
 const isAdminAiRoute = computed(() => route.name === 'admin-ai')
+
+const reasoningOptions: Array<{ value: AiReasoningSelection; label: string }> = [
+  { value: 'auto', label: '自动' },
+  { value: 'none', label: '关闭' },
+  { value: 'minimal', label: '极低' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '极高' },
+]
 
 const petVisible = computed(() => auth.isStaff && !petHidden.value && !isLoginRoute.value)
 
@@ -524,7 +535,7 @@ onBeforeUnmount(() => {
     >
       <header class="pet-chat-header">
         <strong>✦ Xinn 宠物助手</strong>
-        <div v-if="ai.providers.length > 1 || ai.modelOptions.length > 1" class="pet-chat-switchers">
+        <div v-if="ai.providers.length > 1 || ai.modelOptions.length > 1 || (ai.providers.length && ai.reasoningSupported)" class="pet-chat-switchers">
           <select
             v-if="ai.providers.length > 1"
             class="pet-chat-select"
@@ -544,6 +555,18 @@ onBeforeUnmount(() => {
             @change="ai.selectModel(($event.target as HTMLSelectElement).value)"
           >
             <option v-for="m in ai.modelOptions" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <select
+            v-if="ai.reasoningSupported"
+            class="pet-chat-select"
+            :value="ai.selectedReasoningEffort"
+            aria-label="选择推理强度"
+            data-testid="pet-reasoning-select"
+            @change="ai.selectReasoningEffort(($event.target as HTMLSelectElement).value as AiReasoningSelection)"
+          >
+            <option v-for="option in reasoningOptions" :key="option.value" :value="option.value">
+              推理：{{ option.label }}
+            </option>
           </select>
         </div>
         <button type="button" class="pet-chat-close" aria-label="收起聊天面板" @click="closePanel">×</button>

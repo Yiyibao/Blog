@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record AiGeneratedImageResponse(
     UUID publicId,
+    UUID generationId,
     String provider,
     String model,
     String prompt,
@@ -17,8 +18,9 @@ public record AiGeneratedImageResponse(
 ) {
     static AiGeneratedImageResponse from(AiGeneratedImageEntity entity) {
         return new AiGeneratedImageResponse(
-            entity.getPublicId(), entity.getProvider(), entity.getModel(), entity.getPrompt(),
-            entity.getMediaType(), entity.getByteSize(), entity.getWidth(), entity.getHeight(),
-            "/api/v1/admin/ai/images/" + entity.getPublicId() + "/content", entity.getCreatedAt());
+            entity.getPublicId(), entity.getGenerationId(), entity.getProvider(), entity.getModel(),
+            entity.getPrompt(), entity.getMediaType(), entity.getByteSize(), entity.getWidth(),
+            entity.getHeight(), "/api/v1/admin/ai/images/" + entity.getPublicId() + "/content",
+            entity.getCreatedAt());
     }
 }

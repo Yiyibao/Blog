@@ -1,15 +1,31 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import AiImageThumb from '../components/AiImageThumb.vue'
+import { AI_IMAGE_MAX_PROMPT_CHARS } from '../config/aiLimits'
 import {
   deleteAiGeneratedImage,
-  fetchAiImageContent,
+  deleteAiImageSession,
   fetchAiImageModels,
+  fetchAiImageSessions,
+  fetchAiImageSessionImages,
   generateAiImages,
   type AiGeneratedImage,
   type AiImageModel,
+  type AiImageSession,
 } from '../api/admin'
 
-type DisplayImage = AiGeneratedImage & { objectUrl: string }
+interface Turn {
+  prompt: string
+  provider: string
+  model: string
+  images: AiGeneratedImage[]
+}
+
+interface PreviewState {
+  publicId: string
+  objectUrl: string
+  prompt: string
+}
 
 const models = ref<AiImageModel[]>([])
 const selectedKey = ref('')
@@ -21,13 +37,45 @@ const resolution = ref('auto')
 const loading = ref(false)
 const loadingModels = ref(true)
 const error = ref('')
-const images = ref<DisplayImage[]>([])
+const turns = ref<Turn[]>([])
+const preview = ref<PreviewState | null>(null)
+const sessions = ref<AiImageSession[]>([])
+const sessionsLoading = ref(false)
+const sessionsError = ref('')
+const currentSessionId = ref<number | null>(null)
+const sidebarOpen = ref(true)
+const chatBoxRef = ref<HTMLElement | null>(null)
+const thumbRegistry = new Map<string, { url: string }>()
 
 const selected = computed(() => models.value.find(item => `${item.provider}:${item.model}` === selectedKey.value))
 
-function revokeImages() {
-  for (const image of images.value) URL.revokeObjectURL(image.objectUrl)
-  images.value = []
+function apiErrorMessage(cause: unknown, fallback: string) {
+  const responseData = (cause as { response?: { data?: unknown } } | null)?.response?.data
+  if (responseData && typeof responseData === 'object' && 'message' in responseData) {
+    const message = (responseData as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return cause instanceof Error ? cause.message : fallback
+}
+
+function revokeTurns() {
+  turns.value = []
+}
+
+async function scrollToBottom() {
+  await nextTick()
+  if (chatBoxRef.value) {
+    chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
+  }
+}
+
+function openPreview(state: PreviewState) {
+  preview.value = state
+}
+
+function registerThumb(publicId: string, instance: unknown) {
+  if (instance) thumbRegistry.set(publicId, instance as { url: string })
+  else thumbRegistry.delete(publicId)
 }
 
 async function loadModels() {
@@ -38,10 +86,73 @@ async function loadModels() {
     const defaultModel = models.value.find(item => item.isDefault) ?? models.value[0]
     selectedKey.value = defaultModel ? `${defaultModel.provider}:${defaultModel.model}` : ''
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '图片模型加载失败'
+    error.value = apiErrorMessage(cause, '图片模型加载失败')
   } finally {
     loadingModels.value = false
   }
+}
+
+async function loadSessions() {
+  sessionsLoading.value = true
+  sessionsError.value = ''
+  try {
+    sessions.value = await fetchAiImageSessions()
+  } catch (cause) {
+    sessionsError.value = apiErrorMessage(cause, '聊天记录加载失败')
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+function newChat() {
+  currentSessionId.value = null
+  error.value = ''
+  revokeTurns()
+  void scrollToBottom()
+}
+
+async function openSession(session: AiImageSession) {
+  if (currentSessionId.value === session.id) return
+  currentSessionId.value = session.id
+  error.value = ''
+  revokeTurns()
+  try {
+    const images = await fetchAiImageSessionImages(session.id)
+    const turnsOf: Turn[] = []
+    const grouped = new Map<string, AiGeneratedImage[]>()
+    for (const image of images) {
+      const bucket = grouped.get(image.generationId) ?? []
+      bucket.push(image)
+      grouped.set(image.generationId, bucket)
+    }
+    for (const bucket of grouped.values()) {
+      const first = bucket[0]!
+      turnsOf.push({ prompt: first.prompt, provider: first.provider, model: first.model, images: bucket })
+    }
+    turns.value = turnsOf
+  } catch (cause) {
+    currentSessionId.value = null
+    revokeTurns()
+    error.value = apiErrorMessage(cause, '聊天记录加载失败')
+  }
+  await scrollToBottom()
+}
+
+async function deleteSession(session: AiImageSession) {
+  if (!window.confirm('确认删除这条图片会话及其所有图片？')) return
+  try {
+    await deleteAiImageSession(session.id)
+    if (currentSessionId.value === session.id) newChat()
+    await loadSessions()
+  } catch (cause) {
+    sessionsError.value = apiErrorMessage(cause, '删除会话失败')
+  }
+}
+
+function formatSessionTime(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(value))
 }
 
 async function generate() {
@@ -49,10 +160,15 @@ async function generate() {
   if (!text || !selected.value || loading.value) return
   loading.value = true
   error.value = ''
-  revokeImages()
+  const userMsg: Turn = { prompt: text, provider: selected.value.provider, model: selected.value.model, images: [] }
+  turns.value = [...turns.value, userMsg]
+  const liveTurn = turns.value[turns.value.length - 1]!
+  prompt.value = ''
+  await scrollToBottom()
   try {
-    const generated = await generateAiImages({
+    const result = await generateAiImages({
       prompt: text,
+      sessionId: currentSessionId.value,
       provider: selected.value.provider,
       model: selected.value.model,
       n: 1,
@@ -61,38 +177,74 @@ async function generate() {
       aspectRatio: aspectRatio.value,
       resolution: resolution.value,
     })
-    const displayed: DisplayImage[] = []
-    for (const image of generated) {
-      const blob = await fetchAiImageContent(image.publicId)
-      displayed.push({ ...image, objectUrl: URL.createObjectURL(blob) })
+    currentSessionId.value = result.sessionId
+    liveTurn.provider = result.images[0]?.provider ?? liveTurn.provider
+    liveTurn.model = result.images[0]?.model ?? liveTurn.model
+    liveTurn.images = result.images
+    if (!liveTurn.images.length) {
+      turns.value = turns.value.filter(turn => turn !== liveTurn)
+      throw new Error('图片生成结果为空')
     }
-    images.value = displayed
+    await loadSessions()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '图片生成失败'
+    error.value = apiErrorMessage(cause, '图片生成失败')
+    if (!liveTurn.images.length) {
+      turns.value = turns.value.filter(turn => turn !== liveTurn)
+    }
   } finally {
     loading.value = false
+    await scrollToBottom()
   }
 }
 
-async function remove(image: DisplayImage) {
+async function removeImage(turn: Turn, image: AiGeneratedImage) {
   try {
     await deleteAiGeneratedImage(image.publicId)
-    URL.revokeObjectURL(image.objectUrl)
-    images.value = images.value.filter(item => item.publicId !== image.publicId)
+    turn.images = turn.images.filter(item => item.publicId !== image.publicId)
+    await loadSessions()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '删除图片失败'
+    error.value = apiErrorMessage(cause, '删除图片失败')
   }
 }
 
-function download(image: DisplayImage) {
+function downloadImage(turn: Turn, image: AiGeneratedImage) {
+  const thumb = thumbRegistry.get(image.publicId)
+  if (!thumb?.url) return
   const anchor = document.createElement('a')
-  anchor.href = image.objectUrl
-  anchor.download = `${image.provider}-${image.model}-${image.publicId}.${image.mediaType.split('/')[1] || 'png'}`
+  anchor.href = thumb.url
+  anchor.download = `${turn.provider}-${turn.model}-${image.publicId}.${image.mediaType.split('/')[1] || 'png'}`
   anchor.click()
 }
 
-onMounted(() => { void loadModels() })
-onBeforeUnmount(revokeImages)
+function previewHistory(turn: Turn, image: AiGeneratedImage) {
+  const thumb = thumbRegistry.get(image.publicId)
+  if (thumb?.url) {
+    openPreview({ publicId: image.publicId, objectUrl: thumb.url, prompt: turn.prompt })
+  }
+}
+
+function closePreview() {
+  preview.value = null
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && preview.value) closePreview()
+}
+
+watch(preview, open => {
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  void loadModels()
+  void loadSessions()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = ''
+  revokeTurns()
+})
 </script>
 
 <template>
@@ -101,105 +253,380 @@ onBeforeUnmount(revokeImages)
       <div>
         <p class="eyebrow">AI CREATIVE STUDIO</p>
         <h1>AI 生图</h1>
-        <p class="subtitle">通过服务器端中转安全调用 Grok 或 GPT 图片模型，生成结果只对当前管理账号可见。</p>
+        <p class="subtitle">通过服务器端中转安全调用 Grok 或 GPT 图片模型，生成结果只对当前管理账号可见，可基于上一张图继续描述生成。</p>
       </div>
       <RouterLink class="back-link" to="/admin/ai">返回 AI 助手</RouterLink>
     </header>
 
-    <section class="generator-card">
-      <label class="prompt-label" for="image-prompt">描述你想生成的图片</label>
-      <textarea id="image-prompt" v-model="prompt" maxlength="4000"
-        placeholder="例如：雨后清晨的杭州西湖，国风插画，柔和的薄雾与金色光线" />
-      <div class="form-grid">
-        <label>模型
-          <select v-model="selectedKey" :disabled="loadingModels || loading">
-            <option v-if="!models.length" value="">暂无可用模型</option>
-            <option v-for="model in models" :key="`${model.provider}:${model.model}`" :value="`${model.provider}:${model.model}`">
-              {{ model.provider.toUpperCase() }} · {{ model.model }}
-            </option>
-          </select>
-        </label>
-        <label>尺寸
-          <select v-model="size" :disabled="loading">
-            <option value="1024x1024">1024 × 1024</option>
-            <option value="1024x1536">1024 × 1536</option>
-            <option value="1536x1024">1536 × 1024</option>
-          </select>
-        </label>
-        <label>质量
-          <select v-model="quality" :disabled="loading">
-            <option value="auto">自动</option>
-            <option value="low">低（测试）</option>
-            <option value="medium">中</option>
-            <option value="high">高</option>
-          </select>
-        </label>
-        <label>比例
-          <select v-model="aspectRatio" :disabled="loading">
-            <option value="1:1">1:1</option>
-            <option value="16:9">16:9</option>
-            <option value="9:16">9:16</option>
-            <option value="4:3">4:3</option>
-            <option value="3:4">3:4</option>
-          </select>
-        </label>
+    <section class="image-chat-card">
+      <aside class="image-chat-panel" :class="{ hidden: !sidebarOpen }">
+        <div class="image-chat-inner">
+          <button class="new-chat-btn" type="button" @click="newChat">＋ 新建图片</button>
+          <p v-if="sessionsError" class="sessions-error" role="alert">{{ sessionsError }}</p>
+          <ul v-if="sessions.length" class="session-list">
+            <li
+              v-for="session in sessions"
+              :key="session.id"
+              class="session-item"
+              :class="{ active: session.id === currentSessionId }"
+            >
+              <button type="button" class="session-entry" @click="openSession(session)">
+                <span class="session-title">{{ session.title || '新对话' }}</span>
+                <span class="session-time">{{ formatSessionTime(session.updatedAt) }}</span>
+              </button>
+              <button
+                type="button"
+                class="session-delete"
+                title="删除这条图片会话"
+                aria-label="删除图片会话"
+                @click="deleteSession(session)"
+              >×</button>
+            </li>
+          </ul>
+          <p v-else-if="!sessionsLoading" class="sessions-empty">暂无图片会话</p>
+        </div>
+      </aside>
+      <button
+        type="button"
+        class="sidebar-toggle"
+        :aria-label="sidebarOpen ? '隐藏图片会话' : '展开图片会话'"
+        @click="sidebarOpen = !sidebarOpen"
+      >{{ sidebarOpen ? '◀' : '▶' }}</button>
+
+      <div class="image-chat-main">
+        <div ref="chatBoxRef" class="chat-messages" role="log" aria-live="polite">
+          <div v-if="!turns.length && !loading" class="chat-welcome">
+            <div class="welcome-icon">🖼️</div>
+            <h2>AI 生图工作台</h2>
+            <p>输入提示词生成图片；每一轮生成会保存为一条会话，点击左侧记录即可回到当时的对话继续创作。</p>
+          </div>
+
+          <div v-for="(turn, index) in turns" :key="index" class="turn">
+            <div class="chat-bubble-wrap user">
+              <div class="bubble-avatar">{{ '你'.slice(0, 1) }}</div>
+              <div class="bubble-body">
+                <header class="bubble-header"><span class="sender-name">我</span></header>
+                <div class="bubble-content user-content">{{ turn.prompt }}</div>
+              </div>
+            </div>
+            <div class="chat-bubble-wrap assistant">
+              <div class="bubble-avatar">🖼️</div>
+              <div class="bubble-body">
+                <header class="bubble-header">
+                  <span class="sender-name">{{ turn.provider.toUpperCase() }} · {{ turn.model }}</span>
+                </header>
+                <div class="image-grid">
+                  <div
+                    v-for="image in turn.images"
+                    :key="image.publicId"
+                    class="image-item"
+                  >
+                    <AiImageThumb
+                      :ref="(el: unknown) => registerThumb(image.publicId, el)"
+                      :public-id="image.publicId"
+                      :alt="turn.prompt"
+                      @click="previewHistory(turn, image)"
+                    />
+                    <div class="image-actions">
+                      <button type="button" title="下载图片" @click="downloadImage(turn, image)">下载</button>
+                      <button type="button" class="danger" title="删除这张图片" @click="removeImage(turn, image)">删除</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="loading" class="chat-bubble-wrap assistant loading-bubble">
+            <div class="bubble-avatar">🖼️</div>
+            <div class="bubble-body">
+              <header class="bubble-header"><span class="sender-name">AI 生图</span></header>
+              <div class="bubble-content loading-indicator">
+                <span class="dot" /><span class="dot" /><span class="dot" />
+                <span class="loading-text">生成中…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="error" class="chat-error-bar" role="alert"><span>{{ error }}</span></div>
+
+        <div class="chat-input-area">
+          <textarea
+            v-model="prompt"
+            class="chat-textarea"
+            placeholder="描述你想生成的图片，可参考上方已有图片继续创作…"
+            :maxlength="AI_IMAGE_MAX_PROMPT_CHARS"
+            rows="3"
+            :disabled="loading"
+            @keydown="(event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); void generate() } }"
+          />
+          <div class="chat-model-picker">
+            <label>模型
+              <select v-model="selectedKey" :disabled="loadingModels || loading">
+                <option v-if="!models.length" value="">暂无可用模型</option>
+                <option v-for="model in models" :key="`${model.provider}:${model.model}`" :value="`${model.provider}:${model.model}`">
+                  {{ model.provider.toUpperCase() }} · {{ model.model }}
+                </option>
+              </select>
+            </label>
+            <label>尺寸
+              <select v-model="size" :disabled="loading">
+                <option value="1024x1024">1024 × 1024</option>
+                <option value="1024x1536">1024 × 1536</option>
+                <option value="1536x1024">1536 × 1024</option>
+              </select>
+            </label>
+            <label>质量
+              <select v-model="quality" :disabled="loading">
+                <option value="auto">自动</option>
+                <option value="low">低（测试）</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </label>
+            <label>比例
+              <select v-model="aspectRatio" :disabled="loading">
+                <option value="1:1">1:1</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="4:3">4:3</option>
+                <option value="3:4">3:4</option>
+              </select>
+            </label>
+          </div>
+          <div class="input-footer">
+            <span class="char-count" :class="{ 'near-limit': prompt.length > AI_IMAGE_MAX_PROMPT_CHARS - 1_000 }">{{ prompt.length.toLocaleString() }} / {{ AI_IMAGE_MAX_PROMPT_CHARS.toLocaleString() }} 字</span>
+            <button
+              class="send-btn"
+              type="button"
+              :disabled="loading || loadingModels || !prompt.trim() || !selected"
+              @click="generate"
+            >{{ loading ? '生成中…' : '生成图片 ↗' }}</button>
+          </div>
+        </div>
       </div>
-      <div class="actions">
-        <span v-if="selected" class="selected-hint">当前：{{ selected.provider.toUpperCase() }} / {{ selected.model }}</span>
-        <button type="button" class="generate-button" :disabled="loading || loadingModels || !prompt.trim() || !selected" @click="generate">
-          {{ loading ? '生成中…' : '生成图片' }}
-        </button>
-      </div>
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
     </section>
 
-    <section v-if="images.length" class="results-card">
-      <div class="results-heading"><h2>生成结果</h2><span>{{ images.length }} 张</span></div>
-      <div class="image-grid">
-        <article v-for="image in images" :key="image.publicId" class="image-item">
-          <img :src="image.objectUrl" :alt="image.prompt" />
-          <div class="image-meta">
-            <span>{{ image.provider.toUpperCase() }} · {{ image.model }}</span>
-            <span>{{ image.width }} × {{ image.height }}</span>
-          </div>
-          <div class="image-actions">
-            <button type="button" @click="download(image)">下载</button>
-            <button type="button" class="danger" @click="remove(image)">删除</button>
-          </div>
-        </article>
-      </div>
-    </section>
+    <div v-if="preview" class="lightbox" role="dialog" aria-modal="true" aria-label="图片预览" @click.self="closePreview">
+      <img :src="preview.objectUrl" :alt="preview.prompt" />
+      <button type="button" class="lightbox-close" aria-label="关闭预览" @click="closePreview">×</button>
+    </div>
   </main>
 </template>
 
 <style scoped>
-.ai-images-page { max-width: 1120px; margin: 0 auto; padding: 42px 32px 72px; color: var(--text-primary, #20252d); }
+.ai-images-page { width: min(80vw, 1600px); max-width: none; box-sizing: border-box; margin: 0 auto; padding: 42px 32px 72px; color: var(--text-primary, #20252d); }
 .page-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 28px; }
 .eyebrow { margin: 0 0 8px; color: #8b6b43; font-size: 11px; letter-spacing: .16em; font-weight: 700; }
 h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); letter-spacing: -.03em; }
 .subtitle { margin: 10px 0 0; max-width: 660px; color: #69717c; line-height: 1.6; }
 .back-link { color: #7a5a35; text-decoration: none; white-space: nowrap; padding-top: 8px; }
-.generator-card, .results-card { background: rgba(255,255,255,.82); border: 1px solid rgba(125,100,70,.16); border-radius: 20px; padding: 24px; box-shadow: 0 16px 40px rgba(65,48,30,.06); }
-.prompt-label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 10px; }
-textarea { width: 100%; min-height: 150px; resize: vertical; box-sizing: border-box; border: 1px solid #d8d0c6; border-radius: 12px; padding: 14px; font: inherit; line-height: 1.6; color: inherit; background: #fffdf9; }
-.form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
-label { display: grid; gap: 7px; font-size: 12px; color: #6e655d; font-weight: 700; }
-select { border: 1px solid #d8d0c6; border-radius: 10px; padding: 10px; background: #fffdf9; color: #29251f; font: inherit; }
-.actions { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-top: 22px; }
-.selected-hint { color: #7c7268; font-size: 13px; }
-.generate-button { border: 0; border-radius: 999px; padding: 11px 22px; background: #34291f; color: #fff; font-weight: 700; cursor: pointer; }
-.generate-button:disabled { opacity: .45; cursor: not-allowed; }
-.error { color: #b44332; margin: 16px 0 0; }
-.results-card { margin-top: 24px; }
-.results-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-h2 { margin: 0; font-size: 20px; }
-.results-heading span { color: #8a8179; font-size: 13px; }
-.image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
-.image-item { overflow: hidden; border: 1px solid #e6ded4; border-radius: 14px; background: #fffdf9; }
-.image-item img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: #f1ece6; }
-.image-meta { display: flex; justify-content: space-between; gap: 8px; padding: 11px 12px 0; color: #81766d; font-size: 11px; }
-.image-actions { display: flex; gap: 8px; padding: 10px 12px 12px; }
-.image-actions button { border: 1px solid #d8d0c6; border-radius: 8px; padding: 7px 12px; background: #fff; cursor: pointer; }
+
+.image-chat-card {
+  display: flex;
+  position: relative;
+  height: calc(100vh - 210px);
+  min-height: 520px;
+  background: rgba(255,255,255,.82);
+  border: 1px solid rgba(125,100,70,.16);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(65,48,30,.06);
+  overflow: hidden;
+}
+.image-chat-panel {
+  flex-shrink: 0;
+  width: 250px;
+  overflow: hidden;
+  border-right: 1px solid rgba(125,100,70,.16);
+  background: #faf8f5;
+  transition: width .25s ease, border-right-width .25s ease;
+}
+.image-chat-panel.hidden { width: 0; border-right-width: 0; }
+.image-chat-inner {
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  height: 100%;
+  padding: 14px 12px;
+  box-sizing: border-box;
+}
+.new-chat-btn {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid #d8d0c6;
+  border-radius: 10px;
+  background: #fff;
+  color: #29251f;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .2s, transform .2s;
+}
+.new-chat-btn:hover { border-color: #8b6b43; transform: translateY(-1px); }
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+.session-item:hover { background: rgba(32,37,45,.04); }
+.session-item.active {
+  background: rgba(139,107,67,.12);
+  border-color: rgba(139,107,67,.35);
+}
+.session-entry { flex: 1; min-width: 0; padding: 9px 10px; border: 0; background: none; text-align: left; cursor: pointer; }
+.session-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #20252d; }
+.session-time { display: block; margin-top: 3px; font-size: 10px; color: #81766d; }
+.session-delete {
+  flex-shrink: 0;
+  margin-right: 6px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #81766d;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s, background .15s, color .15s;
+}
+.session-item:hover .session-delete, .session-item.active .session-delete { opacity: 1; }
+.session-delete:hover { background: rgba(179,66,50,.12); color: #a33b2c; }
+.sessions-empty { margin: 18px 0 0; color: #81766d; font-size: 12px; text-align: center; }
+.sessions-error { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: rgba(179,66,50,.1); color: #a33b2c; font-size: 12px; }
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: 250px;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 26px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #d8d0c6;
+  border-radius: 8px;
+  background: #fff;
+  color: #81766d;
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(34,32,27,.12);
+  transition: left .25s ease, color .2s, border-color .2s;
+}
+.sidebar-toggle:hover { color: #8b6b43; border-color: #8b6b43; }
+.image-chat-panel.hidden ~ .sidebar-toggle { left: 0; }
+
+.image-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+.chat-welcome { margin: auto; text-align: center; max-width: 460px; padding: 40px 20px; }
+.welcome-icon { font-size: 48px; margin-bottom: 16px; }
+.chat-welcome h2 { margin: 0 0 8px; font-size: 24px; }
+.chat-welcome p { color: #69717c; font-size: 14px; line-height: 1.6; margin: 0; }
+
+.turn { display: flex; flex-direction: column; gap: 14px; }
+.chat-bubble-wrap { display: flex; gap: 12px; max-width: 96%; }
+.chat-bubble-wrap.user { align-self: flex-end; flex-direction: row-reverse; }
+.chat-bubble-wrap.assistant { align-self: flex-start; }
+.bubble-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font: 600 14px Georgia, serif;
+}
+.user .bubble-avatar { background: #292a27; color: #f8f5ee; }
+.assistant .bubble-avatar { background: #d5b18a; color: #252521; }
+.bubble-body { display: flex; flex-direction: column; min-width: 0; }
+.user .bubble-body { align-items: flex-end; }
+.assistant .bubble-body { align-items: flex-start; width: min(100%, 920px); }
+.bubble-header { margin-bottom: 4px; }
+.sender-name { font-size: 11px; color: #81766d; }
+.bubble-content { padding: 14px 18px; border-radius: 16px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.user-content { background: #292a27; color: #f8f6f0; border-top-right-radius: 4px; }
+
+.image-grid { display: flex; flex-wrap: wrap; gap: 18px; width: 100%; }
+.image-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.image-actions { display: flex; gap: 8px; }
+.image-actions button {
+  border: 1px solid #d8d0c6;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: #fff;
+  color: #29251f;
+  font-size: 12px;
+  cursor: pointer;
+}
 .image-actions .danger { color: #a33b2c; }
-@media (max-width: 760px) { .ai-images-page { padding: 28px 18px 56px; } .page-header { display: block; } .back-link { display: inline-block; margin-top: 14px; } .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .actions { align-items: stretch; flex-direction: column; } .generate-button { width: 100%; } }
+
+.loading-indicator { display: flex; align-items: center; gap: 6px; color: #81766d; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #d5b18a; animation: dot-bounce 1.4s infinite ease-in-out both; }
+.dot:nth-child(1) { animation-delay: -0.32s; }
+.dot:nth-child(2) { animation-delay: -0.16s; }
+@keyframes dot-bounce { 0%, 80%, 100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
+.loading-text { font-size: 12px; margin-left: 4px; }
+
+.chat-error-bar { padding: 10px 18px; background: rgba(179,66,50,.1); border-top: 1px solid rgba(179,66,50,.24); color: #a33b2c; font-size: 13px; }
+.chat-input-area { padding: 16px 20px; background: #fffdf9; border-top: 1px solid rgba(125,100,70,.16); display: flex; flex-direction: column; gap: 10px; }
+.chat-textarea {
+  width: 100%;
+  border: 1px solid #d8d0c6;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: 14px/1.6 inherit;
+  color: #20252d;
+  background: #faf8f5;
+  resize: vertical;
+  outline: none;
+  min-height: 72px;
+  max-height: 200px;
+}
+.chat-textarea:focus { border-color: #8b6b43; background: #fff; }
+.chat-model-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; color: #6e655d; }
+.chat-model-picker label { display: grid; gap: 5px; font-weight: 700; }
+.chat-model-picker select { border: 1px solid #d8d0c6; border-radius: 10px; padding: 7px 10px; background: #fffdf9; color: #29251f; font: inherit; }
+.input-footer { display: flex; justify-content: space-between; align-items: center; }
+.char-count { font-size: 11px; color: #81766d; }
+.char-count.near-limit { color: #a33b2c; font-weight: 600; }
+.send-btn {
+  padding: 9px 22px;
+  border-radius: 999px;
+  border: 0;
+  background: #34291f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s, transform .2s;
+}
+.send-btn:hover:not(:disabled) { background: #4a3b2c; transform: translateY(-1px); }
+.send-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.lightbox { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(10,8,5,.82); }
+.lightbox > img { display: block; max-width: 96vw; max-height: 94vh; width: auto; height: auto; object-fit: contain; border-radius: 8px; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+.lightbox-close { position: absolute; top: 16px; right: 16px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
+.lightbox-close:hover { background: rgba(255,255,255,.28); }
+
+@media (max-width: 820px) {
+  .ai-images-page { width: calc(100% - 24px); padding: 28px 12px 48px; }
+  .image-chat-card { height: calc(100vh - 190px); }
+  .chat-bubble-wrap { max-width: 94%; }
+}
+
 </style>

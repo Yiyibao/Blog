@@ -1,7 +1,9 @@
 package com.yubai.blog.admin.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
@@ -77,7 +79,7 @@ class OpenAiImageClientTest {
     }
 
     @Test
-    void retriesTransientRelayFailureOnce() throws Exception {
+    void retriesTransientRelayFailureBeforeSuccess() throws Exception {
         var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image", "images", null, null, 30);
         var base64 = Base64.getEncoder().encodeToString(onePixelPng());
         server.expect(requestTo(BASE_URL + "/images/generations"))
@@ -94,8 +96,65 @@ class OpenAiImageClientTest {
     }
 
     @Test
+    void retriesSeveralTransientRelayFailuresBeforeReturningTheImage() throws Exception {
+        var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image", "images", null, null, 30);
+        var base64 = Base64.getEncoder().encodeToString(onePixelPng());
+        for (int attempt = 0; attempt < 3; attempt++) {
+            server.expect(requestTo(BASE_URL + "/images/generations"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("{\"error\":{\"message\":\"Upstream service temporarily unavailable\"}}")
+                    .contentType(APPLICATION_JSON));
+        }
+        server.expect(requestTo(BASE_URL + "/images/generations"))
+            .andExpect(method(POST))
+            .andRespond(withSuccess("{\"created\":1,\"data\":[{\"b64_json\":\"" + base64 + "\"}]}", APPLICATION_JSON));
+
+        var result = client.generate(endpoint, new AiImageGenerationRequest("a test", 1, null, null, null, null), 1_000_000);
+
+        assertEquals(1, result.images().size());
+        server.verify();
+    }
+
+    @Test
+    void omitsGptOnlyOptionsFromGrokImageRequest() {
+        var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image", "images",
+            null, null, 30);
+
+        var body = OpenAiImageClient.buildBody(endpoint,
+            new AiImageGenerationRequest("a test", 1, "1024x1024", "high", "16:9", "2k"), "images");
+
+        assertEquals("grok-imagine-image", body.get("model"));
+        assertEquals("a test", body.get("prompt"));
+        assertEquals(1, body.get("n"));
+        assertEquals("b64_json", body.get("response_format"));
+        assertEquals("16:9", body.get("aspect_ratio"));
+        assertEquals("2k", body.get("resolution"));
+        assertFalse(body.containsKey("size"));
+        assertFalse(body.containsKey("quality"));
+    }
+
+    @Test
+    void includesSafeUpstreamErrorMessageForDebugging() {
+        var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image", "images",
+            null, null, 30);
+        server.expect(requestTo(BASE_URL + "/images/generations"))
+            .andExpect(method(POST))
+            .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .body("{\"error\":{\"message\":\"unsupported model\"}}")
+                .contentType(APPLICATION_JSON));
+
+        var exception = assertThrows(AiServiceException.class, () -> client.generate(endpoint,
+            new AiImageGenerationRequest("a test", 1, null, null, null, null), 1_000_000));
+
+        assertEquals(HttpStatus.BAD_GATEWAY, exception.getStatus());
+        assertTrue(exception.getMessage().contains("unsupported model"));
+        server.verify();
+    }
+
+    @Test
     void rejectsNonImageBase64() {
-        var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image-quality", "images", null, null, 30);
+        var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image", "images", null, null, 30);
         var exception = assertThrows(AiServiceException.class, () -> OpenAiImageClient.parseResponse(
             endpoint.model(), new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()
                 .putArray("data").addObject().put("b64_json", Base64.getEncoder().encodeToString("not an image".getBytes())), 1_000_000));

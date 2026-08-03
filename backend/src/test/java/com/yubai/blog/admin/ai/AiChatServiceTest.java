@@ -34,7 +34,7 @@ class AiChatServiceTest {
         properties.setApiKey(envKey);
         properties.setBaseUrl("https://api.deepseek.com");
         properties.setModel("deepseek-v4-flash");
-        properties.setMaxTotalChars(40000);
+        properties.setMaxTotalChars(160000);
         properties.setMaxOutputTokens(2048);
         properties.setMasterKey(masterKey);
         repository = mock(AiProviderRepository.class);
@@ -80,6 +80,7 @@ class AiChatServiceTest {
     void aggregateContentExceedsMaxThrows400() {
         build(true, "test-key", null);
         properties.setMaxInputChars(30000);
+        properties.setMaxTotalChars(40000);
         var content = "x".repeat(20001);
         var overLimit = new ChatRequest(List.of(
             new ChatMessage("user", content), new ChatMessage("assistant", content)));
@@ -104,7 +105,7 @@ class AiChatServiceTest {
     @Test
     void singleMessageTooLongThrows400() {
         build(true, "test-key", null);
-        var e = assertThrows(AiServiceException.class, () -> service.chat(request("x".repeat(8001))));
+        var e = assertThrows(AiServiceException.class, () -> service.chat(request("x".repeat(32001))));
         assertEquals(400, e.getStatus().value());
         verify(client, never()).chat(any(), anyList());
     }
@@ -113,7 +114,7 @@ class AiChatServiceTest {
     void streamValidatesLimitsToo() {
         build(true, "test-key", null);
         var e = assertThrows(AiServiceException.class,
-            () -> service.stream(request("x".repeat(8001)), content -> { }));
+            () -> service.stream(request("x".repeat(32001)), content -> { }));
         assertEquals(400, e.getStatus().value());
         verify(client, never()).stream(any(), anyList(), any());
     }
@@ -131,6 +132,22 @@ class AiChatServiceTest {
         assertEquals("https://api.deepseek.com", captor.getValue().baseUrl());
         assertEquals("env-key", captor.getValue().apiKey());
         assertEquals("deepseek-v4-flash", captor.getValue().model());
+    }
+
+    @Test
+    void forwardsPerRequestReasoningEffortToCompatibleClient() {
+        build(false, null, MASTER_KEY);
+        var entity = AiProviderEntity.create("openai", "https://api.openai.com/v1",
+            crypto.encrypt("sk-test"), "o3-mini", "o3-mini", true, 200, 200_000,
+            AiProviderType.OPENAI_COMPATIBLE);
+        entity.markDefault(true);
+        when(repository.findFirstByIsDefaultTrueAndEnabledTrue()).thenReturn(Optional.of(entity));
+        when(client.chat(any(), anyList(), eq("high")))
+            .thenReturn(new ChatResponse("ok", "o3-mini", null));
+
+        service.chat(new ChatRequest(List.of(new ChatMessage("user", "hello")), null, null, "high"));
+
+        verify(client).chat(any(), anyList(), eq("high"));
     }
 
     @Test

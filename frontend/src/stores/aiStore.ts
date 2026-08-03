@@ -1,6 +1,11 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { AI_PROVIDERS_CHANGED_EVENT, fetchAiProviders, type AiProvider } from '../api/admin'
+import {
+  AI_PROVIDERS_CHANGED_EVENT,
+  fetchAiProviders,
+  type AiProvider,
+  type AiReasoningSelection,
+} from '../api/admin'
 
 /**
  * AI 对话的单一事实来源：全屏聊天页 / 宠物面板 / 供应商页共享同一份
@@ -16,6 +21,18 @@ const SELECTION_KEY = 'yubai-admin-ai-selection'
 interface StoredSelection {
   providerId: number | null
   model: string | null
+  reasoningEffort?: AiReasoningSelection
+}
+
+const DEFAULT_REASONING_EFFORT: AiReasoningSelection = 'auto'
+const REASONING_EFFORTS = new Set<AiReasoningSelection>([
+  'auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
+])
+
+function normalizeReasoningEffort(value: unknown): AiReasoningSelection {
+  return typeof value === 'string' && REASONING_EFFORTS.has(value as AiReasoningSelection)
+    ? value as AiReasoningSelection
+    : DEFAULT_REASONING_EFFORT
 }
 
 function readStoredSelection(): StoredSelection | null {
@@ -27,7 +44,12 @@ function readStoredSelection(): StoredSelection | null {
     if (parsed && typeof parsed === 'object'
       && 'providerId' in (parsed as StoredSelection)
       && 'model' in (parsed as StoredSelection)) {
-      return parsed as StoredSelection
+      const selection = parsed as StoredSelection
+      return {
+        providerId: selection.providerId,
+        model: selection.model,
+        reasoningEffort: normalizeReasoningEffort(selection.reasoningEffort),
+      }
     }
   } catch {
     // 隐私模式或脏数据：忽略
@@ -57,6 +79,7 @@ export const useAiStore = defineStore('ai', () => {
   const providers = ref<AiProvider[]>([])
   const selectedProviderId = ref<number | null>(null)
   const selectedModel = ref<string | null>(null)
+  const selectedReasoningEffort = ref<AiReasoningSelection>(DEFAULT_REASONING_EFFORT)
   let requestId = 0
   let subscriberCount = 0
 
@@ -74,6 +97,17 @@ export const useAiStore = defineStore('ai', () => {
     return models
   })
 
+  const reasoningSupported = computed(() => {
+    const provider = selectedProvider.value
+    if (!provider || !provider.providerType) return true
+    if (provider.providerType === 'OPENCODE_SERVER') return false
+    if (provider.providerType === 'OPENAI_COMPATIBLE'
+      && provider.baseUrl.toLowerCase().includes('deepseek')) return false
+    return provider.providerType === 'OPENAI_RESPONSES'
+      || provider.providerType === 'OPENAI_COMPATIBLE'
+      || provider.providerType === 'ANTHROPIC'
+  })
+
   function fallbackSelection(): StoredSelection {
     const preferred = providers.value.find((provider) => provider.isDefault)
       ?? providers.value[0]
@@ -81,6 +115,7 @@ export const useAiStore = defineStore('ai', () => {
     return {
       providerId: preferred?.id ?? null,
       model: preferred?.defaultModel || preferred?.models?.[0] || null,
+      reasoningEffort: selectedReasoningEffort.value,
     }
   }
 
@@ -93,6 +128,7 @@ export const useAiStore = defineStore('ai', () => {
       const fallback = fallbackSelection()
       selectedProviderId.value = fallback.providerId
       selectedModel.value = fallback.model
+      selectedReasoningEffort.value = normalizeReasoningEffort(selection?.reasoningEffort)
       if (fallback.providerId == null) clearStoredSelection()
       return
     }
@@ -105,7 +141,14 @@ export const useAiStore = defineStore('ai', () => {
     selectedModel.value = valid
       ? selection!.model!
       : (provider.defaultModel || provider.models?.[0] || null)
-    if (valid) writeStoredSelection({ providerId: provider.id, model: selection!.model! })
+    selectedReasoningEffort.value = normalizeReasoningEffort(selection?.reasoningEffort)
+    if (valid) {
+      writeStoredSelection({
+        providerId: provider.id,
+        model: selection!.model!,
+        reasoningEffort: selectedReasoningEffort.value,
+      })
+    }
   }
 
   async function ensureProviders() {
@@ -134,13 +177,31 @@ export const useAiStore = defineStore('ai', () => {
     if (!provider) return
     selectedProviderId.value = provider.id
     selectedModel.value = provider.defaultModel || provider.models?.[0] || null
-    writeStoredSelection({ providerId: provider.id, model: selectedModel.value })
+    writeStoredSelection({
+      providerId: provider.id,
+      model: selectedModel.value,
+      reasoningEffort: selectedReasoningEffort.value,
+    })
   }
 
   function selectModel(model: string) {
     if (!modelOptions.value.includes(model)) return
     selectedModel.value = model
-    writeStoredSelection({ providerId: selectedProviderId.value, model })
+    writeStoredSelection({
+      providerId: selectedProviderId.value,
+      model,
+      reasoningEffort: selectedReasoningEffort.value,
+    })
+  }
+
+  function selectReasoningEffort(value: AiReasoningSelection) {
+    const effort = normalizeReasoningEffort(value)
+    selectedReasoningEffort.value = effort
+    writeStoredSelection({
+      providerId: selectedProviderId.value,
+      model: selectedModel.value,
+      reasoningEffort: effort,
+    })
   }
 
   function onProvidersChanged() {
@@ -171,7 +232,8 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   return {
-    providers, selectedProviderId, selectedModel, selectedProvider, modelOptions,
-    ensureProviders, selectProvider, selectModel, subscribe, unsubscribe,
+    providers, selectedProviderId, selectedModel, selectedReasoningEffort,
+    selectedProvider, modelOptions, reasoningSupported,
+    ensureProviders, selectProvider, selectModel, selectReasoningEffort, subscribe, unsubscribe,
   }
 })

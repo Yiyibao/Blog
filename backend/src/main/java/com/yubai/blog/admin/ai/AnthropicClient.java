@@ -53,11 +53,16 @@ public class AnthropicClient implements AiClient {
 
     @Override
     public ChatResponse chat(AiEndpoint endpoint, List<ChatMessage> messages) {
+        return chat(endpoint, messages, null);
+    }
+
+    @Override
+    public ChatResponse chat(AiEndpoint endpoint, List<ChatMessage> messages, String reasoningEffort) {
         try {
             var body = restClientFactory.apply(endpoint)
                 .post()
                 .uri(apiUri(endpoint, "messages"))
-                .body(buildMessageBody(endpoint, messages, false))
+                .body(buildMessageBody(endpoint, messages, false, reasoningEffort))
                 .retrieve()
                 .toEntity(JsonNode.class)
                 .getBody();
@@ -75,11 +80,17 @@ public class AnthropicClient implements AiClient {
 
     @Override
     public ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages, AiStreamListener listener) {
+        return stream(endpoint, messages, listener, null);
+    }
+
+    @Override
+    public ChatResponse stream(AiEndpoint endpoint, List<ChatMessage> messages,
+                               AiStreamListener listener, String reasoningEffort) {
         try {
             return restClientFactory.apply(endpoint)
                 .post()
                 .uri(apiUri(endpoint, "messages"))
-                .body(buildMessageBody(endpoint, messages, true))
+                .body(buildMessageBody(endpoint, messages, true, reasoningEffort))
                 .exchange((request, response) -> {
                     var status = response.getStatusCode();
                     if (status.value() == HttpStatus.TOO_MANY_REQUESTS.value()) {
@@ -297,7 +308,8 @@ public class AnthropicClient implements AiClient {
 
     private static Map<String, Object> buildMessageBody(AiEndpoint endpoint,
                                                          List<ChatMessage> messages,
-                                                         boolean stream) {
+                                                         boolean stream,
+                                                         String reasoningEffort) {
         var payload = new ArrayList<Map<String, String>>();
         for (var message : messages) {
             payload.add(Map.of("role", message.role(), "content", message.content()));
@@ -308,7 +320,31 @@ public class AnthropicClient implements AiClient {
         body.put("messages", payload);
         body.put("max_tokens", endpoint.maxOutputTokens());
         body.put("stream", stream);
+        if (reasoningEffort != null && !reasoningEffort.isBlank()) {
+            if ("none".equals(reasoningEffort)) {
+                body.put("thinking", Map.of("type", "disabled"));
+            } else {
+                var budgetTokens = reasoningBudgetTokens(reasoningEffort, endpoint.maxOutputTokens());
+                body.put("thinking", Map.of("type", "enabled", "budget_tokens", budgetTokens));
+                // Anthropic requires max_tokens to be greater than the
+                // thinking budget, so preserve the configured output cap when
+                // possible and raise it only enough to fit the requested tier.
+                body.put("max_tokens", Math.max(endpoint.maxOutputTokens(), budgetTokens + 1));
+            }
+        }
         return body;
+    }
+
+    private static int reasoningBudgetTokens(String reasoningEffort, int maxOutputTokens) {
+        var cap = Math.max(2, maxOutputTokens);
+        return switch (reasoningEffort) {
+            case "minimal" -> Math.max(1, cap / 8);
+            case "low" -> Math.max(1, cap / 4);
+            case "medium" -> Math.max(1, cap / 2);
+            case "high" -> Math.max(1, cap - cap / 8);
+            case "xhigh" -> cap - 1;
+            default -> throw new AiServiceException(HttpStatus.BAD_REQUEST, "Invalid reasoning effort");
+        };
     }
 
     private static ChatResponse parseChatResponse(AiEndpoint endpoint, JsonNode body) {

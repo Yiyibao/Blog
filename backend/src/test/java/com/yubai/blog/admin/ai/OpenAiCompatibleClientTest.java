@@ -119,6 +119,19 @@ class OpenAiCompatibleClientTest {
     }
 
     @Test
+    void sendsPerRequestReasoningEffortToOpenAiCompatibleEndpoint() {
+        var openAiEndpoint = new AiEndpoint("https://api.openai.com/v1", "test-key", "o3-mini", 60, 1024);
+        server.expect(requestTo(COMPLETIONS_URL))
+            .andExpect(method(POST))
+            .andExpect(jsonPath("$.reasoning_effort").value("high"))
+            .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
+
+        client.chat(openAiEndpoint, List.of(new ChatMessage("user", "hi")), "high");
+
+        server.verify();
+    }
+
+    @Test
     void provider429MapsTo429() {
         server.expect(requestTo(COMPLETIONS_URL)).andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS));
         var e = assertThrows(AiServiceException.class,

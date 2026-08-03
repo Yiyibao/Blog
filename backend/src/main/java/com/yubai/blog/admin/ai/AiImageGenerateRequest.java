@@ -8,8 +8,10 @@ import jakarta.validation.constraints.Size;
 
 public record AiImageGenerateRequest(
     @NotBlank(message = "prompt 不能为空")
-    @Size(max = 4000, message = "prompt 不能超过 4000 个字符")
+    @Size(max = 32000, message = "prompt 不能超过 32000 个字符")
     String prompt,
+    /** 可选：图片会话 id；为空则本次生成自动新建会话。 */
+    Long sessionId,
     @Pattern(regexp = "(?i)grok|gpt", message = "provider 只能是 grok 或 gpt")
     String provider,
     @Size(max = 120, message = "model 过长")

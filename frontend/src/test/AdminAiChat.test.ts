@@ -13,6 +13,11 @@ enableAutoUnmount(afterEach)
 const mockStreamAiChat = vi.fn()
 const mockLogout = vi.fn()
 const mockFetchAiProviders = vi.fn()
+const mockFetchAiChatSessions = vi.fn()
+const mockCreateAiChatSession = vi.fn()
+const mockFetchAiChatSessionMessages = vi.fn()
+const mockAppendAiChatMessages = vi.fn()
+const mockDeleteAiChatSession = vi.fn()
 
 vi.mock('../api/admin', async (importOriginal) => {
   const actual = await importOriginal<typeof adminApi>()
@@ -21,6 +26,11 @@ vi.mock('../api/admin', async (importOriginal) => {
     fetchAiProviders: (...args: unknown[]) => mockFetchAiProviders(...args),
     streamAiChat: (...args: unknown[]) => mockStreamAiChat(...args),
     logout: (...args: unknown[]) => mockLogout(...args),
+    fetchAiChatSessions: (...args: unknown[]) => mockFetchAiChatSessions(...args),
+    createAiChatSession: (...args: unknown[]) => mockCreateAiChatSession(...args),
+    fetchAiChatSessionMessages: (...args: unknown[]) => mockFetchAiChatSessionMessages(...args),
+    appendAiChatMessages: (...args: unknown[]) => mockAppendAiChatMessages(...args),
+    deleteAiChatSession: (...args: unknown[]) => mockDeleteAiChatSession(...args),
   }
 })
 
@@ -94,6 +104,18 @@ beforeEach(() => {
   }])
   mockStreamAiChat.mockReset()
   mockLogout.mockReset()
+  mockFetchAiChatSessions.mockReset()
+  mockCreateAiChatSession.mockReset()
+  mockFetchAiChatSessionMessages.mockReset()
+  mockAppendAiChatMessages.mockReset()
+  mockDeleteAiChatSession.mockReset()
+  mockFetchAiChatSessions.mockResolvedValue([])
+  mockCreateAiChatSession.mockResolvedValue({
+    id: 1, title: null, createdAt: '2026-08-04T00:00:00Z', updatedAt: '2026-08-04T00:00:00Z',
+  })
+  mockAppendAiChatMessages.mockResolvedValue({
+    id: 1, title: '你好', createdAt: '2026-08-04T00:00:00Z', updatedAt: '2026-08-04T00:00:00Z',
+  })
   window.sessionStorage.clear()
   window.localStorage.clear()
   window.sessionStorage.setItem('yubai-admin-token', 'valid-token')
@@ -121,11 +143,41 @@ describe('AdminAiChat Component', () => {
     await wrapper.find('[data-testid="chat-model-select"]').setValue('qwen3.7-plus')
     await wrapper.find('textarea').setValue('Use this model')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
 
     expect(mockStreamAiChat).toHaveBeenCalledWith(
       [{ role: 'user', content: 'Use this model' }],
       expect.objectContaining({ onDelta: expect.any(Function) }),
       expect.objectContaining({ model: 'qwen3.7-plus', providerId: 1, signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('sends the selected reasoning effort with a provider that supports it', async () => {
+    mockFetchAiProviders.mockResolvedValue([{
+      id: 9,
+      name: 'GPT Responses',
+      baseUrl: 'https://api.example.test',
+      providerType: 'OPENAI_RESPONSES',
+      models: ['gpt-5.5'],
+      defaultModel: 'gpt-5.5',
+      enabled: true,
+      isDefault: true,
+    }])
+    streamResolve('Reasoned response')
+
+    const wrapper = await mountComponent()
+    await flushPromises()
+    await wrapper.find('[data-testid="chat-reasoning-select"]').setValue('high')
+    await wrapper.find('textarea').setValue('Use high reasoning')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+
+    expect(mockStreamAiChat).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Use high reasoning' }],
+      expect.objectContaining({ onDelta: expect.any(Function) }),
+      expect.objectContaining({
+        model: 'gpt-5.5', providerId: 9, reasoningEffort: 'high', signal: expect.any(AbortSignal),
+      }),
     )
   })
 
@@ -143,6 +195,7 @@ describe('AdminAiChat Component', () => {
 
     await wrapper.find('textarea').setValue('Use provider B')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
 
     expect(mockStreamAiChat).toHaveBeenCalledWith(
       [{ role: 'user', content: 'Use provider B' }],
@@ -249,6 +302,7 @@ describe('AdminAiChat Component', () => {
     const input = wrapper.find('textarea')
     await input.setValue('Hello AI')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
 
     expect(mockStreamAiChat).toHaveBeenCalledWith(
       [{ role: 'user', content: 'Hello AI' }],
@@ -283,6 +337,7 @@ describe('AdminAiChat Component', () => {
     const input = wrapper.find('textarea')
     await input.setValue('Thinking prompt')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
 
     expect(wrapper.text()).toContain('思考中…')
     expect(wrapper.text()).toContain('停止生成')
@@ -319,6 +374,7 @@ describe('AdminAiChat Component', () => {
     const wrapper = await mountComponent()
     await wrapper.find('textarea').setValue('Long generation')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
 
     capturedCallbacks.onDelta('Partial answer')
     await flushPromises()
@@ -489,6 +545,7 @@ describe('FD-29 宠物动画事件（供 AdminPetAssistant 驱动状态，不改
     const wrapper = await mountComponent()
     await wrapper.find('textarea').setValue('long job')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
     capturedCallbacks.onDelta('partial')
     await flushPromises()
 
@@ -518,10 +575,136 @@ describe('FD-29 宠物动画事件（供 AdminPetAssistant 驱动状态，不改
     const wrapper = await mountComponent()
     await wrapper.find('textarea').setValue('long running job')
     await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
     expect(captured.signal?.aborted).toBe(false)
 
     wrapper.unmount()
     expect(captured.signal?.aborted).toBe(true)
+  })
+})
+
+describe('AI 聊天历史侧边栏', () => {
+  const SESSION_1 = {
+    id: 1, title: '雨后的杭州西湖', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T10:00:00Z',
+  }
+  const SESSION_2 = {
+    id: 2, title: null, createdAt: '2026-08-02T00:00:00Z', updatedAt: '2026-08-02T11:00:00Z',
+  }
+
+  it('渲染会话列表，无标题显示为新对话', async () => {
+    mockFetchAiChatSessions.mockResolvedValue([SESSION_1, SESSION_2])
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('新建聊天')
+    expect(wrapper.text()).toContain('雨后的杭州西湖')
+    expect(wrapper.text()).toContain('新对话')
+  })
+
+  it('侧边栏可向左隐藏、向右拉出', async () => {
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    expect(wrapper.find('.chat-history-panel').exists()).toBe(true)
+    expect(wrapper.find('.ai-chat-container').classes()).not.toContain('sidebar-hidden')
+
+    await wrapper.find('.sidebar-toggle').trigger('click')
+    expect(wrapper.find('.ai-chat-container').classes()).toContain('sidebar-hidden')
+
+    await wrapper.find('.sidebar-toggle').trigger('click')
+    expect(wrapper.find('.ai-chat-container').classes()).not.toContain('sidebar-hidden')
+  })
+
+  it('点击会话记录加载当时的聊天内容', async () => {
+    mockFetchAiChatSessions.mockResolvedValue([SESSION_1])
+    mockFetchAiChatSessionMessages.mockResolvedValue([
+      { id: 1, role: 'user', content: '历史提问', createdAt: '2026-08-01T10:00:00Z' },
+      { id: 2, role: 'assistant', content: '历史回答', createdAt: '2026-08-01T10:00:05Z' },
+    ])
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    await wrapper.find('.session-entry').trigger('click')
+    await flushPromises()
+
+    expect(mockFetchAiChatSessionMessages).toHaveBeenCalledWith(1)
+    expect(wrapper.text()).toContain('历史提问')
+    expect(wrapper.text()).toContain('历史回答')
+  })
+
+  it('新建聊天清空当前对话并脱离当前会话', async () => {
+    streamResolve('first reply')
+    mockFetchAiChatSessions.mockResolvedValue([SESSION_1])
+    mockFetchAiChatSessionMessages.mockResolvedValue([
+      { id: 1, role: 'user', content: '历史提问', createdAt: '2026-08-01T10:00:00Z' },
+      { id: 2, role: 'assistant', content: '历史回答', createdAt: '2026-08-01T10:00:05Z' },
+    ])
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    await wrapper.find('.session-entry').trigger('click')
+    await flushPromises()
+    await wrapper.find('textarea').setValue('继续提问')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+    expect(mockCreateAiChatSession).not.toHaveBeenCalled()
+
+    await wrapper.find('.new-chat-btn').trigger('click')
+    expect(wrapper.find('.chat-welcome').exists()).toBe(true)
+
+    await wrapper.find('textarea').setValue('新的一轮')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+    expect(mockCreateAiChatSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('首次发送创建会话，流式结束后把问答写入历史', async () => {
+    streamResolve('OK reply')
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    await wrapper.find('textarea').setValue('第一句话')
+    await wrapper.find('button.send-btn').trigger('click')
+    await flushPromises()
+
+    expect(mockCreateAiChatSession).toHaveBeenCalledTimes(1)
+    expect(mockAppendAiChatMessages).toHaveBeenCalledWith(
+      1,
+      [
+        { role: 'user', content: '第一句话' },
+        { role: 'assistant', content: 'OK reply' },
+      ],
+    )
+  })
+
+  it('确认后删除会话记录并从列表移除', async () => {
+    mockFetchAiChatSessions
+      .mockResolvedValueOnce([SESSION_1, SESSION_2])
+      .mockResolvedValue([SESSION_2])
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockDeleteAiChatSession.mockResolvedValue(undefined)
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    await wrapper.find('.session-delete').trigger('click')
+    await flushPromises()
+
+    expect(mockDeleteAiChatSession).toHaveBeenCalledWith(1)
+    expect(wrapper.text()).not.toContain('雨后的杭州西湖')
+    expect(wrapper.text()).toContain('新对话')
+  })
+
+  it('取消确认时不删除会话', async () => {
+    mockFetchAiChatSessions.mockResolvedValue([SESSION_1])
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = await mountComponent()
+    await flushPromises()
+
+    await wrapper.find('.session-delete').trigger('click')
+    await flushPromises()
+
+    expect(mockDeleteAiChatSession).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('雨后的杭州西湖')
   })
 })
 

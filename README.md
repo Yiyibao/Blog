@@ -84,7 +84,7 @@ mvn spring-boot:run
 - `GET|POST /api/v1/admin/notes/{id}/attachments`：列出或上传笔记图片
 - `DELETE /api/v1/admin/notes/{id}/attachments/{attachmentId}`：删除笔记图片
 
-- `POST /api/v1/admin/ai/chat`：AI 对话（请求体可选 `providerId`/`model` 指定供应商与模型，缺省用默认供应商）
+- `POST /api/v1/admin/ai/chat`：AI 对话（请求体可选 `providerId`/`model` 指定供应商与模型，`reasoningEffort` 可取 `none`/`minimal`/`low`/`medium`/`high`/`xhigh`；缺省使用供应商默认值）
 - `GET /api/v1/admin/ai/providers`：AI 供应商列表（密钥永不回显，仅 `hasKey` 与 `keyTail` 尾 4 位）
 - `POST /api/v1/admin/ai/providers`：新增供应商 `{name, baseUrl, apiKey?, models?, defaultModel, enabled?}`；`baseUrl` 经 SSRF 校验（仅 https，禁内网/环回，本地端点需 `APP_AI_ALLOW_LOCAL_ENDPOINTS=true`）
 - `PUT /api/v1/admin/ai/providers/{id}`：更新供应商；`apiKey` 留空表示保留原密钥
@@ -121,6 +121,23 @@ APP_AI_MASTER_KEY=至少32位随机字符串
 
 启动时会把该配置同步为加密保存的 `Anthropic (env)` 供应商；只有没有其他默认供应商时才会设为默认。`ANTHROPIC_MODEL` 未配置时使用 `claude-sonnet-5`。
 
+如需接入 OpenAI Responses API 中转，可使用独立的 `OpenAI Responses` 供应商类型。服务启动时会把下面的环境变量同步为加密保存的 `GPT (Responses)` 供应商；已有默认供应商（例如 OpenCode）保持不变：
+
+```properties
+APP_AI_RESPONSES_ENABLED=true
+APP_AI_RESPONSES_BASE_URL=https://xinyue.mom
+APP_AI_RESPONSES_API_KEY=your-relay-key
+APP_AI_RESPONSES_MODEL=gpt-5.5
+APP_AI_RESPONSES_MODELS=gpt-5.3-codex-spark,gpt-5.4,gpt-5.5,gpt-5.6-luna,gpt-5.6-sol,gpt-5.6-terra
+APP_AI_RESPONSES_HEADER_NAME=x-openai-actor-authorization
+APP_AI_RESPONSES_HEADER_VALUE=local-image-extension
+APP_AI_RESPONSES_REASONING_EFFORT=xhigh
+APP_AI_RESPONSES_STORE=false
+APP_AI_MASTER_KEY=至少32位随机字符串
+```
+
+该适配器请求 `/responses`，支持非流式与 SSE 流式聊天，并通过 `output[].content[].text` 和 `response.output_text.delta` 解析文本。
+
 兼容回退（单供应商 env 配置）：
 
 ```properties
@@ -135,9 +152,9 @@ AI_API_KEY=sk-your-deepseek-api-key
 | `AI_BASE_URL` | `https://api.deepseek.com` | API 基础地址 |
 | `AI_MODEL` | `deepseek-v4-flash` | 模型名称 |
 | `AI_REQUEST_TIMEOUT` | `60` | 请求超时（秒） |
-| `AI_MAX_INPUT_CHARS` | `8000` | 单条消息最大字符数 |
+| `AI_MAX_INPUT_CHARS` | `32000` | 单条消息最大字符数 |
 | `AI_MAX_HISTORY_MESSAGES` | `20` | 历史消息条数上限 |
-| `AI_MAX_TOTAL_CHARS` | `40000` | 所有消息累计字符数上限 |
+| `AI_MAX_TOTAL_CHARS` | `160000` | 所有消息累计字符数上限 |
 | `AI_MAX_OUTPUT_TOKENS` | `2048` | 最大输出 token 数 |
 
 如果 `AI_ENABLED` 为 `false` 或 `AI_API_KEY` 为空，该接口返回 `503`。前端不会看到 API key、模型、base URL 或 system role。
@@ -204,6 +221,7 @@ mvn test
 
 ```dotenv
 AI_IMAGE_ENABLED=true
+AI_IMAGE_MAX_PROMPT_CHARS=32000
 AI_IMAGE_GROK_ENABLED=true
 AI_IMAGE_GROK_BASE_URL=https://xinyue.mom/v1
 AI_IMAGE_GROK_API_KEY=replace-with-relay-key
@@ -214,8 +232,8 @@ AI_IMAGE_GROK_WIRE_API=images
 AI_IMAGE_GPT_ENABLED=true
 AI_IMAGE_GPT_BASE_URL=https://xinyue.mom
 AI_IMAGE_GPT_API_KEY=replace-with-relay-key
-AI_IMAGE_GPT_MODELS=gpt-image-1,gpt-image-1.5,gpt-image-2,gpt-5.5
-AI_IMAGE_GPT_MODEL=gpt-image-1
+AI_IMAGE_GPT_MODELS=gpt-image-2
+AI_IMAGE_GPT_MODEL=gpt-image-2
 AI_IMAGE_GPT_WIRE_API=images
 AI_IMAGE_GPT_HEADER_NAME=x-openai-actor-authorization
 AI_IMAGE_GPT_HEADER_VALUE=local-image-extension

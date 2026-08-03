@@ -1,20 +1,23 @@
 package com.yubai.blog.admin;
 
 import com.yubai.blog.admin.ai.AiGeneratedImageResponse;
-import com.yubai.blog.admin.ai.AiGeneratedImageEntity;
 import com.yubai.blog.admin.ai.AiImageGenerateRequest;
+import com.yubai.blog.admin.ai.AiImageGenerateResponse;
 import com.yubai.blog.admin.ai.AiImageModelResponse;
 import com.yubai.blog.admin.ai.AiImageService;
+import com.yubai.blog.admin.ai.AiImageSessionResponse;
 import com.yubai.blog.common.ApiResponse;
 import com.yubai.blog.common.RateLimiter;
 import com.yubai.blog.common.TooManyRequestsException;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
-import java.time.Duration;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,15 +45,31 @@ public class AdminAiImageController {
         return ApiResponse.ok(service.listModels());
     }
 
+    @GetMapping("/sessions")
+    public ApiResponse<List<AiImageSessionResponse>> sessions() {
+        return ApiResponse.ok(service.listSessions(currentOwner()));
+    }
+
+    @GetMapping("/sessions/{sessionId}/images")
+    public ApiResponse<List<AiGeneratedImageResponse>> sessionImages(@PathVariable Long sessionId) {
+        return ApiResponse.ok(service.sessionImages(sessionId, currentOwner()));
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ApiResponse<Void> deleteSession(@PathVariable Long sessionId) {
+        service.deleteSession(sessionId, currentOwner());
+        return ApiResponse.ok(null);
+    }
+
     @PostMapping
-    public ApiResponse<List<AiGeneratedImageResponse>> generate(@Valid @RequestBody AiImageGenerateRequest request,
-                                                                 HttpServletRequest httpRequest) {
+    public ApiResponse<AiImageGenerateResponse> generate(@Valid @RequestBody AiImageGenerateRequest request,
+                                                         HttpServletRequest httpRequest) {
         var key = "ai-image:" + httpRequest.getRemoteAddr();
         if (!rateLimiter.tryAcquire(key, Math.max(1, properties.getRateLimit()),
             Duration.ofSeconds(Math.max(1, properties.getRateWindowSeconds())))) {
             throw new TooManyRequestsException("图片生成请求过于频繁，请稍后再试");
         }
-        return ApiResponse.ok(service.generate(request));
+        return ApiResponse.ok(service.generate(request, currentOwner()));
     }
 
     @GetMapping("/{publicId}/content")
@@ -70,5 +89,12 @@ public class AdminAiImageController {
     public ApiResponse<Void> delete(@PathVariable UUID publicId) {
         service.delete(publicId);
         return ApiResponse.ok(null);
+    }
+
+    /** 该路由整体受 JWT 保护，未认证上下文的兜底仅用于测试场景。 */
+    private static String currentOwner() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication instanceof JwtAuthenticationToken jwtAuth) return jwtAuth.getName();
+        return "admin";
     }
 }

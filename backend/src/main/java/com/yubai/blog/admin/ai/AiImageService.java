@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiImageService {
@@ -20,20 +21,23 @@ public class AiImageService {
     private static final List<String> QUALITY_VALUES = List.of("auto", "low", "medium", "high");
     private static final List<String> ASPECT_VALUES = List.of("auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3");
     private static final List<String> RESOLUTION_VALUES = List.of("auto", "1k", "2k", "4k");
+    private static final int TITLE_CHAR_LIMIT = 10;
 
     private final AiImageProperties properties;
     private final AiBaseUrlValidator baseUrlValidator;
     private final OpenAiImageClient client;
     private final AiGeneratedImageRepository repository;
+    private final AiImageSessionRepository sessionRepository;
     private final StorageService storage;
 
     public AiImageService(AiImageProperties properties, AiBaseUrlValidator baseUrlValidator,
                           OpenAiImageClient client, AiGeneratedImageRepository repository,
-                          StorageService storage) {
+                          AiImageSessionRepository sessionRepository, StorageService storage) {
         this.properties = properties;
         this.baseUrlValidator = baseUrlValidator;
         this.client = client;
         this.repository = repository;
+        this.sessionRepository = sessionRepository;
         this.storage = storage;
     }
 
@@ -44,7 +48,8 @@ public class AiImageService {
         return List.copyOf(result);
     }
 
-    public List<AiGeneratedImageResponse> generate(AiImageGenerateRequest request) {
+    @Transactional
+    public AiImageGenerateResponse generate(AiImageGenerateRequest request, String owner) {
         if (!properties.isEnabled()) {
             throw new AiServiceException(HttpStatus.SERVICE_UNAVAILABLE, "AI image generation is disabled");
         }
@@ -58,21 +63,29 @@ public class AiImageService {
             throw new AiServiceException(HttpStatus.BAD_REQUEST, "一次最多生成 " + properties.getMaxImages() + " 张图片");
         }
         var endpoint = endpoint(selected.provider(), selected.config(), request.model());
+        // 已有会话先校验归属（fail fast，避免无效会话白白消耗上游配额）
+        var pendingSession = request.sessionId() == null
+            ? null
+            : requireOwned(request.sessionId(), owner);
         var options = new AiImageGenerationRequest(
             prompt, count, normalize(request.size(), SIZE_VALUES, "size"),
             normalize(request.quality(), QUALITY_VALUES, "quality"),
             normalize(request.aspectRatio(), ASPECT_VALUES, "aspectRatio"),
             normalize(request.resolution(), RESOLUTION_VALUES, "resolution"));
         var result = client.generate(endpoint, options, properties.getMaxImageBytes());
+        var session = pendingSession == null
+            ? sessionRepository.save(AiImageSessionEntity.create(owner, titleFrom(prompt)))
+            : sessionRepository.save(pendingSession);
         var saved = new ArrayList<AiGeneratedImageResponse>();
         try {
+            var generationId = UUID.randomUUID();
             for (var image : result.images()) {
                 var publicId = UUID.randomUUID();
                 var extension = extension(image.mediaType());
                 var storageKey = "ai-generated/" + publicId + extension;
                 storage.store(storageKey, image.bytes());
                 var entity = AiGeneratedImageEntity.create(
-                    selected.provider(), result.model(), prompt, storageKey,
+                    session.getId(), generationId, selected.provider(), result.model(), prompt, storageKey,
                     publicId + extension, image.mediaType(), image.bytes().length,
                     sha256hex(image.bytes()), image.width(), image.height());
                 saved.add(AiGeneratedImageResponse.from(repository.save(entity)));
@@ -87,7 +100,32 @@ public class AiImageService {
             throw exception;
         }
         if (saved.isEmpty()) throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service returned no images");
-        return List.copyOf(saved);
+        return new AiImageGenerateResponse(session.getId(), session.getTitle(), List.copyOf(saved));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AiImageSessionResponse> listSessions(String owner) {
+        return sessionRepository.findByOwnerOrderByUpdatedAtDesc(owner).stream()
+            .map(AiImageSessionResponse::from)
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AiGeneratedImageResponse> sessionImages(Long sessionId, String owner) {
+        var session = requireOwned(sessionId, owner);
+        return repository.findBySessionIdOrderByCreatedAtAsc(session.getId()).stream()
+            .map(AiGeneratedImageResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public void deleteSession(Long sessionId, String owner) {
+        var session = requireOwned(sessionId, owner);
+        for (var entity : repository.findBySessionIdOrderByCreatedAtAsc(session.getId())) {
+            repository.delete(entity);
+            storage.delete(entity.getStorageKey());
+        }
+        sessionRepository.delete(session);
     }
 
     public AiGeneratedImageEntity find(UUID publicId) {
@@ -108,6 +146,20 @@ public class AiImageService {
         var entity = find(publicId);
         repository.delete(entity);
         storage.delete(entity.getStorageKey());
+    }
+
+    private AiImageSessionEntity requireOwned(Long sessionId, String owner) {
+        return sessionRepository.findByIdAndOwner(sessionId, owner)
+            .orElseThrow(() -> new NotFoundException("图片会话不存在"));
+    }
+
+    /** 取首条提示词规范化后的前十个字（按 Unicode 码点，避免截断代理对）。 */
+    static String titleFrom(String content) {
+        var compact = content == null ? "" : content.replaceAll("\\s+", " ").trim();
+        if (compact.isEmpty()) return null;
+        var builder = new StringBuilder();
+        compact.codePoints().limit(TITLE_CHAR_LIMIT).forEach(builder::appendCodePoint);
+        return builder.toString();
     }
 
     private SelectedProvider selectProvider(String requestedProvider, String requestedModel) {

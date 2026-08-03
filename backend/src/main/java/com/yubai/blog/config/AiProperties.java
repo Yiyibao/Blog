@@ -13,10 +13,20 @@ public class AiProperties {
     private String anthropicAuthToken;
     private String anthropicModel = "claude-sonnet-5";
     private String anthropicModels = "claude-fable-5,claude-haiku-4-5,claude-haiku-4-5-20251001,claude-opus-4-6,claude-opus-4-7,claude-opus-4-8,claude-opus-5,claude-sonnet-4-6,claude-sonnet-5";
+    /** OpenAI Responses API relay configuration. The key is materialized into the provider registry encrypted. */
+    private boolean responsesEnabled;
+    private String responsesBaseUrl;
+    private String responsesApiKey;
+    private String responsesModel = "gpt-5.5";
+    private String responsesModels = "gpt-5.3-codex-spark,gpt-5.4,gpt-5.5,gpt-5.6-luna,gpt-5.6-sol,gpt-5.6-terra";
+    private String responsesHeaderName;
+    private String responsesHeaderValue;
+    private String responsesReasoningEffort = "xhigh";
+    private boolean responsesStore;
     private int requestTimeout = 60;
-    private int maxInputChars = 8000;
+    private int maxInputChars = 32_000;
     private int maxHistoryMessages = 20;
-    private int maxTotalChars = 40000;
+    private int maxTotalChars = 160_000;
     private int maxOutputTokens = 2048;
     /** 4A-1：供应商注册表密钥加密主密钥（APP_AI_MASTER_KEY）；为空时注册表密钥存取不可用。 */
     private String masterKey;
@@ -43,6 +53,24 @@ public class AiProperties {
     public void setAnthropicModel(String anthropicModel) { this.anthropicModel = anthropicModel; }
     public String getAnthropicModels() { return anthropicModels; }
     public void setAnthropicModels(String anthropicModels) { this.anthropicModels = anthropicModels; }
+    public boolean isResponsesEnabled() { return responsesEnabled; }
+    public void setResponsesEnabled(boolean responsesEnabled) { this.responsesEnabled = responsesEnabled; }
+    public String getResponsesBaseUrl() { return responsesBaseUrl; }
+    public void setResponsesBaseUrl(String responsesBaseUrl) { this.responsesBaseUrl = responsesBaseUrl; }
+    public String getResponsesApiKey() { return responsesApiKey; }
+    public void setResponsesApiKey(String responsesApiKey) { this.responsesApiKey = responsesApiKey; }
+    public String getResponsesModel() { return responsesModel; }
+    public void setResponsesModel(String responsesModel) { this.responsesModel = responsesModel; }
+    public String getResponsesModels() { return responsesModels; }
+    public void setResponsesModels(String responsesModels) { this.responsesModels = responsesModels; }
+    public String getResponsesHeaderName() { return responsesHeaderName; }
+    public void setResponsesHeaderName(String responsesHeaderName) { this.responsesHeaderName = responsesHeaderName; }
+    public String getResponsesHeaderValue() { return responsesHeaderValue; }
+    public void setResponsesHeaderValue(String responsesHeaderValue) { this.responsesHeaderValue = responsesHeaderValue; }
+    public String getResponsesReasoningEffort() { return responsesReasoningEffort; }
+    public void setResponsesReasoningEffort(String responsesReasoningEffort) { this.responsesReasoningEffort = responsesReasoningEffort; }
+    public boolean isResponsesStore() { return responsesStore; }
+    public void setResponsesStore(boolean responsesStore) { this.responsesStore = responsesStore; }
     public int getRequestTimeout() { return requestTimeout; }
     public void setRequestTimeout(int requestTimeout) { this.requestTimeout = requestTimeout; }
     public int getMaxInputChars() { return maxInputChars; }

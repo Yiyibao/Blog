@@ -174,7 +174,7 @@ class AdminAiControllerTest {
     void streamEndpointValidatesLimitsBeforeStreaming() throws Exception {
         // 建流前校验失败 → 普通 HTTP 400，且不进入流式执行
         org.mockito.Mockito.doThrow(new AiServiceException(HttpStatus.BAD_REQUEST,
-                "Message length exceeds maximum of 8000"))
+                "Message length exceeds maximum of 32000"))
             .when(chatService).validateLimits(any());
         mockMvc.perform(post("/api/v1/admin/ai/chat/stream")
                 .contentType(MediaType.APPLICATION_JSON)

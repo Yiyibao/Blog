@@ -759,9 +759,17 @@ export function fetchAttachmentOverview() {
   return unwrap<AttachmentOverview>(api.get('/admin/attachments', { headers: tokenHeader() }))
 }
 
-export type AiProviderType = 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'OPENCODE_SERVER'
+export type AiProviderType = 'OPENAI_COMPATIBLE' | 'OPENAI_RESPONSES' | 'ANTHROPIC' | 'OPENCODE_SERVER'
 
 export type AiChatRole = 'user' | 'assistant'
+
+/**
+ * Reasoning effort values accepted by OpenAI reasoning models. `auto` is a
+ * frontend-only value: omitting the field lets the configured provider default
+ * decide the effort.
+ */
+export type AiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type AiReasoningSelection = 'auto' | AiReasoningEffort
 
 export interface AiChatMessage {
   role: AiChatRole
@@ -798,9 +806,44 @@ export interface AiStreamCallbacks {
   onDone?: (info: AiStreamDone) => void
 }
 
+export interface AiChatSession {
+  id: number
+  title: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AiChatMessageRecord {
+  id: number
+  role: AiChatRole
+  content: string
+  createdAt: string
+}
+
+export function fetchAiChatSessions() {
+  return unwrap<AiChatSession[]>(api.get('/admin/ai/chat-sessions', { headers: tokenHeader() }))
+}
+
+export function createAiChatSession() {
+  return unwrap<AiChatSession>(api.post('/admin/ai/chat-sessions', null, { headers: tokenHeader() }))
+}
+
+export function fetchAiChatSessionMessages(sessionId: number) {
+  return unwrap<AiChatMessageRecord[]>(api.get(`/admin/ai/chat-sessions/${sessionId}/messages`, { headers: tokenHeader() }))
+}
+
+export function appendAiChatMessages(sessionId: number, messages: AiChatMessage[]) {
+  return unwrap<AiChatSession>(api.post(`/admin/ai/chat-sessions/${sessionId}/messages`, { messages }, { headers: tokenHeader() }))
+}
+
+export function deleteAiChatSession(sessionId: number) {
+  return api.delete(`/admin/ai/chat-sessions/${sessionId}`, { headers: tokenHeader() })
+}
+
 export interface AiStreamOptions {
   providerId?: number | null
   model?: string | null
+  reasoningEffort?: AiReasoningEffort | null
   signal?: AbortSignal
 }
 
@@ -829,6 +872,7 @@ export async function streamAiChat(
       messages,
       ...(options.providerId != null ? { providerId: options.providerId } : {}),
       ...(options.model ? { model: options.model } : {}),
+      ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
     }),
     signal: options.signal,
   })
@@ -991,6 +1035,7 @@ export interface AiImageModel {
 
 export interface AiImageGeneratePayload {
   prompt: string
+  sessionId?: number | null
   provider?: 'grok' | 'gpt'
   model?: string
   n?: number
@@ -1002,6 +1047,7 @@ export interface AiImageGeneratePayload {
 
 export interface AiGeneratedImage {
   publicId: string
+  generationId: string
   provider: 'grok' | 'gpt'
   model: string
   prompt: string
@@ -1013,14 +1059,42 @@ export interface AiGeneratedImage {
   createdAt: string
 }
 
+export interface AiImageGenerateResult {
+  sessionId: number
+  sessionTitle: string | null
+  images: AiGeneratedImage[]
+}
+
+export interface AiImageSession {
+  id: number
+  title: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+// Image relays may need up to two 120s backend attempts before returning.
+const AI_IMAGE_GENERATION_TIMEOUT_MS = 300000
+
 export function fetchAiImageModels() {
   return unwrap<AiImageModel[]>(api.get('/admin/ai/images/models', { headers: tokenHeader() }))
 }
 
 export function generateAiImages(payload: AiImageGeneratePayload) {
-  return unwrap<AiGeneratedImage[]>(api.post('/admin/ai/images', payload, {
-    headers: tokenHeader(), timeout: 180000,
+  return unwrap<AiImageGenerateResult>(api.post('/admin/ai/images', payload, {
+    headers: tokenHeader(), timeout: AI_IMAGE_GENERATION_TIMEOUT_MS,
   }))
+}
+
+export function fetchAiImageSessions() {
+  return unwrap<AiImageSession[]>(api.get('/admin/ai/images/sessions', { headers: tokenHeader() }))
+}
+
+export function fetchAiImageSessionImages(sessionId: number) {
+  return unwrap<AiGeneratedImage[]>(api.get(`/admin/ai/images/sessions/${sessionId}/images`, { headers: tokenHeader() }))
+}
+
+export function deleteAiImageSession(sessionId: number) {
+  return api.delete(`/admin/ai/images/sessions/${sessionId}`, { headers: tokenHeader() })
 }
 
 export async function fetchAiImageContent(publicId: string) {

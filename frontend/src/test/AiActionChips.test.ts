@@ -3,6 +3,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import AiActionChips from '../components/AiActionChips.vue'
 import type { AiStreamCallbacks } from '../api/admin'
+import { AI_CHAT_MAX_INPUT_CHARS } from '../config/aiLimits'
 
 enableAutoUnmount(afterEach)
 
@@ -47,16 +48,16 @@ describe('4A-5 场景化 AI 动作 chips', () => {
     expect(wrapper.find('.chips-result').exists()).toBe(false)
   })
 
-  it('上下文超长时按 7000 字截断（适配服务端单条 8000 限额）', async () => {
+  it('上下文超长时会截断到服务端单条消息上限以内', async () => {
     mockStream.mockImplementation(async (_m: unknown, callbacks: AiStreamCallbacks) => {
       callbacks.onDelta('ok')
     })
-    const wrapper = mountChips('长'.repeat(9000))
+    const wrapper = mountChips('长'.repeat(40_000))
     await wrapper.findAll('.ai-chip')[0].trigger('click')
     await flushPromises()
 
     const [messages] = mockStream.mock.calls[0] as [Array<{ content: string }>]
-    expect(messages[0].content.length).toBeLessThanOrEqual(8000)
+    expect(messages[0].content.length).toBeLessThanOrEqual(AI_CHAT_MAX_INPUT_CHARS)
   })
 
   it('空上下文直接提示，不发请求', async () => {

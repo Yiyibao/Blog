@@ -21,6 +21,12 @@ public class AiGeneratedImageEntity {
     @Column(name = "public_id", nullable = false, unique = true)
     private UUID publicId;
 
+    @Column(name = "generation_id", nullable = false)
+    private UUID generationId;
+
+    @Column(name = "session_id", nullable = false)
+    private Long sessionId;
+
     @Column(nullable = false, length = 32)
     private String provider;
 
@@ -59,11 +65,13 @@ public class AiGeneratedImageEntity {
 
     protected AiGeneratedImageEntity() {}
 
-    public static AiGeneratedImageEntity create(String provider, String model, String prompt,
-                                                 String storageKey, String fileName, String mediaType,
+    public static AiGeneratedImageEntity create(Long sessionId, UUID generationId, String provider, String model,
+                                                 String prompt, String storageKey, String fileName, String mediaType,
                                                  long byteSize, String sha256, Integer width, Integer height) {
         var entity = new AiGeneratedImageEntity();
         entity.publicId = UUID.randomUUID();
+        entity.generationId = generationId;
+        entity.sessionId = sessionId;
         entity.provider = provider;
         entity.model = model;
         entity.prompt = prompt;
@@ -89,6 +97,9 @@ public class AiGeneratedImageEntity {
 
     public Long getId() { return id; }
     public UUID getPublicId() { return publicId; }
+    public UUID getGenerationId() { return generationId; }
+    public Long getSessionId() { return sessionId; }
+    public void setPrompt(String prompt) { this.prompt = prompt; }
     public String getProvider() { return provider; }
     public String getModel() { return model; }
     public String getPrompt() { return prompt; }

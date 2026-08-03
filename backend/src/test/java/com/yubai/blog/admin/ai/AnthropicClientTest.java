@@ -70,6 +70,20 @@ class AnthropicClientTest {
     }
 
     @Test
+    void mapsPerRequestReasoningEffortToExtendedThinkingBudget() {
+        server.expect(requestTo(MESSAGES_URL))
+            .andExpect(method(POST))
+            .andExpect(content().json("""
+                {"model":"claude-sonnet-4-20250514","thinking":{"type":"enabled","budget_tokens":1024},"max_tokens":2048}
+                """, false))
+            .andRespond(withSuccess(SUCCESS_JSON, APPLICATION_JSON));
+
+        client.chat(endpoint, List.of(new ChatMessage("user", "hi")), "medium");
+
+        server.verify();
+    }
+
+    @Test
     void baseUrlWithV1DoesNotDuplicateVersionPath() {
         var v1Endpoint = endpoint(BASE_URL + "/v1");
         server.expect(requestTo(MESSAGES_URL))
