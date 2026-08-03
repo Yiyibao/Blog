@@ -10,6 +10,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -72,6 +73,23 @@ class OpenAiImageClientTest {
 
         assertEquals(1, result.images().size());
         assertEquals(1, result.images().get(0).width());
+        server.verify();
+    }
+
+    @Test
+    void retriesTransientRelayFailureOnce() throws Exception {
+        var endpoint = new AiImageEndpoint("grok", BASE_URL, "test-key", "grok-imagine-image", "images", null, null, 30);
+        var base64 = Base64.getEncoder().encodeToString(onePixelPng());
+        server.expect(requestTo(BASE_URL + "/images/generations"))
+            .andExpect(method(POST))
+            .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+        server.expect(requestTo(BASE_URL + "/images/generations"))
+            .andExpect(method(POST))
+            .andRespond(withSuccess("{\"created\":1,\"data\":[{\"b64_json\":\"" + base64 + "\"}]}", APPLICATION_JSON));
+
+        var result = client.generate(endpoint, new AiImageGenerationRequest("a test", 1, null, null, null, null), 1_000_000);
+
+        assertEquals(1, result.images().size());
         server.verify();
     }
 

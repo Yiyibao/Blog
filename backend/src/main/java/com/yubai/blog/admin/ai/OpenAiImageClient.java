@@ -45,6 +45,8 @@ public class OpenAiImageClient {
     private static final int MAX_DIMENSION = 16_384;
     private static final long MAX_PIXELS = 80_000_000L;
     private static final int MAX_DOWNLOAD_REDIRECTS = 3;
+    private static final int TRANSIENT_RETRY_COUNT = 1;
+    private static final long TRANSIENT_RETRY_DELAY_MILLIS = 750L;
 
     private final Function<AiImageEndpoint, RestClient> apiClientFactory;
 
@@ -64,14 +66,19 @@ public class OpenAiImageClient {
         try {
             var wireApi = normalizeWireApi(endpoint.wireApi());
             var body = buildBody(endpoint, request, wireApi);
-            var response = apiClientFactory.apply(endpoint)
-                .post()
-                .uri(joinUrl(endpoint.baseUrl(), wireApi.equals("responses") ? "/responses" : "/images/generations"))
-                .body(body)
-                .retrieve()
-                .toEntity(JsonNode.class)
-                .getBody();
-            return parseResponse(endpoint.model(), response, maxImageBytes);
+            var client = apiClientFactory.apply(endpoint);
+            var path = joinUrl(endpoint.baseUrl(), wireApi.equals("responses") ? "/responses" : "/images/generations");
+            for (var attempt = 0; attempt <= TRANSIENT_RETRY_COUNT; attempt++) {
+                try {
+                    var response = client.post().uri(path).body(body).retrieve()
+                        .toEntity(JsonNode.class).getBody();
+                    return parseResponse(endpoint.model(), response, maxImageBytes);
+                } catch (HttpServerErrorException exception) {
+                    if (!isTransient(exception) || attempt == TRANSIENT_RETRY_COUNT) throw exception;
+                    pauseBeforeRetry();
+                }
+            }
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service returned an error");
         } catch (AiServiceException exception) {
             throw exception;
         } catch (HttpClientErrorException exception) {
@@ -88,6 +95,22 @@ public class OpenAiImageClient {
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Unable to reach AI image service");
         } catch (RestClientException exception) {
             throw new AiServiceException(HttpStatus.BAD_GATEWAY, "Invalid response from AI image service");
+        }
+    }
+
+    private static boolean isTransient(HttpServerErrorException exception) {
+        var status = exception.getStatusCode().value();
+        return status == HttpStatus.BAD_GATEWAY.value()
+            || status == HttpStatus.SERVICE_UNAVAILABLE.value()
+            || status == HttpStatus.GATEWAY_TIMEOUT.value();
+    }
+
+    private static void pauseBeforeRetry() {
+        try {
+            Thread.sleep(TRANSIENT_RETRY_DELAY_MILLIS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AiServiceException(HttpStatus.BAD_GATEWAY, "AI image service request interrupted");
         }
     }
 
