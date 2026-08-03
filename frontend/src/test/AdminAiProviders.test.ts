@@ -418,6 +418,45 @@ describe('AdminAiProviders Component', () => {
     expect(mockCreateAiProvider.mock.calls[0][0]).not.toHaveProperty('apiKey')
   })
 
+  it('creates a native Anthropic provider with an encrypted API key payload', async () => {
+    mockCreateAiProvider.mockResolvedValue({ ...deepseekProvider, id: 4, name: 'claude', providerType: 'ANTHROPIC' })
+    const wrapper = await mountComponent()
+    await wrapper.find('.provider-section > header button.primary').trigger('click')
+
+    await wrapper.find('input[placeholder="deepseek"]').setValue('claude')
+    await wrapper.find('input[type="radio"][value="ANTHROPIC"]').setValue(true)
+    await wrapper.find('input[type="url"]').setValue('https://api.anthropic.com')
+    await wrapper.find('input[type="password"]').setValue('sk-ant-test-key')
+    await wrapper.find('.admin-editor textarea').setValue('claude-sonnet-4-20250514')
+    await wrapper.find('[data-testid="default-model"]').setValue('claude-sonnet-4-20250514')
+    await wrapper.find('form.admin-editor').trigger('submit')
+    await flushPromises()
+
+    expect(mockCreateAiProvider).toHaveBeenCalledWith({
+      name: 'claude',
+      baseUrl: 'https://api.anthropic.com',
+      providerType: 'ANTHROPIC',
+      apiKey: 'sk-ant-test-key',
+      models: ['claude-sonnet-4-20250514'],
+      defaultModel: 'claude-sonnet-4-20250514',
+      enabled: true,
+      dailyRequestLimit: 200,
+      dailyTokenLimit: 200000,
+    })
+  })
+
+  it('shows Anthropic guidance and keeps its API key input visible', async () => {
+    const wrapper = await mountComponent()
+    await wrapper.find('.provider-section > header button.primary').trigger('click')
+    await wrapper.find('input[type="radio"][value="ANTHROPIC"]').setValue(true)
+    await flushPromises()
+
+    expect(wrapper.find('input[type="password"]').exists()).toBe(true)
+    expect(wrapper.find('input[type="url"]').attributes('placeholder')).toBe('https://api.anthropic.com')
+    expect(wrapper.find('.provider-guidance').text()).toContain('x-api-key')
+    expect(wrapper.find('.provider-guidance').text()).toContain('anthropic-version')
+  })
+
   it('hides api key input and shows guidance when OPENCODE_SERVER is selected', async () => {
     const wrapper = await mountComponent()
     await wrapper.find('.provider-section > header button.primary').trigger('click')

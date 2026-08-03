@@ -22,6 +22,7 @@ class AiChatServiceTest {
     private AiProperties properties;
     private AiProviderRepository repository;
     private OpenAiCompatibleClient client;
+    private AnthropicClient anthropicClient;
     private OpenCodeServerClient opencodeClient;
     private AiChatService service;
     private AiCrypto crypto;
@@ -38,13 +39,16 @@ class AiChatServiceTest {
         properties.setMasterKey(masterKey);
         repository = mock(AiProviderRepository.class);
         client = mock(OpenAiCompatibleClient.class);
+        anthropicClient = mock(AnthropicClient.class);
         opencodeClient = mock(OpenCodeServerClient.class);
         crypto = new AiCrypto(properties);
         var providerService = new AiProviderService(
-            repository, crypto, new AiBaseUrlValidator(properties), client, opencodeClient, properties);
+            repository, crypto, new AiBaseUrlValidator(properties), client, anthropicClient,
+            opencodeClient, properties);
         // 4A-6：用量服务以 mock 注入——预算/审计逻辑由 AiUsageServiceTest 独立覆盖
         usageService = mock(AiUsageService.class);
-        service = new AiChatService(properties, providerService, client, opencodeClient, usageService);
+        service = new AiChatService(properties, providerService, client, anthropicClient,
+            opencodeClient, usageService);
     }
 
     private static ChatRequest request(String content) {
@@ -145,6 +149,27 @@ class AiChatServiceTest {
         assertEquals("https://api.moonshot.cn/v1", captor.getValue().baseUrl());
         assertEquals("sk-registry-key", captor.getValue().apiKey());
         assertEquals("kimi-k2", captor.getValue().model());
+    }
+
+    @Test
+    void registryAnthropicProviderUsesNativeClient() {
+        build(false, null, MASTER_KEY);
+        var entity = AiProviderEntity.create("claude", "https://api.anthropic.com",
+            crypto.encrypt("sk-ant-registry-key"), "claude-sonnet-4-20250514",
+            "claude-sonnet-4-20250514", true, 200, 200_000, AiProviderType.ANTHROPIC);
+        entity.markDefault(true);
+        when(repository.findFirstByIsDefaultTrueAndEnabledTrue()).thenReturn(Optional.of(entity));
+        when(anthropicClient.chat(any(), anyList()))
+            .thenReturn(new ChatResponse("ok", "claude-sonnet-4-20250514", null));
+
+        var response = service.chat(request("hello"));
+
+        assertEquals("ok", response.content());
+        var captor = ArgumentCaptor.forClass(AiEndpoint.class);
+        verify(anthropicClient).chat(captor.capture(), anyList());
+        verifyNoInteractions(client);
+        assertEquals(AiProviderType.ANTHROPIC, captor.getValue().providerType());
+        assertEquals("sk-ant-registry-key", captor.getValue().apiKey());
     }
 
     @Test

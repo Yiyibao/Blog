@@ -17,6 +17,7 @@ class AiProviderServiceTest {
     private AiProperties properties;
     private AiProviderRepository repository;
     private OpenAiCompatibleClient client;
+    private AnthropicClient anthropicClient;
     private AiProviderService service;
 
     private void build(String masterKey, boolean allowLocal, boolean envEnabled, String envKey) {
@@ -28,8 +29,10 @@ class AiProviderServiceTest {
         repository = mock(AiProviderRepository.class);
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         client = mock(OpenAiCompatibleClient.class);
+        anthropicClient = mock(AnthropicClient.class);
         service = new AiProviderService(repository, new AiCrypto(properties),
-            new AiBaseUrlValidator(properties), client, mock(OpenCodeServerClient.class), properties);
+            new AiBaseUrlValidator(properties), client, anthropicClient,
+            mock(OpenCodeServerClient.class), properties);
     }
 
     private static AiProviderRequest request(String name, String baseUrl, String apiKey) {
@@ -156,6 +159,51 @@ class AiProviderServiceTest {
     }
 
     @Test
+    void seedFromAnthropicEnvEncryptsTokenAndMakesProviderDefault() {
+        build(MASTER_KEY, false, false, null);
+        properties.setAnthropicBaseUrl("https://93.184.216.34");
+        properties.setAnthropicAuthToken("test-anthropic-token");
+        properties.setAnthropicModel("claude-sonnet-4-20250514");
+        properties.setAnthropicModels("claude-sonnet-4-20250514");
+        when(repository.findByNameIgnoreCase("Anthropic (env)")).thenReturn(Optional.empty());
+        when(repository.findAll()).thenReturn(List.of());
+
+        service.seedFromAnthropicEnv();
+
+        var captor = ArgumentCaptor.forClass(AiProviderEntity.class);
+        verify(repository, atLeastOnce()).save(captor.capture());
+        var saved = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        assertEquals(AiProviderType.ANTHROPIC, saved.getProviderType());
+        assertEquals("https://93.184.216.34", saved.getBaseUrl());
+        assertEquals("claude-sonnet-4-20250514", saved.getDefaultModel());
+        assertTrue(saved.isDefault());
+        assertTrue(saved.getApiKeyEncrypted().startsWith("v1:"));
+        assertFalse(saved.getApiKeyEncrypted().contains("test-anthropic-token"));
+    }
+
+    @Test
+    void seedFromAnthropicEnvPreservesExistingDefaultProvider() {
+        build(MASTER_KEY, false, false, null);
+        properties.setAnthropicBaseUrl("https://93.184.216.34");
+        properties.setAnthropicAuthToken("test-anthropic-token");
+        var opencode = AiProviderEntity.create("OpenCode", "http://127.0.0.1:4096", null,
+            "model-a", "model-a", true, 200, 200_000, AiProviderType.OPENCODE_SERVER);
+        opencode.markDefault(true);
+        when(repository.findFirstByIsDefaultTrueAndEnabledTrue()).thenReturn(Optional.of(opencode));
+        when(repository.findByNameIgnoreCase("Anthropic (env)")).thenReturn(Optional.empty());
+
+        service.seedFromAnthropicEnv();
+
+        var captor = ArgumentCaptor.forClass(AiProviderEntity.class);
+        verify(repository, atLeastOnce()).save(captor.capture());
+        var saved = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        assertEquals(AiProviderType.ANTHROPIC, saved.getProviderType());
+        assertFalse(saved.isDefault());
+        assertTrue(opencode.isDefault());
+        verify(repository, never()).findAll();
+    }
+
+    @Test
     void testConnectionReturnsFailureAsResultInsteadOfThrowing() {
         build(MASTER_KEY, false, false, null);
         var entity = AiProviderEntity.create("p", "https://93.184.216.34", null, "", "m", true, 200, 200_000, AiProviderType.OPENAI_COMPATIBLE);
@@ -167,5 +215,21 @@ class AiProviderServiceTest {
 
         assertFalse(result.ok());
         assertEquals("Unable to reach AI service", result.message());
+    }
+
+    @Test
+    void testConnectionRoutesAnthropicProviderToNativeClient() {
+        build(MASTER_KEY, false, false, null);
+        var entity = AiProviderEntity.create("claude", "https://api.anthropic.com",
+            new AiCrypto(properties).encrypt("sk-ant-test"), "claude-sonnet-4-20250514",
+            "claude-sonnet-4-20250514", true, 200, 200_000, AiProviderType.ANTHROPIC);
+        when(repository.findById(2L)).thenReturn(Optional.of(entity));
+        when(anthropicClient.listModels(any())).thenReturn(List.of("claude-sonnet-4-20250514"));
+
+        var result = service.testConnection(2L);
+
+        assertTrue(result.ok());
+        verify(anthropicClient).listModels(any());
+        verifyNoInteractions(client);
     }
 }

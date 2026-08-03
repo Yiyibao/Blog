@@ -97,7 +97,7 @@ mvn spring-boot:run
 
 ## AI 对话（可选，多供应商）
 
-AI 助手支持多供应商注册表：DeepSeek、OpenAI、通义、智谱、Kimi、本地 Ollama 等一切 OpenAI 兼容端点都可在管理界面注册与切换，API 密钥以 AES-256-GCM 加密存入数据库。启用注册表需在 `.env.properties` 配置加密主密钥：
+AI 助手支持多供应商注册表：DeepSeek、OpenAI、通义、智谱、Kimi、本地 Ollama 等一切 OpenAI 兼容端点都可在管理界面注册与切换，也支持原生 Anthropic Claude Messages API。API 密钥以 AES-256-GCM 加密存入数据库。启用注册表需在 `.env.properties` 配置加密主密钥：
 
 ```properties
 APP_AI_MASTER_KEY=至少32位随机字符串（openssl rand -base64 48）
@@ -105,7 +105,21 @@ APP_AI_MASTER_KEY=至少32位随机字符串（openssl rand -base64 48）
 APP_AI_ALLOW_LOCAL_ENDPOINTS=false
 ```
 
-未配置主密钥时注册表不可用，仅剩下方环境变量单供应商回退。首次启动时若注册表为空且 env 配置已启用，会自动把 env 配置迁移为第一个供应商（名为 `deepseek`）。
+新增 Anthropic 供应商时，协议类型选择 `Anthropic Claude`，Base URL 填 `https://api.anthropic.com`（自建 OpenAI 兼容网关仍选择 `OPENAI_COMPATIBLE`）。后端会调用 `/v1/messages` 与 `/v1/models`，使用 `x-api-key` 和 `anthropic-version: 2023-06-01`，并支持非流式、SSE 流式聊天及连通性测试。
+
+未配置主密钥时注册表不可用，仅剩下方环境变量单供应商回退。传统 `AI_*` env 配置仅在注册表为空时迁移为 `deepseek`；下方 Anthropic env 配置会同步为独立的 `Anthropic (env)` 供应商。
+
+如需通过服务端环境变量接入原生 Anthropic/Claude 中转，可配置（Token 只放在服务环境中，不要提交到仓库）：
+
+```properties
+ANTHROPIC_BASE_URL=https://your-relay.example
+ANTHROPIC_AUTH_TOKEN=your-test-token
+ANTHROPIC_MODEL=claude-sonnet-5
+ANTHROPIC_MODELS=claude-fable-5,claude-haiku-4-5,claude-haiku-4-5-20251001,claude-opus-4-6,claude-opus-4-7,claude-opus-4-8,claude-opus-5,claude-sonnet-4-6,claude-sonnet-5
+APP_AI_MASTER_KEY=至少32位随机字符串
+```
+
+启动时会把该配置同步为加密保存的 `Anthropic (env)` 供应商；只有没有其他默认供应商时才会设为默认。`ANTHROPIC_MODEL` 未配置时使用 `claude-sonnet-5`。
 
 兼容回退（单供应商 env 配置）：
 
@@ -181,3 +195,30 @@ psql -U postgres -d yubai_blog_it -c "ALTER SCHEMA public OWNER TO yubai_app;"
 cd backend
 mvn test
 ```
+
+## AI 生图（Grok / GPT 中转）
+
+管理后台的 `/admin/ai/images` 提供受权限保护的文本生图入口。后端根据 `AI_IMAGE_GROK_*` 和 `AI_IMAGE_GPT_*` 两组环境变量选择中转商，不把密钥下发浏览器；生成的图片写入附件存储，元数据保存到 `ai_generated_images`，图片内容必须携带管理员 JWT 才能读取。
+
+最小线上配置示例（密钥只放在 systemd `EnvironmentFile`，不要提交 git）：
+
+```dotenv
+AI_IMAGE_ENABLED=true
+AI_IMAGE_GROK_ENABLED=true
+AI_IMAGE_GROK_BASE_URL=https://xinyue.mom/v1
+AI_IMAGE_GROK_API_KEY=replace-with-relay-key
+AI_IMAGE_GROK_MODELS=grok-imagine-image
+AI_IMAGE_GROK_MODEL=grok-imagine-image
+AI_IMAGE_GROK_WIRE_API=images
+
+AI_IMAGE_GPT_ENABLED=true
+AI_IMAGE_GPT_BASE_URL=https://xinyue.mom
+AI_IMAGE_GPT_API_KEY=replace-with-relay-key
+AI_IMAGE_GPT_MODELS=gpt-image-1,gpt-image-1.5,gpt-image-2,gpt-5.5
+AI_IMAGE_GPT_MODEL=gpt-image-1
+AI_IMAGE_GPT_WIRE_API=images
+AI_IMAGE_GPT_HEADER_NAME=x-openai-actor-authorization
+AI_IMAGE_GPT_HEADER_VALUE=local-image-extension
+```
+
+请求路径为 `GET /api/v1/admin/ai/images/models`、`POST /api/v1/admin/ai/images` 和 `GET/DELETE /api/v1/admin/ai/images/{publicId}`。默认每次生成 1 张、每个来源 IP 每分钟 3 次，单张响应上限 15 MB；需要 Responses API 的 GPT 中转时把 `AI_IMAGE_GPT_WIRE_API` 改为 `responses`，客户端会发送 `image_generation` tool 并解析 `output[].result`。

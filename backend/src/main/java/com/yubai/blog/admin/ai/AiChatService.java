@@ -6,22 +6,25 @@ import org.springframework.stereotype.Service;
 
 /**
  * 4A-1：聊天编排——解析供应商端点（注册表优先、env 回退）后调用对应类型客户端。
- * OPENAI_COMPATIBLE → OpenAiCompatibleClient；OPENCODE_SERVER → OpenCodeServerClient。
+ * OPENAI_COMPATIBLE → OpenAiCompatibleClient；ANTHROPIC → AnthropicClient；OPENCODE_SERVER → OpenCodeServerClient。
  */
 @Service
 public class AiChatService {
     private final AiProperties properties;
     private final AiProviderService providerService;
     private final OpenAiCompatibleClient openaiClient;
+    private final AnthropicClient anthropicClient;
     private final OpenCodeServerClient opencodeClient;
     private final AiUsageService usageService;
 
     public AiChatService(AiProperties properties, AiProviderService providerService,
-                         OpenAiCompatibleClient openaiClient, OpenCodeServerClient opencodeClient,
+                         OpenAiCompatibleClient openaiClient, AnthropicClient anthropicClient,
+                         OpenCodeServerClient opencodeClient,
                          AiUsageService usageService) {
         this.properties = properties;
         this.providerService = providerService;
         this.openaiClient = openaiClient;
+        this.anthropicClient = anthropicClient;
         this.opencodeClient = opencodeClient;
         this.usageService = usageService;
     }
@@ -38,7 +41,13 @@ public class AiChatService {
     }
 
     private AiClient clientFor(AiEndpoint endpoint) {
-        return endpoint.providerType() == AiProviderType.OPENCODE_SERVER ? opencodeClient : openaiClient;
+        if (endpoint.providerType() == AiProviderType.OPENCODE_SERVER) {
+            return opencodeClient;
+        }
+        if (endpoint.providerType() == AiProviderType.ANTHROPIC) {
+            return anthropicClient;
+        }
+        return openaiClient;
     }
 
     /** 4A-6：预算闸门 + 成败皆记的用量审计（审计为旁路，不影响主流程）。 */

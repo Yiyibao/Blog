@@ -23,6 +23,7 @@ const activeItem = computed(() => {
   }
   if (path.startsWith('/admin/notes')) return 'notes'
   if (path.startsWith('/admin/ai/providers')) return 'ai-providers'
+  if (path.startsWith('/admin/ai/images')) return 'ai-images'
   if (path.startsWith('/admin/ai')) return 'ai'
   if (path.startsWith('/admin/library')) return 'library'
   if (path.startsWith('/admin/series')) return 'series'
@@ -62,6 +63,9 @@ function logout() {
       </RouterLink>
       <RouterLink :class="{ active: activeItem === 'ai-providers' }" to="/admin/ai/providers">
         <i>⚙</i><span>AI 供应商</span>
+      </RouterLink>
+      <RouterLink :class="{ active: activeItem === 'ai-images' }" to="/admin/ai/images">
+        <i>馃摑</i><span>AI 生图</span>
       </RouterLink>
       <RouterLink :class="{ active: activeItem === 'library' }" to="/admin/library">
         <i>♪</i><span>曲目与语录</span>

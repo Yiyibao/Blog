@@ -2,6 +2,7 @@ package com.yubai.blog.admin.ai;
 
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.config.AiProperties;
+import java.util.Arrays;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,21 +19,25 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AiProviderService {
     private static final Logger log = LoggerFactory.getLogger(AiProviderService.class);
+    private static final String ANTHROPIC_ENV_PROVIDER_NAME = "Anthropic (env)";
 
     private final AiProviderRepository repository;
     private final AiCrypto crypto;
     private final AiBaseUrlValidator baseUrlValidator;
     private final OpenAiCompatibleClient openaiClient;
+    private final AnthropicClient anthropicClient;
     private final OpenCodeServerClient opencodeClient;
     private final AiProperties properties;
 
     public AiProviderService(AiProviderRepository repository, AiCrypto crypto,
                              AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient openaiClient,
-                             OpenCodeServerClient opencodeClient, AiProperties properties) {
+                             AnthropicClient anthropicClient, OpenCodeServerClient opencodeClient,
+                             AiProperties properties) {
         this.repository = repository;
         this.crypto = crypto;
         this.baseUrlValidator = baseUrlValidator;
         this.openaiClient = openaiClient;
+        this.anthropicClient = anthropicClient;
         this.opencodeClient = opencodeClient;
         this.properties = properties;
     }
@@ -146,7 +151,7 @@ public class AiProviderService {
             .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
         try {
             var endpoint = toEndpoint(entity, entity.getDefaultModel());
-            var client = entity.getProviderType() == AiProviderType.OPENCODE_SERVER ? opencodeClient : openaiClient;
+            var client = clientFor(entity.getProviderType());
             var models = client.listModels(endpoint);
             return new AiProviderTestResult(true, "连接成功", models);
         } catch (AiServiceException exception) {
@@ -186,6 +191,7 @@ public class AiProviderService {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void seedFromLegacyEnv() {
+        seedFromAnthropicEnv();
         if (!crypto.isReady() || repository.count() > 0) {
             return;
         }
@@ -205,6 +211,72 @@ public class AiProviderService {
         entity.markDefault(true);
         repository.save(entity);
         log.info("AI 供应商注册表为空，已从环境变量配置生成默认供应商 deepseek");
+    }
+
+    /**
+     * Materialize the native Anthropic environment configuration as an encrypted
+     * provider row. This keeps the existing provider selector and usage budgets
+     * working while ensuring the plaintext token only lives in the process env.
+     */
+    @Transactional
+    public void seedFromAnthropicEnv() {
+        if (!hasText(properties.getAnthropicBaseUrl()) || !hasText(properties.getAnthropicAuthToken())) {
+            return;
+        }
+        if (!crypto.isReady()) {
+            log.warn("ANTHROPIC_AUTH_TOKEN is configured but APP_AI_MASTER_KEY is unavailable; provider was not materialized");
+            return;
+        }
+        var baseUrl = baseUrlValidator.validate(properties.getAnthropicBaseUrl());
+        var configuredModel = hasText(properties.getAnthropicModel())
+            ? properties.getAnthropicModel().trim()
+            : "";
+        var models = normalizeModels(properties.getAnthropicModels(), configuredModel);
+        var model = configuredModel;
+        if (!hasText(model) || !AiProviderResponse.parseModels(models).contains(model)) {
+            model = firstModel(models);
+        }
+        var encryptedKey = crypto.encrypt(properties.getAnthropicAuthToken().trim());
+        var hadActiveDefault = repository.findFirstByIsDefaultTrueAndEnabledTrue().isPresent();
+        var entity = repository.findByNameIgnoreCase(ANTHROPIC_ENV_PROVIDER_NAME).orElse(null);
+        var shouldMakeDefault = !hadActiveDefault || (entity != null && entity.isDefault());
+        if (entity == null) {
+            entity = AiProviderEntity.create(
+                ANTHROPIC_ENV_PROVIDER_NAME,
+                baseUrl,
+                encryptedKey,
+                models,
+                model,
+                true,
+                200,
+                200_000,
+                AiProviderType.ANTHROPIC);
+            entity.markDefault(false);
+            repository.save(entity);
+            repository.flush();
+        } else {
+            entity.update(ANTHROPIC_ENV_PROVIDER_NAME, baseUrl, models, model,
+                true, 200, 200_000, AiProviderType.ANTHROPIC);
+            entity.replaceApiKey(encryptedKey);
+            repository.save(entity);
+        }
+
+        // Only claim the default slot when there is no active default already.
+        // This lets an administrator keep OpenCode (or another provider) as the
+        // default across restarts while the env-backed Anthropic row is refreshed.
+        if (shouldMakeDefault) {
+            for (var other : repository.findAll()) {
+                if (other.isDefault() && other != entity) {
+                    other.markDefault(false);
+                    repository.save(other);
+                }
+            }
+            repository.flush();
+            entity.markDefault(true);
+            repository.save(entity);
+        }
+        repository.flush();
+        log.info("Anthropic provider materialized from environment configuration at {} (default={})", baseUrl, entity.isDefault());
     }
 
     private String resolveModel(AiProviderEntity entity, String requestedModel) {
@@ -232,6 +304,16 @@ public class AiProviderService {
             properties.getOpencodeAgent(), properties.getOpencodeProviderId());
     }
 
+    private AiClient clientFor(AiProviderType providerType) {
+        if (providerType == AiProviderType.OPENCODE_SERVER) {
+            return opencodeClient;
+        }
+        if (providerType == AiProviderType.ANTHROPIC) {
+            return anthropicClient;
+        }
+        return openaiClient;
+    }
+
     private String keyTail(AiProviderEntity entity) {
         if (entity.getApiKeyEncrypted() == null || entity.getApiKeyEncrypted().isBlank() || !crypto.isReady()) {
             return null;
@@ -249,6 +331,26 @@ public class AiProviderService {
             return "";
         }
         return String.join(",", models.stream().map(String::trim).filter(m -> !m.isEmpty()).toList());
+    }
+
+    private static String normalizeModels(String raw, String fallback) {
+        var values = raw == null ? List.<String>of() : Arrays.stream(raw.split(","))
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .distinct()
+            .toList();
+        if (!values.isEmpty()) {
+            return String.join(",", values);
+        }
+        return hasText(fallback) ? fallback.trim() : "claude-sonnet-5";
+    }
+
+    private static String firstModel(String models) {
+        return Arrays.stream(models.split(","))
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .findFirst()
+            .orElse("claude-sonnet-5");
     }
 
     private static boolean hasText(String value) {

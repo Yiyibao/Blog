@@ -759,7 +759,7 @@ export function fetchAttachmentOverview() {
   return unwrap<AttachmentOverview>(api.get('/admin/attachments', { headers: tokenHeader() }))
 }
 
-export type AiProviderType = 'OPENAI_COMPATIBLE' | 'OPENCODE_SERVER'
+export type AiProviderType = 'OPENAI_COMPATIBLE' | 'ANTHROPIC' | 'OPENCODE_SERVER'
 
 export type AiChatRole = 'user' | 'assistant'
 
@@ -983,6 +983,57 @@ export function testAiProvider(id: number) {
 }
 
 // 7：AI 提取菜谱
+export interface AiImageModel {
+  provider: 'grok' | 'gpt'
+  model: string
+  isDefault: boolean
+}
+
+export interface AiImageGeneratePayload {
+  prompt: string
+  provider?: 'grok' | 'gpt'
+  model?: string
+  n?: number
+  size?: string
+  quality?: string
+  aspectRatio?: string
+  resolution?: string
+}
+
+export interface AiGeneratedImage {
+  publicId: string
+  provider: 'grok' | 'gpt'
+  model: string
+  prompt: string
+  mediaType: string
+  byteSize: number
+  width: number | null
+  height: number | null
+  contentPath: string
+  createdAt: string
+}
+
+export function fetchAiImageModels() {
+  return unwrap<AiImageModel[]>(api.get('/admin/ai/images/models', { headers: tokenHeader() }))
+}
+
+export function generateAiImages(payload: AiImageGeneratePayload) {
+  return unwrap<AiGeneratedImage[]>(api.post('/admin/ai/images', payload, {
+    headers: tokenHeader(), timeout: 180000,
+  }))
+}
+
+export async function fetchAiImageContent(publicId: string) {
+  const response = await api.get<Blob>(`/admin/ai/images/${publicId}/content`, {
+    headers: tokenHeader(), responseType: 'blob', timeout: 30000,
+  })
+  return response.data
+}
+
+export function deleteAiGeneratedImage(publicId: string) {
+  return api.delete(`/admin/ai/images/${publicId}`, { headers: tokenHeader() })
+}
+
 export interface RecipeExtractionRequest {
   sourceType: 'TEXT' | 'WEB_URL' | 'VIDEO_URL'
   sourceContent: string

@@ -40,6 +40,28 @@ const form = reactive({
 
 watch(() => form.providerType, () => { form.apiKey = '' })
 
+function isOpenCodeType(providerType: AiProviderType) {
+  return providerType === 'OPENCODE_SERVER'
+}
+
+function providerProtocolLabel(providerType: AiProviderType) {
+  if (providerType === 'OPENCODE_SERVER') return 'OpenCode'
+  if (providerType === 'ANTHROPIC') return 'Anthropic'
+  return 'OpenAI'
+}
+
+function providerProtocolTitle(providerType: AiProviderType) {
+  if (providerType === 'OPENCODE_SERVER') return 'OpenCode Server 协议'
+  if (providerType === 'ANTHROPIC') return 'Anthropic Messages API'
+  return 'OpenAI 兼容协议'
+}
+
+function baseUrlPlaceholder(providerType: AiProviderType) {
+  if (providerType === 'OPENCODE_SERVER') return 'http://127.0.0.1:4096'
+  if (providerType === 'ANTHROPIC') return 'https://api.anthropic.com'
+  return 'https://api.deepseek.com'
+}
+
 function handleAuthError(cause: unknown) {
   if (axios.isAxiosError(cause) && cause.response?.status === 401) {
     logout()
@@ -123,7 +145,7 @@ function parsedModels() {
 
 function providerPayload(): AiProviderPayload {
   const apiKey = form.apiKey.trim()
-  const isOpenCode = form.providerType === 'OPENCODE_SERVER'
+  const isOpenCode = isOpenCodeType(form.providerType)
   return {
     name: form.name.trim(),
     baseUrl: form.baseUrl.trim(),
@@ -156,7 +178,7 @@ async function save() {
     await load()
   } catch (cause) {
     if (!handleAuthError(cause)) {
-      error.value = apiErrorMessage(cause, form.providerType === 'OPENCODE_SERVER'
+      error.value = apiErrorMessage(cause, isOpenCodeType(form.providerType)
         ? '保存失败，请检查必填项和字段格式（base_url 需为环回地址根路径）。'
         : '保存失败，请检查必填项和字段格式（base_url 需为 https 且非内网地址）。')
     }
@@ -310,7 +332,7 @@ onBeforeUnmount(() => {
 
         <div v-if="loading" class="admin-empty">正在读取供应商列表…</div>
         <div v-else-if="!providers.length" class="admin-empty">
-          还没有配置任何 AI 供应商。点击「新建供应商」注册 OpenAI 兼容或 OpenCode Server 端点。
+          还没有配置任何 AI 供应商。点击「新建供应商」注册 OpenAI 兼容、Anthropic Claude 或 OpenCode Server 端点。
         </div>
         <div v-else class="admin-table provider-table">
           <div class="admin-table-head"><span>供应商</span><span>模型</span><span>状态</span><span>操作</span></div>
@@ -323,7 +345,7 @@ onBeforeUnmount(() => {
                 </small>
                 <strong>
                   {{ provider.name }}
-                  <span class="provider-protocol-chip" :title="provider.providerType === 'OPENCODE_SERVER' ? 'OpenCode Server 协议' : 'OpenAI 兼容协议'">{{ provider.providerType === 'OPENCODE_SERVER' ? 'OpenCode' : 'OpenAI' }}</span>
+                  <span class="provider-protocol-chip" :title="providerProtocolTitle(provider.providerType)">{{ providerProtocolLabel(provider.providerType) }}</span>
                   <em v-if="provider.isDefault" class="provider-default-chip">默认</em>
                 </strong>
                 <p>日限额 {{ provider.dailyRequestLimit.toLocaleString() }} 次 / {{ provider.dailyTokenLimit.toLocaleString() }} tokens</p>
@@ -389,7 +411,7 @@ onBeforeUnmount(() => {
 
         <div class="admin-form-grid">
           <label>名称<input v-model="form.name" required maxlength="60" placeholder="deepseek"></label>
-          <label>Base URL<input v-model="form.baseUrl" type="url" required maxlength="500" :placeholder="form.providerType === 'OPENCODE_SERVER' ? 'http://127.0.0.1:4096' : 'https://api.deepseek.com'"></label>
+          <label>Base URL<input v-model="form.baseUrl" type="url" required maxlength="500" :placeholder="baseUrlPlaceholder(form.providerType)"></label>
         </div>
         <label>协议类型</label>
         <div class="admin-type-group">
@@ -398,11 +420,15 @@ onBeforeUnmount(() => {
             <span>OpenAI 兼容</span>
           </label>
           <label class="admin-type-radio">
+            <input type="radio" v-model="form.providerType" value="ANTHROPIC">
+            <span>Anthropic Claude</span>
+          </label>
+          <label class="admin-type-radio">
             <input type="radio" v-model="form.providerType" value="OPENCODE_SERVER">
             <span>OpenCode Server（内建）</span>
           </label>
         </div>
-        <label v-if="form.providerType === 'OPENAI_COMPATIBLE'">
+        <label v-if="!isOpenCodeType(form.providerType)">
           API 密钥{{ editingId ? '（只写不回显）' : '' }}
           <input
             v-model="form.apiKey"
@@ -414,7 +440,12 @@ onBeforeUnmount(() => {
               : '本地无鉴权端点可留空'"
           >
         </label>
-        <div v-else class="provider-guidance">
+        <div v-if="form.providerType === 'ANTHROPIC'" class="provider-guidance">
+          <p>Base URL 填写 <code>https://api.anthropic.com</code>（也支持填写带 <code>/v1</code> 的网关地址）。</p>
+          <p>服务端会使用 Anthropic Messages API，并通过 <code>x-api-key</code> 和 <code>anthropic-version: 2023-06-01</code> 发送密钥。</p>
+          <p>模型 ID 示例：<code>claude-sonnet-4-20250514</code>；密钥会加密保存，编辑时留空可保留原密钥。</p>
+        </div>
+        <div v-else-if="isOpenCodeType(form.providerType)" class="provider-guidance">
           <p>Base URL 必须填写本地回环地址根路径，例如 <code>http://127.0.0.1:4096</code>。</p>
           <p>供应商/模型 ID 使用已配置的 OpenCode sidecar。</p>
           <p>凭据来自服务端环境变量 <code>APP_AI_OPENCODE_USERNAME</code> 与 <code>APP_AI_OPENCODE_PASSWORD</code>，不存入数据库。</p>

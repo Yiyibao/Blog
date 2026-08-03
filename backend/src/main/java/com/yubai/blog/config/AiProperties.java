@@ -8,6 +8,11 @@ public class AiProperties {
     private String baseUrl = "https://api.deepseek.com";
     private String apiKey;
     private String model = "deepseek-v4-flash";
+    /** Native Anthropic Messages API settings supplied by the server environment. */
+    private String anthropicBaseUrl;
+    private String anthropicAuthToken;
+    private String anthropicModel = "claude-sonnet-5";
+    private String anthropicModels = "claude-fable-5,claude-haiku-4-5,claude-haiku-4-5-20251001,claude-opus-4-6,claude-opus-4-7,claude-opus-4-8,claude-opus-5,claude-sonnet-4-6,claude-sonnet-5";
     private int requestTimeout = 60;
     private int maxInputChars = 8000;
     private int maxHistoryMessages = 20;
@@ -30,6 +35,14 @@ public class AiProperties {
     public void setApiKey(String apiKey) { this.apiKey = apiKey; }
     public String getModel() { return model; }
     public void setModel(String model) { this.model = model; }
+    public String getAnthropicBaseUrl() { return anthropicBaseUrl; }
+    public void setAnthropicBaseUrl(String anthropicBaseUrl) { this.anthropicBaseUrl = anthropicBaseUrl; }
+    public String getAnthropicAuthToken() { return anthropicAuthToken; }
+    public void setAnthropicAuthToken(String anthropicAuthToken) { this.anthropicAuthToken = anthropicAuthToken; }
+    public String getAnthropicModel() { return anthropicModel; }
+    public void setAnthropicModel(String anthropicModel) { this.anthropicModel = anthropicModel; }
+    public String getAnthropicModels() { return anthropicModels; }
+    public void setAnthropicModels(String anthropicModels) { this.anthropicModels = anthropicModels; }
     public int getRequestTimeout() { return requestTimeout; }
     public void setRequestTimeout(int requestTimeout) { this.requestTimeout = requestTimeout; }
     public int getMaxInputChars() { return maxInputChars; }

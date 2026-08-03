@@ -17,6 +17,7 @@ const router = createRouter({
     { path: '/admin', name: 'admin', component: () => import('../pages/AdminDashboardPage.vue'), meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
     { path: '/admin/notes', name: 'admin-notes', component: () => import('../pages/AdminNotesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
     { path: '/admin/ai', name: 'admin-ai', component: () => import('../pages/AdminAiPage.vue'), meta: { requiresAuth: true, capability: Capabilities.AI_USAGE } },
+    { path: '/admin/ai/images', name: 'admin-ai-images', component: () => import('../pages/AdminAiImagesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.AI_USAGE } },
     { path: '/admin/ai/providers', name: 'admin-ai-providers', component: () => import('../pages/AdminAiProvidersPage.vue'), meta: { requiresAuth: true, capability: Capabilities.AI_MANAGE } },
     { path: '/admin/library', name: 'admin-library', component: () => import('../pages/AdminLibraryPage.vue'), meta: { requiresAuth: true, capability: Capabilities.LIBRARY_MANAGE } },
     { path: '/admin/series', name: 'admin-series', component: () => import('../pages/AdminSeriesPage.vue'), meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE } },
