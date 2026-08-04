@@ -65,7 +65,7 @@ function logout() {
         <i>⚙</i><span>AI 供应商</span>
       </RouterLink>
       <RouterLink :class="{ active: activeItem === 'ai-images' }" to="/admin/ai/images">
-        <i>馃摑</i><span>AI 生图</span>
+        <i>📝</i><span>AI 生图</span>
       </RouterLink>
       <RouterLink :class="{ active: activeItem === 'library' }" to="/admin/library">
         <i>♪</i><span>曲目与语录</span>
