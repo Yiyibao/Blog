@@ -1,7 +1,7 @@
 # M1 Checkpoint: AI 多模态、真实记忆与生成物闭环
 
 结果：**完成（Internal Alpha，生产默认关闭）**
-下一月允许启动：**YES（M2 仅限本地/测试；不授权生产开放或部署）**
+下一月允许启动：**YES（M2 仅限本地/测试；不授权开启 Production GA）**
 
 ## 1. 入口门与本批次范围
 
@@ -10,7 +10,7 @@
 - 迁移核验：动态扫描到 V52，核对 V51/V52 和专用测试库历史后使用下一个可用版本 V53。
 - 实际最高迁移版本 / 新迁移：V53 / `V53__create_ai_multimodal_platform.sql`。
 - 允许修改范围：网站级 AI 核心、受控文件/记忆/artifact、旧 AI 图片 owner 修复、AI Workspace、契约/测试和相关文档/config。
-- 明确未做：领域工具、RAG、写操作审批、匿名 AI、任意代码/路径/URL 工具、生产迁移、部署和真实模型调用。
+- 明确未做：领域工具、RAG、写操作审批、匿名 AI、任意代码/路径/URL 工具、AI Production GA 和真实模型调用。代码与 expand-only schema 已在后续明确授权下发布，详见第 10 节；功能开关保持关闭。
 
 ## 2. 本批次完成项
 
@@ -39,7 +39,7 @@
 
 ### 后端与迁移
 
-- `mvn verify -Dspotless.check.skip=true`：**748 tests，0 failure，0 error，JAR BUILD SUCCESS**。跳过原因仅是全局 Spotless 会处理 29 个本批次开始前已存在的未格式化用户文件；M1 文件已用精确白名单单独检查通过。
+- 最终发布门禁 `mvn clean verify`：**755 tests，0 failure，0 error，JAR BUILD SUCCESS**；全局 Spotless 同步通过。
 - `mvn -Dtest=AiMultimodalPlatformIntegrationTest test`：**2/2 通过**。真实 PostgreSQL 随机隔离 schema、真实 `StorageService`、本地 deterministic fake HTTP `/responses`；请求同时包含 PNG、PDF、DOCX、Markdown、CSV 对应 parts。
 - 同一集成测试证明：能力不足得到 `AI_PROVIDER_ERROR_400` 且 fake HTTP 请求计数不增加；ACTIVE 记忆跨会话注入，禁用/遗忘后召回为零；file/task/memory/artifact 跨 owner 均返回 NotFound。
 - `AiPlatformMigrationTest`：fresh V1→V53 和 upgrade V52→V53 均通过；52 个迁移文件校验成功。
@@ -52,11 +52,11 @@
 ### 前端、契约与构建
 
 - `npm run lint`：通过，0 warning。
-- `npm run test`：**67 files / 810 tests 全部通过**。
-- `npm run test:coverage`：通过；statements 64.88%、branches 59.36%、functions 55.47%、lines 67.16%。
+- `npm run test:coverage`：**67 files / 811 tests 全部通过**；statements 64.78%、branches 59.34%、functions 55.18%、lines 67.08%。
 - `npm run test:typecheck`：通过。
 - `npm run build`：通过；PWA 90 entries，JS 总量 1,430,965 bytes，build budget 通过。
-- M1 文件精确 `prettier --check`：通过。
+- 全局 `npm run format:check`：通过。
+- `npm run test:e2e`：通过。
 - `npm run api:types:check`：通过；OpenAPI 含 18 个 `/api/v1/ai/**` path，生成类型同步。
 - `git diff --check`：通过。
 
@@ -83,8 +83,8 @@
 
 ## 6. 指标变化
 
-- 后端历史基线 737 → 最终全量 verify 748；随后新增 2 个控制器契约测试并单独 2/2 通过。
-- 前端历史基线 806 → 810。
+- 后端历史基线 737 → 最终发布门禁 755。
+- 前端历史基线 806 → 811。
 - OpenAPI AI paths：0 → 18。
 - 数据库最高版本：V52 → V53。
 - 新生产 feature flags：4 个，默认全部 `false`。
@@ -97,10 +97,9 @@
 - 回滚：关闭四个后端 flag 和前端 flag 即停止新入口；代码回滚不伪装 DB 回滚，V53 表保留等待兼容代码。
 - 补偿/reconciler：文件/artifact 写存储后 DB 失败会删除字节；过期资源循环重试删除；M5 再纳入备份/恢复和全域资源 reconciler 演练。
 
-## 8. 未通过的仓库级门禁与风险
+## 8. 剩余风险与已关闭门禁
 
-- `npm run format:check` 仍只报告 `frontend/src/api/admin.ts` 和 `frontend/src/base.css`。两文件在入口前已有 3,037 行新增/1,139 行删除的用户修改，本批次为避免扩大 diff 未擅自全局格式化；M1 新文件精确检查已通过。
-- 全局 Spotless 仍会报告 29 个既有用户修改文件；M1 Java 精确白名单检查通过。
+- 发布前已统一格式化本批次完整暂存快照；全局 Prettier、Spotless 与 `git diff --check` 均通过。
 - 尚未新增独立 Playwright“真实前后端进程”AI 浏览器作业；当前用户路径由真实后端/DB/存储/fake-provider 集成测试与 Vue store/component 测试共同覆盖。M7 仍负责正式双浏览器 full-stack E2E、断流与故障矩阵。
 - PostgreSQL 测试实例为 18.4，当前 Flyway 日志提示官方验证上限为 PostgreSQL 17；fresh/upgrade/全量测试均通过，但 M5 必须固化支持矩阵。
 - M1 `/tasks/{id}/stream` 聚焦持久回放并在 replay 后关闭；长连接实时增量、heartbeat/断流故障矩阵在 M3/M7 继续增强，不能据此开放 Production GA。
@@ -115,4 +114,11 @@
 - `test(ai): cover multimodal provider ownership recovery and lifecycle`
 - `docs(ai): record M1 architecture contracts and checkpoint`
 
-未执行：commit、push、部署、生产写入。
+## 10. 2026-08-10 发布跟进
+
+- 发布提交：`5bcc83c0a725ad9a04a35f3e9ae986078fb2a613`，已推送 `origin/main`；CI run `31353583919` 成功。
+- 发布标签：`v1.1.0-ai-platform-m1`；Deploy run `31353750071` 的 validate、build、deploy 三个 job 全部成功，原子切换未触发回滚。
+- 迁移前备份：`SHA256SUMS-20260810T034405Z`；数据库 dump 与附件归档 SHA-256 均为 OK，`pg_restore --list` 可读取 295 个对象。
+- 生产结果：`/opt/yubai-blog/current` 指向 `release-20260810035513-5bcc83c`；应用、nginx、PostgreSQL active；Flyway V51→V53，失败迁移 0，七张 M1 核心表存在。
+- 线上验收：首页、登录、后台登录、文章/菜品 API、sitemap、RSS、robots、health 共 9 条 HTTPS 冒烟路径全部 200；未认证 AI API 返回 401；HSTS、CSP 与 CSP-Report-Only 生效。
+- 发布边界：四个 `APP_AI_PLATFORM_*_ENABLED` 未启用，`VITE_AI_PLATFORM_ENABLED=false`；本次发布代码与 schema，但未开放 AI Workspace Production GA，也未执行真实模型调用。

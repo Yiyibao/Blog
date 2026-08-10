@@ -53,10 +53,10 @@ M2 把上述能力接入文章、笔记、菜谱、媒体、搜索和后台，�
 
 | 月份 | 状态 | 结果与证据 | 下一月门 |
 | ---- | ---- | ---------- | -------- |
-| M1 | **完成：Internal Alpha；生产默认关闭** | 新增 V53 与网站级 `com.yubai.blog.ai`；PNG/PDF/DOCX/Markdown/CSV parts 真实进入本地 fake Responses HTTP；真实记忆、四类文本/数据产物和现有 AI 图片产物、owner 隔离、恢复/事件回放、过期清理与兼容回归通过；后端 748、前端 810 个测试通过 | **M2 可启动：YES**，但不代表允许生产开启或部署 |
+| M1 | **完成并发布：Internal Alpha；生产功能关闭** | 新增 V53 与网站级 `com.yubai.blog.ai`；PNG/PDF/DOCX/Markdown/CSV parts 真实进入本地 fake Responses HTTP；真实记忆、四类文本/数据产物和现有 AI 图片产物、owner 隔离、恢复/事件回放、过期清理与兼容回归通过；最终发布门禁后端 755、前端 811 个测试通过；提交 `5bcc83c` 以标签 `v1.1.0-ai-platform-m1` 部署成功 | **M2 可启动：YES**；Production GA 仍为 **NO** |
 
 M1 的完整证据、文件范围、风险和未执行项见
-[`docs/checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md`](checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md)。生产开关仍为关闭；本次没有 commit、push、部署、生产写入或真实模型调用。
+[`docs/checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md`](checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md)。2026-08-10 发布跟进已完成 commit、push、迁移前备份、V51→V53 生产迁移、原子部署和线上冒烟；四个后端开关与前端 Workspace 开关继续关闭，未开放 Production GA，未执行真实模型调用。
 
 ## 2. 产品边界与非目标
 
