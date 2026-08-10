@@ -1,63 +1,63 @@
-import { createSiteConfig, resolveUrl } from '../config/site'
+import { createSiteConfig, resolveUrl } from '../config/site';
 
 export interface StructuredData {
-  '@context': 'https://schema.org'
-  '@type': string
-  [key: string]: unknown
+  '@context': 'https://schema.org';
+  '@type': string;
+  [key: string]: unknown;
 }
 
-let applyId = 0
+let applyId = 0;
 
 export function useStructuredData() {
-  const SCRIPT_SELECTOR = 'script[type="application/ld+json"][data-structured]'
+  const SCRIPT_SELECTOR = 'script[type="application/ld+json"][data-structured]';
 
   function removeAll() {
-    document.querySelectorAll(SCRIPT_SELECTOR).forEach(el => el.remove())
+    document.querySelectorAll(SCRIPT_SELECTOR).forEach((el) => el.remove());
   }
 
   function clear() {
-    removeAll()
-    applyId++
+    removeAll();
+    applyId++;
   }
 
   function apply(data: StructuredData | StructuredData[]) {
-    const seq = ++applyId
-    removeAll()
+    const seq = ++applyId;
+    removeAll();
 
-    const arr = Array.isArray(data) ? data : [data]
+    const arr = Array.isArray(data) ? data : [data];
     for (const item of arr) {
-      if (seq !== applyId) break
-      const script = document.createElement('script')
-      script.type = 'application/ld+json'
-      script.setAttribute('data-structured', '')
-      script.textContent = JSON.stringify(item)
-      document.head.appendChild(script)
+      if (seq !== applyId) break;
+      const script = document.createElement('script');
+      script.type = 'application/ld+json';
+      script.setAttribute('data-structured', '');
+      script.textContent = JSON.stringify(item);
+      document.head.appendChild(script);
     }
-    return seq
+    return seq;
   }
 
-  return { apply, clear, removeAll }
+  return { apply, clear, removeAll };
 }
 
 export function webSite(): StructuredData {
-  const cfg = createSiteConfig()
+  const cfg = createSiteConfig();
   return {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: cfg.siteName,
     description: cfg.siteDescription,
     url: cfg.siteUrl,
-  }
+  };
 }
 
 export function blogPosting(params: {
-  headline: string
-  description: string
-  url: string
-  datePublished: string
-  dateModified: string
-  authorName: string
-  image?: string
+  headline: string;
+  description: string;
+  url: string;
+  datePublished: string;
+  dateModified: string;
+  authorName: string;
+  image?: string;
 }): StructuredData {
   const result: StructuredData = {
     '@context': 'https://schema.org',
@@ -68,20 +68,20 @@ export function blogPosting(params: {
     datePublished: params.datePublished,
     dateModified: params.dateModified,
     author: { '@type': 'Person', name: params.authorName },
-  }
+  };
   if (params.image) {
-    result.image = resolveUrl(params.image)
+    result.image = resolveUrl(params.image);
   }
-  return result
+  return result;
 }
 
 export function techArticle(params: {
-  headline: string
-  description: string
-  url: string
-  datePublished: string
-  dateModified: string
-  authorName: string
+  headline: string;
+  description: string;
+  url: string;
+  datePublished: string;
+  dateModified: string;
+  authorName: string;
 }): StructuredData {
   return {
     '@context': 'https://schema.org',
@@ -92,20 +92,20 @@ export function techArticle(params: {
     datePublished: params.datePublished,
     dateModified: params.dateModified,
     author: { '@type': 'Person', name: params.authorName },
-  }
+  };
 }
 
 export function recipe(params: {
-  name: string
-  description: string
-  url: string
-  image: string
-  recipeIngredient: string[]
-  recipeInstructions: string[]
-  recipeCategory: string
-  authorName: string
-  datePublished: string
-  dateModified: string
+  name: string;
+  description: string;
+  url: string;
+  image: string;
+  recipeIngredient: string[];
+  recipeInstructions: string[];
+  recipeCategory: string;
+  authorName: string;
+  datePublished: string;
+  dateModified: string;
 }): StructuredData {
   return {
     '@context': 'https://schema.org',
@@ -115,7 +115,7 @@ export function recipe(params: {
     url: params.url,
     image: resolveUrl(params.image),
     recipeIngredient: params.recipeIngredient,
-    recipeInstructions: params.recipeInstructions.map(text => ({
+    recipeInstructions: params.recipeInstructions.map((text) => ({
       '@type': 'HowToStep',
       text,
     })),
@@ -123,7 +123,7 @@ export function recipe(params: {
     author: { '@type': 'Person', name: params.authorName },
     datePublished: params.datePublished,
     dateModified: params.dateModified,
-  }
+  };
 }
 
 export function breadcrumbList(items: { name: string; path: string }[]): StructuredData {
@@ -136,5 +136,5 @@ export function breadcrumbList(items: { name: string; path: string }[]): Structu
       name: item.name,
       item: resolveUrl(item.path),
     })),
-  }
+  };
 }

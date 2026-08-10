@@ -1,27 +1,37 @@
-import type { NoteAttachment, NotePayload } from '../api/admin'
+import type { NoteAttachment, NotePayload } from '../api/admin';
 
 export function buildPayload(
-  form: { title: string; markdownContent: string; folder: string; status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'; tags: string[]; version: number },
+  form: {
+    title: string;
+    markdownContent: string;
+    folder: string;
+    status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+    tags: string[];
+    version: number;
+  },
   attachments: NoteAttachment[],
   attachmentPreviewUrls: Record<number, string>,
   tagText: string,
 ): NotePayload {
-  let markdownContent = form.markdownContent
+  let markdownContent = form.markdownContent;
   for (const attachment of attachments) {
-    const previewUrl = attachmentPreviewUrls[attachment.id]
-    if (previewUrl) markdownContent = markdownContent.replaceAll(previewUrl, attachment.url)
+    const previewUrl = attachmentPreviewUrls[attachment.id];
+    if (previewUrl) markdownContent = markdownContent.replaceAll(previewUrl, attachment.url);
   }
   return {
     ...form,
     markdownContent,
     title: form.title.trim() || '未命名笔记',
-    tags: tagText.split(/[,，]/).map(tag => tag.trim()).filter(Boolean),
-  }
+    tags: tagText
+      .split(/[,，]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+  };
 }
 
 export function clearPreviewUrls(previewUrls: Record<number, string>): Record<number, string> {
-  Object.values(previewUrls).forEach(url => URL.revokeObjectURL(url))
-  return {}
+  Object.values(previewUrls).forEach((url) => URL.revokeObjectURL(url));
+  return {};
 }
 
 export function replacePreviewUrls(
@@ -29,12 +39,12 @@ export function replacePreviewUrls(
   attachments: NoteAttachment[],
   previewUrls: Record<number, string>,
 ): string {
-  let rendered = markdown
+  let rendered = markdown;
   for (const attachment of attachments) {
-    const previewUrl = previewUrls[attachment.id]
-    if (previewUrl) rendered = rendered.replaceAll(attachment.url, previewUrl)
+    const previewUrl = previewUrls[attachment.id];
+    if (previewUrl) rendered = rendered.replaceAll(attachment.url, previewUrl);
   }
-  return rendered
+  return rendered;
 }
 
 export function replaceCanonicalUrls(
@@ -42,10 +52,10 @@ export function replaceCanonicalUrls(
   attachments: NoteAttachment[],
   previewUrls: Record<number, string>,
 ): string {
-  let result = markdown
+  let result = markdown;
   for (const attachment of attachments) {
-    const previewUrl = previewUrls[attachment.id]
-    if (previewUrl) result = result.replaceAll(previewUrl, attachment.url)
+    const previewUrl = previewUrls[attachment.id];
+    if (previewUrl) result = result.replaceAll(previewUrl, attachment.url);
   }
-  return result
+  return result;
 }

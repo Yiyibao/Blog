@@ -9,20 +9,20 @@ export const Capabilities = {
   ATTACHMENTS_MANAGE: 'attachments:manage',
   LIBRARY_MANAGE: 'library:manage',
   METRICS_VIEW: 'metrics:view',
-} as const
+} as const;
 
-export type Capability = typeof Capabilities[keyof typeof Capabilities]
+export type Capability = (typeof Capabilities)[keyof typeof Capabilities];
 
 const ROLE_CAPABILITIES: Record<string, ReadonlySet<Capability>> = {
   // FD-29：PARTNER 与 ADMIN 能力完全一致（角色值仍各自保留）
   ADMIN: new Set(Object.values(Capabilities)),
   PARTNER: new Set(Object.values(Capabilities)),
-}
+};
 
 export function getCapabilities(role: string | undefined | null): ReadonlySet<Capability> {
-  return ROLE_CAPABILITIES[role ?? ''] ?? new Set()
+  return ROLE_CAPABILITIES[role ?? ''] ?? new Set();
 }
 
 export function hasCapability(role: string | undefined | null, capability: Capability): boolean {
-  return getCapabilities(role).has(capability)
+  return getCapabilities(role).has(capability);
 }

@@ -57,9 +57,7 @@
           "enum": ["assets/cover.jpg", "assets/cover.jpeg", "assets/cover.png", "assets/cover.webp"],
           "description": "Path to cover image inside the ZIP package."
         },
-        "alt": { "type": "string", "maxLength": 240 },
-        "credit": { "type": "string", "maxLength": 240 },
-        "sourceUrl": { "type": "string", "format": "uri" }
+        "alt": { "type": "string", "maxLength": 240 }
       }
     },
     "source": {

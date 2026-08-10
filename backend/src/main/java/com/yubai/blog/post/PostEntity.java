@@ -1,9 +1,5 @@
 package com.yubai.blog.post;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
-
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -17,7 +13,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
-
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import org.hibernate.annotations.BatchSize;
 
 @Entity
@@ -86,10 +85,13 @@ public class PostEntity {
     @Column(name = "views_count", nullable = false)
     private int viewsCount;
 
-    protected PostEntity() {
-    }
+    @Column(name = "scheduled_publish_at")
+    private Instant scheduledPublishAt;
 
-    public static PostEntity create(PostRequest request, String slug, PostContentSanitizer sanitizer) {
+    protected PostEntity() {}
+
+    public static PostEntity create(
+            PostRequest request, String slug, PostContentSanitizer sanitizer) {
         var post = new PostEntity();
         post.update(request, slug, sanitizer);
         return post;
@@ -109,6 +111,7 @@ public class PostEntity {
         this.number = request.number();
         this.featured = request.featured();
         this.status = request.status();
+        if (this.status != PostStatus.DRAFT) this.scheduledPublishAt = null;
         // 3A-1：MARKDOWN 篇存原文（渲染在前端受控管线），content 列保留消毒后的 HTML 快照（可为空串）；
         // HTML 篇维持既有写入路径，markdown 列顺带保存（转换工具回填时用）
         this.contentFormat = request.contentFormatOrDefault();
@@ -116,37 +119,128 @@ public class PostEntity {
         this.content = sanitizer.sanitize(request.content() == null ? "" : request.content());
     }
 
-    public Long getId() { return id; }
-    public String getSlug() { return slug; }
-    public String getTitle() { return title; }
-    public String getExcerpt() { return excerpt; }
-    public LocalDate getDate() { return date; }
-    public int getReadTime() { return readTime; }
-    public String getCategory() { return category; }
-    public String getCategorySlug() { return categorySlug; }
-    public List<String> getTags() { return List.copyOf(tags); }
-    public String getColor() { return color; }
-    public String getNumber() { return number; }
-    public boolean isFeatured() { return featured; }
-    public PostStatus getStatus() { return status; }
-    public String getContent() { return content; }
-    public String getMarkdownContent() { return markdownContent; }
-    public ContentFormat getContentFormat() { return contentFormat; }
+    public Long getId() {
+        return id;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getExcerpt() {
+        return excerpt;
+    }
+
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public int getReadTime() {
+        return readTime;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public String getCategorySlug() {
+        return categorySlug;
+    }
+
+    public List<String> getTags() {
+        return List.copyOf(tags);
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public String getNumber() {
+        return number;
+    }
+
+    public boolean isFeatured() {
+        return featured;
+    }
+
+    public PostStatus getStatus() {
+        return status;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public String getMarkdownContent() {
+        return markdownContent;
+    }
+
+    public ContentFormat getContentFormat() {
+        return contentFormat;
+    }
+
     /** 3A-2：转换工具回填存量——只补 markdown 列与格式标记，不动既有 HTML。 */
     public void applyMarkdownConversion(String markdown, ContentFormat format) {
         this.markdownContent = markdown;
         this.contentFormat = format;
     }
+
     /** 4C：版本恢复——只回写正文相关字段（快照存的是消毒后落库值），meta 不动。 */
-    void applyRevision(String title, String excerpt, String content, String markdownContent, ContentFormat format) {
+    void applyRevision(
+            String title,
+            String excerpt,
+            String content,
+            String markdownContent,
+            ContentFormat format) {
         this.title = title;
         this.excerpt = excerpt;
         this.content = content;
         this.markdownContent = markdownContent;
         this.contentFormat = format;
     }
-    public int getLikeCount() { return likeCount; }
-    public void setLikeCount(int likeCount) { this.likeCount = likeCount; }
-    public int getViewsCount() { return viewsCount; }
-    public void setViewsCount(int viewsCount) { this.viewsCount = viewsCount; }
+
+    public int getLikeCount() {
+        return likeCount;
+    }
+
+    public void setLikeCount(int likeCount) {
+        this.likeCount = likeCount;
+    }
+
+    public int getViewsCount() {
+        return viewsCount;
+    }
+
+    public void setViewsCount(int viewsCount) {
+        this.viewsCount = viewsCount;
+    }
+
+    public Instant getScheduledPublishAt() {
+        return scheduledPublishAt;
+    }
+
+    public void schedulePublication(Instant publishAt) {
+        this.status = PostStatus.DRAFT;
+        this.scheduledPublishAt = publishAt;
+    }
+
+    public void changePublicationStatus(PostStatus nextStatus) {
+        this.status = nextStatus;
+        this.scheduledPublishAt = null;
+    }
+
+    public void cancelScheduledPublication() {
+        this.scheduledPublishAt = null;
+    }
+
+    public void addWorkflowTags(List<String> newTags) {
+        for (var tag : newTags) {
+            var normalized = tag == null ? "" : tag.trim();
+            if (!normalized.isBlank() && !tags.contains(normalized)) tags.add(normalized);
+        }
+    }
 }

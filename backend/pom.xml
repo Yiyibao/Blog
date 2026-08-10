@@ -18,6 +18,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <mockito.version>5.17.0</mockito.version>
     </properties>
 
     <dependencies>
@@ -68,6 +69,17 @@
             <artifactId>jsoup</artifactId>
             <version>1.18.3</version>
         </dependency>
+        <!-- M1 AI multimodal: bounded, format-aware extraction for PDF and DOCX inputs. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.5</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
         <!-- P1-14：WebP ImageIO 支持（JDK 默认不包含 WebP 编解码） -->
         <dependency>
             <groupId>com.twelvemonkeys.imageio</groupId>
@@ -117,6 +129,38 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.44.5</version>
+                <configuration>
+                    <!-- Existing Java style is frozen at this audited baseline; new changes are formatted. -->
+                    <ratchetFrom>17fe09d7368c79aee856443c3fd93e50e5c3132d</ratchetFrom>
+                    <java>
+                        <googleJavaFormat>
+                            <version>1.24.0</version>
+                            <style>AOSP</style>
+                        </googleJavaFormat>
+                        <removeUnusedImports />
+                        <trimTrailingWhitespace />
+                        <endWithNewline />
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>java-format-check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                </configuration>
             </plugin>
             <!-- P2-5：覆盖率报告随 mvn test 产出（target/site/jacoco），CI 上传工件；阈值基线只升不降 -->
             <plugin>

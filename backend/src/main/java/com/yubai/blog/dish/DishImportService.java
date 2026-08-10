@@ -1,5 +1,11 @@
 package com.yubai.blog.dish;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yubai.blog.common.NotFoundException;
+import com.yubai.blog.note.InvalidNoteFileException;
+import com.yubai.blog.note.NoteAttachmentService;
+import com.yubai.blog.storage.StorageService;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -8,7 +14,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,9 +21,7 @@ import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
-
 import javax.imageio.ImageIO;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -33,13 +36,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yubai.blog.common.NotFoundException;
-import com.yubai.blog.note.InvalidNoteFileException;
-import com.yubai.blog.note.NoteAttachmentService;
-import com.yubai.blog.storage.StorageService;
-
 @Service
 public class DishImportService {
     private static final Logger log = LoggerFactory.getLogger(DishImportService.class);
@@ -53,12 +49,15 @@ public class DishImportService {
     static final int MAX_PIXEL_DIMENSION = 8000;
     static final long MAX_TOTAL_PIXELS = 20_000_000L;
 
-    static final Set<String> ALLOWED_COVER_PATHS = Set.of(
-        "assets/cover.jpg", "assets/cover.jpeg", "assets/cover.png", "assets/cover.webp"
-    );
+    static final Set<String> ALLOWED_COVER_PATHS =
+            Set.of(
+                    "assets/cover.jpg",
+                    "assets/cover.jpeg",
+                    "assets/cover.png",
+                    "assets/cover.webp");
 
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
+    private static final ObjectMapper MAPPER =
+            new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
 
     private final DishImportStagingRepository stagingRepository;
     private final DishRepository dishRepository;
@@ -67,12 +66,13 @@ public class DishImportService {
     private final DishService dishService;
     private final StorageService storageService;
 
-    public DishImportService(DishImportStagingRepository stagingRepository,
-                             DishRepository dishRepository,
-                             DishCategoryService categoryService,
-                             DishAssetService assetService,
-                             DishService dishService,
-                             StorageService storageService) {
+    public DishImportService(
+            DishImportStagingRepository stagingRepository,
+            DishRepository dishRepository,
+            DishCategoryService categoryService,
+            DishAssetService assetService,
+            DishService dishService,
+            StorageService storageService) {
         this.stagingRepository = stagingRepository;
         this.dishRepository = dishRepository;
         this.categoryService = categoryService;
@@ -108,8 +108,10 @@ public class DishImportService {
         var height = result.height;
 
         String matchedCategory = findMatchingCategory(pkg.recipe().categoryHint());
-        boolean slugAvailable = pkg.recipe().slug() == null || pkg.recipe().slug().isBlank()
-            || !dishRepository.existsBySlug(pkg.recipe().slug());
+        boolean slugAvailable =
+                pkg.recipe().slug() == null
+                        || pkg.recipe().slug().isBlank()
+                        || !dishRepository.existsBySlug(pkg.recipe().slug());
 
         var ext = extensionForMediaType(coverMediaType);
         var storageKey = "imports/" + UUID.randomUUID() + "/cover" + ext;
@@ -124,7 +126,9 @@ public class DishImportService {
             throw new InvalidRecipeException("无法序列化菜谱 JSON");
         }
 
-        var staging = DishImportStagingEntity.create(recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
+        var staging =
+                DishImportStagingEntity.create(
+                        recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
         staging = stagingRepository.save(staging);
 
         String coverPreviewUrl = "/api/v1/admin/dish-imports/" + staging.getToken() + "/cover";
@@ -135,8 +139,9 @@ public class DishImportService {
         } else if (pkg.recipe().slug() != null && !pkg.recipe().slug().isBlank()) {
             warnings.add("Slug '" + pkg.recipe().slug() + "' 已被占用，请修改");
         }
-        if (pkg.recipe().categoryHint() != null && !pkg.recipe().categoryHint().isBlank()
-            && matchedCategory == null) {
+        if (pkg.recipe().categoryHint() != null
+                && !pkg.recipe().categoryHint().isBlank()
+                && matchedCategory == null) {
             warnings.add("未找到匹配的分类 '" + pkg.recipe().categoryHint() + "'，请从现有分类中选择");
         }
         if (pkg.generation() != null && pkg.generation().warnings() != null) {
@@ -144,15 +149,68 @@ public class DishImportService {
         }
 
         return new DishImportPreviewResponse(
-            staging.getToken(), staging.getExpiresAt(), pkg,
-            warnings, matchedCategory, slugAvailable, coverPreviewUrl
-        );
+                staging.getToken(),
+                staging.getExpiresAt(),
+                pkg,
+                warnings,
+                matchedCategory,
+                slugAvailable,
+                coverPreviewUrl);
+    }
+
+    /** Rebuilds the preview for an asynchronously completed extraction job. */
+    @Transactional(readOnly = true)
+    public DishImportPreviewResponse getStagedPreview(UUID token) {
+        var staging =
+                stagingRepository
+                        .findByToken(token)
+                        .orElseThrow(() -> new NotFoundException("导入会话不存在或已过期"));
+        if (staging.getExpiresAt().isBefore(Instant.now())
+                || staging.isCancelled()
+                || staging.isConsumed()) {
+            throw new NotFoundException("导入会话不存在或已过期");
+        }
+        final YrecipePackage pkg;
+        try {
+            pkg = MAPPER.readValue(staging.getRecipeJson(), YrecipePackage.class);
+        } catch (IOException exception) {
+            throw new InvalidRecipeException("菜谱数据损坏");
+        }
+        var matchedCategory = findMatchingCategory(pkg.recipe().categoryHint());
+        var slugAvailable =
+                pkg.recipe().slug() == null
+                        || pkg.recipe().slug().isBlank()
+                        || !dishRepository.existsBySlug(pkg.recipe().slug());
+        var warnings = new ArrayList<String>();
+        if (pkg.recipe().slug() != null && !pkg.recipe().slug().isBlank()) {
+            warnings.add(
+                    slugAvailable
+                            ? "Slug '" + pkg.recipe().slug() + "' 可用"
+                            : "Slug '" + pkg.recipe().slug() + "' 已被占用，请修改");
+        }
+        if (pkg.recipe().categoryHint() != null
+                && !pkg.recipe().categoryHint().isBlank()
+                && matchedCategory == null) {
+            warnings.add("未找到匹配的分类 '" + pkg.recipe().categoryHint() + "'，请从现有分类中选择");
+        }
+        if (pkg.generation() != null && pkg.generation().warnings() != null)
+            warnings.addAll(pkg.generation().warnings());
+        return new DishImportPreviewResponse(
+                token,
+                staging.getExpiresAt(),
+                pkg,
+                warnings,
+                matchedCategory,
+                slugAvailable,
+                "/api/v1/admin/dish-imports/" + token + "/cover");
     }
 
     @Transactional
     public DishResponse commit(UUID token, DishImportCommitRequest request) {
-        var staging = stagingRepository.findByToken(token)
-            .orElseThrow(() -> new NotFoundException("导入会话不存在或已过期"));
+        var staging =
+                stagingRepository
+                        .findByToken(token)
+                        .orElseThrow(() -> new NotFoundException("导入会话不存在或已过期"));
 
         if (staging.getExpiresAt().isBefore(Instant.now())) {
             throw new InvalidRecipeException("导入会话已过期，请重新上传");
@@ -176,24 +234,8 @@ public class DishImportService {
             throw new InvalidRecipeException("菜谱数据不完整");
         }
 
-        var slug = request.correctedSlug() != null && !request.correctedSlug().isBlank()
-            ? request.correctedSlug().trim()
-            : (pkg.recipe().slug() != null && !pkg.recipe().slug().isBlank() ? pkg.recipe().slug().trim() : null);
-
-        if (slug == null || slug.isBlank()) {
-            slug = slugFromName(pkg.recipe().name());
-        }
-        if (slug == null || slug.isBlank()) {
-            slug = "recipe-" + pkg.packageId().substring(0, 8);
-        }
-        if (!slug.matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")) {
-            slug = "recipe-" + pkg.packageId().substring(0, 8);
-        }
-
         var recipe = pkg.recipe();
         String imageAlt = pkg.cover().alt() != null ? pkg.cover().alt() : recipe.name();
-        String imageCredit = pkg.cover().credit() != null ? pkg.cover().credit() : "";
-        String imageSourceUrl = pkg.cover().sourceUrl() != null ? pkg.cover().sourceUrl() : "";
         String difficulty = recipe.difficulty() != null ? recipe.difficulty() : "家常";
         int baseServings = recipe.baseServings() > 0 ? recipe.baseServings() : 2;
 
@@ -220,44 +262,73 @@ public class DishImportService {
                         reader.dispose();
                     }
                 }
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
 
-            var asset = assetService.createForDish(0L, assetKey,
-                "cover" + ext, staging.getMediaType(), coverData,
-                width > 0 ? width : null, height > 0 ? height : null);
+            var asset =
+                    assetService.createForDish(
+                            0L,
+                            assetKey,
+                            "cover" + ext,
+                            staging.getMediaType(),
+                            coverData,
+                            width > 0 ? width : null,
+                            height > 0 ? height : null);
 
             var imageUrl = "/api/v1/dish-assets/" + asset.getPublicId();
 
-            dishResponse = dishService.create(new DishRequest(
-                slug, recipe.name(), recipe.summary(), request.category(),
-                imageUrl, imageAlt, imageCredit, imageSourceUrl,
-                recipe.prepMinutes(), difficulty,
-                java.math.BigDecimal.ZERO, false, request.published(), displayOrder, baseServings,
-                recipe.ingredients(), recipe.steps()
-            ));
+            dishResponse =
+                    dishService.create(
+                            new DishRequest(
+                                    recipe.name(),
+                                    recipe.summary(),
+                                    request.category(),
+                                    imageUrl,
+                                    imageAlt,
+                                    recipe.prepMinutes(),
+                                    difficulty,
+                                    java.math.BigDecimal.ZERO,
+                                    false,
+                                    request.published(),
+                                    displayOrder,
+                                    baseServings,
+                                    recipe.ingredients(),
+                                    recipe.steps()));
 
             assetService.assignToDish(asset.getId(), dishResponse.id());
 
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        deleteQuietly(stagingStorageKey);
-                    }
-                    @Override
-                    public void afterCompletion(int status) {
-                        if (status != STATUS_COMMITTED) deleteQuietly(assetKey);
-                    }
-                });
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                deleteQuietly(stagingStorageKey);
+                            }
+
+                            @Override
+                            public void afterCompletion(int status) {
+                                if (status != STATUS_COMMITTED) deleteQuietly(assetKey);
+                            }
+                        });
             }
         } else {
-            dishResponse = dishService.create(new DishRequest(
-                slug, recipe.name(), recipe.summary(), request.category(),
-                "", imageAlt, imageCredit, imageSourceUrl,
-                recipe.prepMinutes(), difficulty,
-                java.math.BigDecimal.ZERO, false, request.published(), displayOrder, baseServings,
-                recipe.ingredients(), recipe.steps()
-            ));
+            dishResponse =
+                    dishService.create(
+                            new DishRequest(
+                                    recipe.name(),
+                                    recipe.summary(),
+                                    request.category(),
+                                    "",
+                                    imageAlt,
+                                    recipe.prepMinutes(),
+                                    difficulty,
+                                    java.math.BigDecimal.ZERO,
+                                    false,
+                                    request.published(),
+                                    displayOrder,
+                                    baseServings,
+                                    recipe.ingredients(),
+                                    recipe.steps()));
         }
 
         return dishResponse;
@@ -272,12 +343,13 @@ public class DishImportService {
         var storageKey = staging.getStorageKey();
         if (storageKey != null) {
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        deleteQuietly(storageKey);
-                    }
-                });
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                deleteQuietly(storageKey);
+                            }
+                        });
             } else {
                 deleteQuietly(storageKey);
             }
@@ -286,14 +358,18 @@ public class DishImportService {
 
     public ResponseEntity<byte[]> export(long dishId) {
         var dish = dishService.findOne(dishId);
-        var assetOpt = dishRepository.findById(dishId)
-            .flatMap(d -> {
-                try {
-                    return java.util.Optional.of(assetService.findByDishId(d.getId()));
-                } catch (NotFoundException e) {
-                    return java.util.Optional.<DishAssetEntity>empty();
-                }
-            });
+        var assetOpt =
+                dishRepository
+                        .findById(dishId)
+                        .flatMap(
+                                d -> {
+                                    try {
+                                        return java.util.Optional.of(
+                                                assetService.findByDishId(d.getId()));
+                                    } catch (NotFoundException e) {
+                                        return java.util.Optional.<DishAssetEntity>empty();
+                                    }
+                                });
 
         if (assetOpt.isEmpty()) {
             var imageUrl = dish.imageUrl();
@@ -304,21 +380,28 @@ public class DishImportService {
         }
 
         var asset = assetOpt.get();
-        var coverData = storageService.read(asset.getStorageKey());
+        var coverData = assetService.readContent(asset.getPublicId());
 
-        var yrecipe = new YrecipePackage(
-            "1.0", "yubai.recipe", UUID.randomUUID().toString(),
-            new YrecipePackage.YrecipeContent(
-                dish.name(), dish.slug(), dish.summary(), dish.category(),
-                dish.prepMinutes(), dish.difficulty(), dish.baseServings(),
-                dish.ingredients(), dish.steps()
-            ),
-            new YrecipePackage.YrecipeCover(
-                "assets/cover" + extFromMediaType(asset.getMediaType()),
-                dish.imageAlt(), dish.imageCredit(), dish.imageSourceUrl()
-            ),
-            null, null
-        );
+        var yrecipe =
+                new YrecipePackage(
+                        "1.0",
+                        "yubai.recipe",
+                        UUID.randomUUID().toString(),
+                        new YrecipePackage.YrecipeContent(
+                                dish.name(),
+                                dish.slug(),
+                                dish.summary(),
+                                dish.category(),
+                                dish.prepMinutes(),
+                                dish.difficulty(),
+                                dish.baseServings(),
+                                dish.ingredients(),
+                                dish.steps()),
+                        new YrecipePackage.YrecipeCover(
+                                "assets/cover" + extFromMediaType(asset.getMediaType()),
+                                dish.imageAlt()),
+                        null,
+                        null);
 
         byte[] zipBytes;
         try {
@@ -329,15 +412,20 @@ public class DishImportService {
 
         var filename = dish.slug() + ".yrecipe";
         var headers = new HttpHeaders();
-        headers.setContentDisposition(ContentDisposition.attachment().filename(filename, java.nio.charset.StandardCharsets.UTF_8).build());
+        headers.setContentDisposition(
+                ContentDisposition.attachment()
+                        .filename(filename, java.nio.charset.StandardCharsets.UTF_8)
+                        .build());
         headers.setContentType(MediaType.parseMediaType("application/vnd.yubai.recipe+zip"));
         headers.setCacheControl("private, no-store");
         return new ResponseEntity<>(zipBytes, headers, HttpStatus.OK);
     }
 
     public ResponseEntity<byte[]> downloadStaged(UUID token) {
-        var staging = stagingRepository.findByToken(token)
-            .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        var staging =
+                stagingRepository
+                        .findByToken(token)
+                        .orElseThrow(() -> new NotFoundException("导入会话不存在"));
         if (staging.getExpiresAt().isBefore(Instant.now()) || staging.isCancelled()) {
             throw new NotFoundException("导入会话已过期");
         }
@@ -354,25 +442,33 @@ public class DishImportService {
         var coverData = storageService.read(staging.getStorageKey());
         final byte[] zipBytes;
         try {
-            zipBytes = buildExportZip(pkg, coverData, extensionForMediaType(staging.getMediaType()));
+            zipBytes =
+                    buildExportZip(pkg, coverData, extensionForMediaType(staging.getMediaType()));
         } catch (IOException exception) {
             throw new InvalidRecipeException("生成菜谱包失败: " + exception.getMessage());
         }
 
-        var baseName = pkg.recipe() != null && pkg.recipe().slug() != null
-            && pkg.recipe().slug().matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")
-            ? pkg.recipe().slug() : "generated-recipe";
+        var baseName =
+                pkg.recipe() != null
+                                && pkg.recipe().slug() != null
+                                && pkg.recipe().slug().matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+                        ? pkg.recipe().slug()
+                        : "generated-recipe";
         var headers = new HttpHeaders();
-        headers.setContentDisposition(ContentDisposition.attachment()
-            .filename(baseName + ".yrecipe", java.nio.charset.StandardCharsets.UTF_8).build());
+        headers.setContentDisposition(
+                ContentDisposition.attachment()
+                        .filename(baseName + ".yrecipe", java.nio.charset.StandardCharsets.UTF_8)
+                        .build());
         headers.setContentType(MediaType.parseMediaType("application/vnd.yubai.recipe+zip"));
         headers.setCacheControl("private, no-store");
         return new ResponseEntity<>(zipBytes, headers, HttpStatus.OK);
     }
 
     public byte[] readStagedCover(UUID token) {
-        var staging = stagingRepository.findByToken(token)
-            .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        var staging =
+                stagingRepository
+                        .findByToken(token)
+                        .orElseThrow(() -> new NotFoundException("导入会话不存在"));
         if (staging.getExpiresAt().isBefore(Instant.now())) {
             throw new NotFoundException("导入会话已过期");
         }
@@ -383,8 +479,10 @@ public class DishImportService {
     }
 
     public String getStagedMediaType(UUID token) {
-        var staging = stagingRepository.findByToken(token)
-            .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        var staging =
+                stagingRepository
+                        .findByToken(token)
+                        .orElseThrow(() -> new NotFoundException("导入会话不存在"));
         if (staging.getExpiresAt().isBefore(Instant.now())) {
             throw new NotFoundException("导入会话已过期");
         }
@@ -409,8 +507,10 @@ public class DishImportService {
         var height = result.height;
 
         String matchedCategory = findMatchingCategory(pkg.recipe().categoryHint());
-        boolean slugAvailable = pkg.recipe().slug() == null || pkg.recipe().slug().isBlank()
-            || !dishRepository.existsBySlug(pkg.recipe().slug());
+        boolean slugAvailable =
+                pkg.recipe().slug() == null
+                        || pkg.recipe().slug().isBlank()
+                        || !dishRepository.existsBySlug(pkg.recipe().slug());
 
         var ext = extensionForMediaType(coverMediaType);
         var storageKey = "imports/" + UUID.randomUUID() + "/cover" + ext;
@@ -425,7 +525,9 @@ public class DishImportService {
             throw new InvalidRecipeException("无法序列化菜谱 JSON");
         }
 
-        var staging = DishImportStagingEntity.create(recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
+        var staging =
+                DishImportStagingEntity.create(
+                        recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
         staging = stagingRepository.save(staging);
 
         String coverPreviewUrl = "/api/v1/admin/dish-imports/" + staging.getToken() + "/cover";
@@ -436,8 +538,9 @@ public class DishImportService {
         } else if (pkg.recipe().slug() != null && !pkg.recipe().slug().isBlank()) {
             warnings.add("Slug '" + pkg.recipe().slug() + "' 已被占用，请修改");
         }
-        if (pkg.recipe().categoryHint() != null && !pkg.recipe().categoryHint().isBlank()
-            && matchedCategory == null) {
+        if (pkg.recipe().categoryHint() != null
+                && !pkg.recipe().categoryHint().isBlank()
+                && matchedCategory == null) {
             warnings.add("未找到匹配的分类 '" + pkg.recipe().categoryHint() + "'，请从现有分类中选择");
         }
         if (pkg.generation() != null && pkg.generation().warnings() != null) {
@@ -445,13 +548,17 @@ public class DishImportService {
         }
 
         return new DishImportPreviewResponse(
-            staging.getToken(), staging.getExpiresAt(), pkg,
-            warnings, matchedCategory, slugAvailable, coverPreviewUrl
-        );
+                staging.getToken(),
+                staging.getExpiresAt(),
+                pkg,
+                warnings,
+                matchedCategory,
+                slugAvailable,
+                coverPreviewUrl);
     }
 
-    private record ExtractResult(YrecipePackage pkg, byte[] coverData,
-                                 String coverMediaType, int width, int height) {}
+    private record ExtractResult(
+            YrecipePackage pkg, byte[] coverData, String coverMediaType, int width, int height) {}
 
     private ExtractResult validateAndExtract(byte[] zipData) {
         try (var zis = new ZipInputStream(new ByteArrayInputStream(zipData))) {
@@ -533,16 +640,18 @@ public class DishImportService {
             }
 
             if (!entries.isEmpty()) {
-                throw new InvalidRecipeException("压缩包包含多余文件: " + String.join(", ", entries.keySet()));
+                throw new InvalidRecipeException(
+                        "压缩包包含多余文件: " + String.join(", ", entries.keySet()));
             }
 
             var ext = coverPath.substring(coverPath.lastIndexOf('.'));
-            var mediaType = switch (ext) {
-                case ".jpg", ".jpeg" -> "image/jpeg";
-                case ".png" -> "image/png";
-                case ".webp" -> "image/webp";
-                default -> throw new InvalidRecipeException("不支持的图片格式: " + ext);
-            };
+            var mediaType =
+                    switch (ext) {
+                        case ".jpg", ".jpeg" -> "image/jpeg";
+                        case ".png" -> "image/png";
+                        case ".webp" -> "image/webp";
+                        default -> throw new InvalidRecipeException("不支持的图片格式: " + ext);
+                    };
 
             if (!NoteAttachmentService.matchesMagicBytes(coverData, mediaType)) {
                 throw new InvalidRecipeException("封面图片内容与扩展名不匹配");
@@ -558,7 +667,8 @@ public class DishImportService {
                     width = reader.getWidth(0);
                     height = reader.getHeight(0);
                     if (width > MAX_PIXEL_DIMENSION || height > MAX_PIXEL_DIMENSION) {
-                        throw new InvalidRecipeException("封面图片尺寸不能超过 " + MAX_PIXEL_DIMENSION + "×" + MAX_PIXEL_DIMENSION);
+                        throw new InvalidRecipeException(
+                                "封面图片尺寸不能超过 " + MAX_PIXEL_DIMENSION + "×" + MAX_PIXEL_DIMENSION);
                     }
                     if ((long) width * height > MAX_TOTAL_PIXELS) {
                         throw new InvalidRecipeException("封面图片总像素不能超过 " + MAX_TOTAL_PIXELS);
@@ -631,8 +741,9 @@ public class DishImportService {
         if (recipe.name().length() > 120) {
             throw new InvalidRecipeException("菜谱名称不能超过 120 个字符");
         }
-        if (recipe.slug() != null && !recipe.slug().isBlank()
-            && !recipe.slug().matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")) {
+        if (recipe.slug() != null
+                && !recipe.slug().isBlank()
+                && !recipe.slug().matches("^[a-z0-9]+(?:-[a-z0-9]+)*$")) {
             throw new InvalidRecipeException("Slug 格式不合法: " + recipe.slug());
         }
         if (recipe.summary() == null || recipe.summary().isBlank()) {
@@ -702,21 +813,6 @@ public class DishImportService {
         if (pkg.cover().alt().length() > 240) {
             throw new InvalidRecipeException("封面替代文本不能超过 240 个字符");
         }
-        if (pkg.cover().credit() != null) {
-            requireClean(pkg.cover().credit(), "封面来源");
-            if (pkg.cover().credit().length() > 240) {
-                throw new InvalidRecipeException("封面来源不能超过 240 个字符");
-            }
-        }
-        if (pkg.cover().sourceUrl() != null) {
-            requireClean(pkg.cover().sourceUrl(), "封面来源 URL");
-            if (pkg.cover().sourceUrl().length() > 1200) {
-                throw new InvalidRecipeException("封面来源 URL 不能超过 1200 个字符");
-            }
-            if (!isValidHttpsUrl(pkg.cover().sourceUrl())) {
-                throw new InvalidRecipeException("封面来源 URL 必须是 HTTPS 链接");
-            }
-        }
         if (pkg.source() != null) {
             if (pkg.source().type() != null) {
                 requireClean(pkg.source().type(), "来源类型");
@@ -773,7 +869,7 @@ public class DishImportService {
                 }
             }
             if (pkg.generation().confidence() != null
-                && (pkg.generation().confidence() < 0 || pkg.generation().confidence() > 1)) {
+                    && (pkg.generation().confidence() < 0 || pkg.generation().confidence() > 1)) {
                 throw new InvalidRecipeException("置信度必须在 0-1 之间");
             }
             if (pkg.generation().warnings() != null && pkg.generation().warnings().size() > 10) {
@@ -785,17 +881,20 @@ public class DishImportService {
     private String findMatchingCategory(String categoryHint) {
         if (categoryHint == null || categoryHint.isBlank()) return null;
         var all = categoryService.findAll();
-        var exact = all.stream()
-            .filter(c -> c.name().equals(categoryHint))
-            .findFirst();
+        var exact = all.stream().filter(c -> c.name().equals(categoryHint)).findFirst();
         if (exact.isPresent()) return exact.get().name();
-        var fuzzy = all.stream()
-            .filter(c -> c.name().contains(categoryHint) || categoryHint.contains(c.name()))
-            .findFirst();
+        var fuzzy =
+                all.stream()
+                        .filter(
+                                c ->
+                                        c.name().contains(categoryHint)
+                                                || categoryHint.contains(c.name()))
+                        .findFirst();
         return fuzzy.map(AdminDishCategory::name).orElse(null);
     }
 
-    private byte[] buildExportZip(YrecipePackage pkg, byte[] coverData, String ext) throws IOException {
+    private byte[] buildExportZip(YrecipePackage pkg, byte[] coverData, String ext)
+            throws IOException {
         var baos = new ByteArrayOutputStream();
         try (var zos = new ZipOutputStream(baos, java.nio.charset.StandardCharsets.UTF_8)) {
             var entry = new ZipEntry("assets/cover" + ext);
@@ -842,18 +941,6 @@ public class DishImportService {
         return extensionForMediaType(mediaType);
     }
 
-    private static String slugFromName(String name) {
-        var asciiOnly = name.replaceAll("[^\\u0000-\\u007F]", "");
-        if (asciiOnly.isBlank()) {
-            return null;
-        }
-        var slug = asciiOnly.toLowerCase()
-            .replaceAll("[^a-z0-9]+", "-")
-            .replaceAll("^-|-$", "")
-            .replaceAll("-+", "-");
-        return slug.isBlank() ? null : slug;
-    }
-
     static boolean isValidHttpsUrl(String url) {
         if (url == null || url.isBlank()) return false;
         try {
@@ -872,12 +959,13 @@ public class DishImportService {
 
     private boolean registerRollbackCleanup(String storageKey) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) return false;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED) deleteQuietly(storageKey);
-            }
-        });
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != STATUS_COMMITTED) deleteQuietly(storageKey);
+                    }
+                });
         return true;
     }
 

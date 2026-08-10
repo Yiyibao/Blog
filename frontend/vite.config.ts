@@ -1,12 +1,13 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { VitePWA } from 'vite-plugin-pwa'
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
+      includeManifestIcons: false,
       // NF-6：预缓存只收代码与字体/矢量资源；位图全部退出预缓存改运行时缓存
       includeAssets: [],
       manifest: {
@@ -24,8 +25,21 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff,woff2,ttf,svg}'],
+        globIgnores: ['assets/tiptap-*', 'assets/katex-*', 'assets/KaTeX_*', 'assets/code-highlight-*'],
         // NF-6：图片改运行时 CacheFirst——首次安装不再预下载 ~6MB 位图
         runtimeCaching: [
+          {
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' &&
+              /^\/api\/v1\/(posts|dishes|categories|dish-categories)(?:\/|$)/.test(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'offline-reading-api',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 120, maxAgeSeconds: 14 * 24 * 3600 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: ({ request }) => request.destination === 'image',
             handler: 'CacheFirst',
@@ -54,15 +68,5 @@ export default defineConfig({
     target: 'es2022',
     // L-3：map 照常生成但产物不引用（nginx 对 .map 返回 404）；线上排错时用本地 dist 的 map 对照
     sourcemap: 'hidden',
-    rollupOptions: {
-      output: {
-        // P1-7：编辑器/公式库单独分块，公开首屏 chunk 不被拖大；仅相关路由按需加载
-        manualChunks(id: string) {
-          if (id.includes('node_modules/katex')) return 'katex'
-          if (id.includes('node_modules/@tiptap') || id.includes('node_modules/prosemirror')) return 'tiptap'
-          return undefined
-        },
-      },
-    },
   },
-})
+});

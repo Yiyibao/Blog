@@ -1,89 +1,119 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { streamAiChat, type AiChatMessage } from '../api/admin'
-import { AI_ACTION_CONTEXT_CHARS } from '../config/aiLimits'
+import { ref } from 'vue';
+import { streamAiChat, type AiChatMessage } from '../api/admin';
+import { AI_ACTION_CONTEXT_CHARS } from '../config/aiLimits';
 
 /**
  * 4A-5：编辑场景化 AI 动作 chips——总结/标题/标签/润色/续写。
  * 自动附当前编辑内容为上下文（客户端截断适配服务端单条 AI_CHAT_MAX_INPUT_CHARS 字限额），
  * 结果面板一键回填宿主表单：**只填入不保存**，保存永远是作者的显式动作。
  */
-export type AiActionKind = 'summary' | 'title' | 'tags' | 'polish' | 'continue'
+export type AiActionKind = 'summary' | 'title' | 'tags' | 'polish' | 'continue';
 
 const props = defineProps<{
   /** 惰性取当前编辑内容（点击时才读取，保证拿到最新值） */
-  getContext: () => string
-}>()
+  getContext: () => string;
+}>();
 
 const emit = defineEmits<{
-  apply: [action: AiActionKind, text: string]
-}>()
+  apply: [action: AiActionKind, text: string];
+}>();
 
 /** 单条消息服务端限额减去指令预留后的上下文上限。 */
-const MAX_CONTEXT_CHARS = AI_ACTION_CONTEXT_CHARS
+const MAX_CONTEXT_CHARS = AI_ACTION_CONTEXT_CHARS;
 
 const ACTIONS: ReadonlyArray<{ id: AiActionKind; label: string; prompt: string }> = [
-  { id: 'summary', label: '✦ 总结', prompt: '用不超过 120 字为以下内容写一段中文摘要，直接输出摘要文本，不要任何前后缀说明：' },
-  { id: 'title', label: '✦ 标题建议', prompt: '为以下内容拟 5 个简洁有力的中文标题，每行一个，不要编号以外的解释：' },
-  { id: 'tags', label: '✦ 标签建议', prompt: '为以下内容提取 3 到 6 个中文标签，用逗号分隔输出，不要其他文字：' },
-  { id: 'polish', label: '✦ 润色', prompt: '润色以下内容：保持原意、语气与 Markdown 结构，修正病句与冗余，直接输出润色后的全文：' },
-  { id: 'continue', label: '✦ 续写', prompt: '基于以下内容自然续写一段（200 到 400 字），风格保持一致，直接输出续写文本：' },
-]
+  {
+    id: 'summary',
+    label: '✦ 总结',
+    prompt: '用不超过 120 字为以下内容写一段中文摘要，直接输出摘要文本，不要任何前后缀说明：',
+  },
+  {
+    id: 'title',
+    label: '✦ 标题建议',
+    prompt: '为以下内容拟 5 个简洁有力的中文标题，每行一个，不要编号以外的解释：',
+  },
+  {
+    id: 'tags',
+    label: '✦ 标签建议',
+    prompt: '为以下内容提取 3 到 6 个中文标签，用逗号分隔输出，不要其他文字：',
+  },
+  {
+    id: 'polish',
+    label: '✦ 润色',
+    prompt: '润色以下内容：保持原意、语气与 Markdown 结构，修正病句与冗余，直接输出润色后的全文：',
+  },
+  {
+    id: 'continue',
+    label: '✦ 续写',
+    prompt: '基于以下内容自然续写一段（200 到 400 字），风格保持一致，直接输出续写文本：',
+  },
+];
 
-const runningAction = ref<AiActionKind | null>(null)
-const resultAction = ref<AiActionKind | null>(null)
-const resultText = ref('')
-const error = ref('')
-let abortController: AbortController | null = null
+const runningAction = ref<AiActionKind | null>(null);
+const resultAction = ref<AiActionKind | null>(null);
+const resultText = ref('');
+const error = ref('');
+let abortController: AbortController | null = null;
 
 async function run(action: (typeof ACTIONS)[number]) {
-  if (runningAction.value) return
-  const context = (props.getContext() || '').slice(0, MAX_CONTEXT_CHARS)
+  if (runningAction.value) return;
+  const context = (props.getContext() || '').slice(0, MAX_CONTEXT_CHARS);
   if (!context.trim()) {
-    error.value = '当前没有可用的编辑内容。'
-    return
+    error.value = '当前没有可用的编辑内容。';
+    return;
   }
-  runningAction.value = action.id
-  resultAction.value = action.id
-  resultText.value = ''
-  error.value = ''
-  const messages: AiChatMessage[] = [{ role: 'user', content: `${action.prompt}\n\n${context}` }]
-  const controller = new AbortController()
-  abortController = controller
+  runningAction.value = action.id;
+  resultAction.value = action.id;
+  resultText.value = '';
+  error.value = '';
+  const messages: AiChatMessage[] = [{ role: 'user', content: `${action.prompt}\n\n${context}` }];
+  const controller = new AbortController();
+  abortController = controller;
   try {
-    await streamAiChat(messages, {
-      onDelta: (text) => { resultText.value += text },
-    }, { signal: controller.signal })
-    if (!resultText.value.trim()) error.value = 'AI 未返回内容，请重试。'
+    await streamAiChat(
+      messages,
+      {
+        onDelta: (text) => {
+          resultText.value += text;
+        },
+      },
+      { signal: controller.signal },
+    );
+    if (!resultText.value.trim()) error.value = 'AI 未返回内容，请重试。';
   } catch {
     if (!controller.signal.aborted) {
-      error.value = 'AI 请求失败，请检查供应商配置或稍后重试。'
-      resultAction.value = null
+      error.value = 'AI 请求失败，请检查供应商配置或稍后重试。';
+      resultAction.value = null;
     }
   } finally {
-    runningAction.value = null
-    abortController = null
+    runningAction.value = null;
+    abortController = null;
   }
 }
 
 function stop() {
-  abortController?.abort()
+  abortController?.abort();
 }
 
 function applyResult() {
-  if (!resultAction.value || !resultText.value.trim()) return
-  emit('apply', resultAction.value, resultText.value.trim())
-  closeResult()
+  if (!resultAction.value || !resultText.value.trim()) return;
+  emit('apply', resultAction.value, resultText.value.trim());
+  closeResult();
 }
 
 function closeResult() {
-  resultAction.value = null
-  resultText.value = ''
+  resultAction.value = null;
+  resultText.value = '';
 }
 
 const ACTION_LABELS: Record<AiActionKind, string> = {
-  summary: '总结', title: '标题建议', tags: '标签建议', polish: '润色', continue: '续写',
-}
+  summary: '总结',
+  title: '标题建议',
+  tags: '标签建议',
+  polish: '润色',
+  continue: '续写',
+};
 </script>
 
 <template>
@@ -116,7 +146,12 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
       </header>
       <pre class="result-text" aria-live="polite">{{ resultText || '…' }}</pre>
       <footer>
-        <button type="button" class="apply-btn" :disabled="!!runningAction || !resultText.trim()" @click="applyResult">
+        <button
+          type="button"
+          class="apply-btn"
+          :disabled="!!runningAction || !resultText.trim()"
+          @click="applyResult"
+        >
           <span>填入表单</span>
           <span class="btn-icon">↩</span>
         </button>
@@ -178,8 +213,13 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
   animation: pulse-glow 1.5s infinite ease-in-out;
 }
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #7c3aed) 40%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #7c3aed) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent, #7c3aed) 12%, transparent);
+  }
 }
 .chip-spinner {
   display: inline-block;
@@ -191,7 +231,9 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
   animation: spin 0.75s linear infinite;
 }
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .ai-chip.stop {
   border-color: #ef4444;
@@ -223,8 +265,14 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
   animation: slide-down 0.22s ease-out;
 }
 @keyframes slide-down {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .chips-result header {
   display: flex;
@@ -260,7 +308,11 @@ const ACTION_LABELS: Record<AiActionKind, string> = {
   padding: 14px;
   max-height: 240px;
   overflow: auto;
-  font: 13px/1.7 Consolas, Monaco, 'Courier New', monospace;
+  font:
+    13px/1.7 Consolas,
+    Monaco,
+    'Courier New',
+    monospace;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--ink, #1e293b);

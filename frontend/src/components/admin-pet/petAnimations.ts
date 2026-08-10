@@ -19,7 +19,7 @@ export const ATLAS = {
   cellHeight: 208,
   width: 1536,
   height: 2288,
-} as const
+} as const;
 
 /** 2× 高清行图几何（每文件一行 8 格）。 */
 export const HD_ROW = {
@@ -29,7 +29,7 @@ export const HD_ROW = {
   cellHeight: 416,
   width: 3072,
   height: 416,
-} as const
+} as const;
 
 export type PetState =
   | 'idle'
@@ -44,27 +44,27 @@ export type PetState =
   | 'idle-curious'
   | 'idle-sleeve'
   | 'idle-sway'
-  | 'chat-open'
+  | 'chat-open';
 
-export type IdleActionId = 'idle-curious' | 'idle-sleeve' | 'idle-sway'
+export type IdleActionId = 'idle-curious' | 'idle-sleeve' | 'idle-sway';
 
-export type AnimationKind = 'standard' | 'idle-action' | 'interaction'
+export type AnimationKind = 'standard' | 'idle-action' | 'interaction';
 
 export interface SpriteSource {
-  url: string
-  cellWidth: number
-  cellHeight: number
-  columns: number
-  rows: number
+  url: string;
+  cellWidth: number;
+  cellHeight: number;
+  columns: number;
+  rows: number;
 }
 
 export interface AnimationSpec {
-  source: SpriteSource
-  frames: number
+  source: SpriteSource;
+  frames: number;
   /** 逐帧停留毫秒；末帧结束后循环回第 0 帧（loop）或结束（one-shot）。 */
-  durations: readonly number[]
-  loop: boolean
-  kind: AnimationKind
+  durations: readonly number[];
+  loop: boolean;
+  kind: AnimationKind;
 }
 
 export const HD_SOURCE = (rowId: string): SpriteSource => ({
@@ -73,7 +73,7 @@ export const HD_SOURCE = (rowId: string): SpriteSource => ({
   cellHeight: HD_ROW.cellHeight,
   columns: HD_ROW.columns,
   rows: HD_ROW.rows,
-})
+});
 
 export const LEGACY_SOURCE: SpriteSource = {
   url: ATLAS.spriteUrl,
@@ -81,31 +81,41 @@ export const LEGACY_SOURCE: SpriteSource = {
   cellHeight: ATLAS.cellHeight,
   columns: ATLAS.columns,
   rows: ATLAS.rows,
-}
+};
 
 /** 15 个高清行 id（9 标准 + 2 视线 + 3 待机 + 1 点击）。 */
-export type HdRowId =
-  | PetState
-  | 'look-row-9'
-  | 'look-row-10'
+export type HdRowId = PetState | 'look-row-9' | 'look-row-10';
 
 export interface HdRowMeta {
-  id: HdRowId
-  frames: number
-  durations: readonly number[] | null
-  loop: boolean
-  kind: AnimationKind
+  id: HdRowId;
+  frames: number;
+  durations: readonly number[] | null;
+  loop: boolean;
+  kind: AnimationKind;
   /** 对应标准图集行（身份基线 / 回退行）。 */
-  legacyRow: number
+  legacyRow: number;
 }
 
-const HD_STANDARD: Record<string, { legacyRow: number; frames: number; durations: readonly number[]; loop: boolean }> = {
+const HD_STANDARD: Record<
+  string,
+  { legacyRow: number; frames: number; durations: readonly number[]; loop: boolean }
+> = {
   // row 0: cols 0-5, 280,110,110,140,140,320 —— 呼吸/眨眼循环
   idle: { legacyRow: 0, frames: 6, durations: [280, 110, 110, 140, 140, 320], loop: true },
   // row 1: cols 0-7，前 7 帧 120ms，末帧 220ms
-  'running-right': { legacyRow: 1, frames: 8, durations: [120, 120, 120, 120, 120, 120, 120, 220], loop: true },
+  'running-right': {
+    legacyRow: 1,
+    frames: 8,
+    durations: [120, 120, 120, 120, 120, 120, 120, 220],
+    loop: true,
+  },
   // row 2: 同上（左向）
-  'running-left': { legacyRow: 2, frames: 8, durations: [120, 120, 120, 120, 120, 120, 120, 220], loop: true },
+  'running-left': {
+    legacyRow: 2,
+    frames: 8,
+    durations: [120, 120, 120, 120, 120, 120, 120, 220],
+    loop: true,
+  },
   // row 3: cols 0-3, 140,140,140,280 —— 挥手一轮
   waving: { legacyRow: 3, frames: 4, durations: [140, 140, 140, 280], loop: false },
   // row 4: cols 0-4, 140,140,140,140,280
@@ -118,7 +128,7 @@ const HD_STANDARD: Record<string, { legacyRow: number; frames: number; durations
   running: { legacyRow: 7, frames: 6, durations: [120, 120, 120, 120, 120, 220], loop: true },
   // row 8: cols 0-5，前 5 帧 150ms，末帧 280ms
   review: { legacyRow: 8, frames: 6, durations: [150, 150, 150, 150, 150, 280], loop: false },
-}
+};
 
 /** 待机动作（30 秒未悬浮时随机播放一轮）。 */
 const HD_IDLE_ACTIONS: Record<IdleActionId, { frames: number; durations: readonly number[] }> = {
@@ -128,49 +138,94 @@ const HD_IDLE_ACTIONS: Record<IdleActionId, { frames: number; durations: readonl
   'idle-sleeve': { frames: 8, durations: [200, 180, 180, 220, 200, 180, 260, 360] },
   // 轻踮脚裙摆摇曳：重心轻移 → 脚跟微抬 → 轻摆 → 裙摆披帛迟滞跟随 → 回弹 → 站稳收束
   'idle-sway': { frames: 8, durations: [160, 160, 180, 180, 180, 180, 220, 340] },
-}
+};
 
 /** 点击聊天面板：欣喜迎接小欠身（方向中性，衔接 waiting）。 */
 const CHAT_OPEN: { frames: number; durations: readonly number[] } = {
   frames: 8,
   durations: [90, 90, 110, 130, 150, 160, 180, 220],
-}
+};
 
 /** 15 个高清行元数据（id → 行图 + 帧时长 + 回退行）。 */
 export const HD_ROWS: Record<HdRowId, HdRowMeta> = {
   ...Object.fromEntries(
     Object.entries(HD_STANDARD).map(([id, spec]) => [
       id,
-      { id, frames: spec.frames, durations: spec.durations, loop: spec.loop, kind: 'standard' as const, legacyRow: spec.legacyRow },
+      {
+        id,
+        frames: spec.frames,
+        durations: spec.durations,
+        loop: spec.loop,
+        kind: 'standard' as const,
+        legacyRow: spec.legacyRow,
+      },
     ]),
   ),
   'look-row-9': { id: 'look-row-9', frames: 8, durations: null, loop: false, kind: 'standard', legacyRow: 9 },
-  'look-row-10': { id: 'look-row-10', frames: 8, durations: null, loop: false, kind: 'standard', legacyRow: 10 },
-  'idle-curious': { id: 'idle-curious', frames: 8, durations: HD_IDLE_ACTIONS['idle-curious'].durations, loop: false, kind: 'idle-action', legacyRow: 0 },
-  'idle-sleeve': { id: 'idle-sleeve', frames: 8, durations: HD_IDLE_ACTIONS['idle-sleeve'].durations, loop: false, kind: 'idle-action', legacyRow: 0 },
-  'idle-sway': { id: 'idle-sway', frames: 8, durations: HD_IDLE_ACTIONS['idle-sway'].durations, loop: false, kind: 'idle-action', legacyRow: 0 },
-  'chat-open': { id: 'chat-open', frames: 8, durations: CHAT_OPEN.durations, loop: false, kind: 'interaction', legacyRow: 0 },
-} as Record<HdRowId, HdRowMeta>
+  'look-row-10': {
+    id: 'look-row-10',
+    frames: 8,
+    durations: null,
+    loop: false,
+    kind: 'standard',
+    legacyRow: 10,
+  },
+  'idle-curious': {
+    id: 'idle-curious',
+    frames: 8,
+    durations: HD_IDLE_ACTIONS['idle-curious'].durations,
+    loop: false,
+    kind: 'idle-action',
+    legacyRow: 0,
+  },
+  'idle-sleeve': {
+    id: 'idle-sleeve',
+    frames: 8,
+    durations: HD_IDLE_ACTIONS['idle-sleeve'].durations,
+    loop: false,
+    kind: 'idle-action',
+    legacyRow: 0,
+  },
+  'idle-sway': {
+    id: 'idle-sway',
+    frames: 8,
+    durations: HD_IDLE_ACTIONS['idle-sway'].durations,
+    loop: false,
+    kind: 'idle-action',
+    legacyRow: 0,
+  },
+  'chat-open': {
+    id: 'chat-open',
+    frames: 8,
+    durations: CHAT_OPEN.durations,
+    loop: false,
+    kind: 'interaction',
+    legacyRow: 0,
+  },
+} as Record<HdRowId, HdRowMeta>;
 
 /** 动画状态 → 高清行（look 不在其中，视线单独映射）。 */
 export const PET_HD_ANIMATIONS: Record<PetState, AnimationSpec> = Object.fromEntries(
   (Object.keys(HD_ROWS) as HdRowId[])
     .filter((id) => id !== 'look-row-9' && id !== 'look-row-10')
-    .map((id) => [id, {
-      source: HD_SOURCE(id),
-      frames: HD_ROWS[id].frames,
-      durations: HD_ROWS[id].durations!,
-      loop: HD_ROWS[id].loop,
-      kind: HD_ROWS[id].kind,
-    }]),
-) as Record<PetState, AnimationSpec>
+    .map((id) => [
+      id,
+      {
+        source: HD_SOURCE(id),
+        frames: HD_ROWS[id].frames,
+        durations: HD_ROWS[id].durations!,
+        loop: HD_ROWS[id].loop,
+        kind: HD_ROWS[id].kind,
+      },
+    ]),
+) as Record<PetState, AnimationSpec>;
 
 /** 旧 8×11 图集的标准行元数据（身份基线 / 高清失败时的回退源）。 */
 export interface LegacyRowSpec {
-  row: number
-  frames: number
-  durations: readonly number[]
-  loop: boolean
+  row: number;
+  frames: number;
+  durations: readonly number[];
+  loop: boolean;
 }
 
 export const PET_LEGACY_ROWS: Partial<Record<PetState, LegacyRowSpec>> = Object.fromEntries(
@@ -178,49 +233,49 @@ export const PET_LEGACY_ROWS: Partial<Record<PetState, LegacyRowSpec>> = Object.
     id,
     { row: spec.legacyRow, frames: spec.frames, durations: spec.durations, loop: spec.loop },
   ]),
-) as Partial<Record<PetState, LegacyRowSpec>>
+) as Partial<Record<PetState, LegacyRowSpec>>;
 
 export interface CellPosition {
-  row: number
-  col: number
+  row: number;
+  col: number;
 }
 
 export interface LookDirectionSpec {
-  row: number
-  col: number
-  degrees: number
+  row: number;
+  col: number;
+  degrees: number;
 }
 
 /** 16 个顺时针视线方向：000° = 向上（12 点方向）；row 9 = 0°-157.5°，row 10 = 180°-337.5°。 */
 export const LOOK_DIRECTIONS: readonly LookDirectionSpec[] = Array.from({ length: 16 }, (_, index) => {
-  const degrees = index * 22.5
-  return { degrees, row: index < 8 ? 9 : 10, col: index % 8 }
-})
+  const degrees = index * 22.5;
+  return { degrees, row: index < 8 ? 9 : 10, col: index % 8 };
+});
 
 /** 把角度量化为 16 档视线单元格（0°=上，顺时针）。 */
 export function lookDirectionIndex(degrees: number): number {
-  const normalized = ((degrees % 360) + 360) % 360
-  return Math.round(normalized / 22.5) % 16
+  const normalized = ((degrees % 360) + 360) % 360;
+  return Math.round(normalized / 22.5) % 16;
 }
 
 export function lookCell(degrees: number): CellPosition {
-  const spec = LOOK_DIRECTIONS[lookDirectionIndex(degrees)]
-  return { row: spec.row, col: spec.col }
+  const spec = LOOK_DIRECTIONS[lookDirectionIndex(degrees)];
+  return { row: spec.row, col: spec.col };
 }
 
 /** 视线角度 → 高清视线行 id（row 9 = 0°-157.5°，row 10 = 180°-337.5°）。 */
 export function lookHdRow(degrees: number): HdRowId {
-  return LOOK_DIRECTIONS[lookDirectionIndex(degrees)].row === 9 ? 'look-row-9' : 'look-row-10'
+  return LOOK_DIRECTIONS[lookDirectionIndex(degrees)].row === 9 ? 'look-row-9' : 'look-row-10';
 }
 
 /** 一次动画从第 0 帧到最后一帧的累计时长（ms），one-shot 结束时机以此为准。 */
 export function totalDuration(state: PetState): number {
-  return PET_HD_ANIMATIONS[state].durations.reduce((sum, value) => sum + value, 0)
+  return PET_HD_ANIMATIONS[state].durations.reduce((sum, value) => sum + value, 0);
 }
 
 /** 三组待机动作：每次独立均匀随机，允许连续重复。 */
-export const IDLE_ACTIONS: readonly IdleActionId[] = ['idle-curious', 'idle-sleeve', 'idle-sway']
+export const IDLE_ACTIONS: readonly IdleActionId[] = ['idle-curious', 'idle-sleeve', 'idle-sway'];
 
 export function randomIdleAction(random: () => number = Math.random): IdleActionId {
-  return IDLE_ACTIONS[Math.floor(random() * IDLE_ACTIONS.length)]
+  return IDLE_ACTIONS[Math.floor(random() * IDLE_ACTIONS.length)];
 }

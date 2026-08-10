@@ -1,173 +1,226 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
-import SiteFooter from './components/SiteFooter.vue'
-import AmbientSound from './components/AmbientSound.vue'
-import EntryGate from './components/EntryGate.vue'
-import { useUiStore } from './stores/uiStore'
-import { useAuthStore } from './stores/auth'
-import { usePageMeta } from './composables/usePageMeta'
-import { useStructuredData, webSite } from './composables/useStructuredData'
-import { refreshReveals, disconnectReveals } from './composables/useReveals'
-import { createSiteConfig } from './config/site'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRoute } from 'vue-router';
+import SiteFooter from './components/SiteFooter.vue';
+import AmbientSound from './components/AmbientSound.vue';
+import EntryGate from './components/EntryGate.vue';
+import { useUiStore } from './stores/uiStore';
+import { useAuthStore } from './stores/auth';
+import { usePageMeta } from './composables/usePageMeta';
+import { useStructuredData, webSite } from './composables/useStructuredData';
+import { refreshReveals, disconnectReveals } from './composables/useReveals';
+import { createSiteConfig } from './config/site';
 
-const GlobalSearch = defineAsyncComponent(() => import('./components/GlobalSearch.vue'))
-const AdminPetAssistant = defineAsyncComponent(() => import('./components/admin-pet/AdminPetAssistant.vue'))
+const GlobalSearch = defineAsyncComponent(() => import('./components/GlobalSearch.vue'));
+const AdminPetAssistant = defineAsyncComponent(() => import('./components/admin-pet/AdminPetAssistant.vue'));
 
-const route = useRoute()
-const ui = useUiStore()
-const siteConfig = createSiteConfig()
+const route = useRoute();
+const ui = useUiStore();
+const siteConfig = createSiteConfig();
 // L-16：角色化导航——游客隐藏学习笔记，管理角色（ADMIN/PARTNER）多一个"进入后台"
-const auth = useAuthStore()
+const auth = useAuthStore();
 
-const menuOpen = ref(false)
-const readingProgress = ref(0)
-const showBackToTop = ref(false)
-let scrollFrame: number | undefined
+const menuOpen = ref(false);
+const readingProgress = ref(0);
+const showBackToTop = ref(false);
+const isOffline = ref(!navigator.onLine);
+let scrollFrame: number | undefined;
 
-const isAdminRoute = computed(() => String(route.path).startsWith('/admin'))
-const isGuest = computed(() => !auth.isAuthenticated)
-const isLoginRoute = computed(() => route.name === 'login' || route.name === 'admin-login')
+const isAdminRoute = computed(() => String(route.path).startsWith('/admin'));
+const isGuest = computed(() => !auth.isAuthenticated);
+const isLoginRoute = computed(() => route.name === 'login' || route.name === 'admin-login');
 // FD-29：管理角色总开关——ADMIN 与 PARTNER 同权；isAdmin 仅表示严格角色
-const isRestrictedMember = computed(() => auth.isAuthenticated && !auth.isStaff)
-const hasPetAssistant = computed(() => auth.isStaff && !isLoginRoute.value)
+const isRestrictedMember = computed(() => auth.isAuthenticated && !auth.isStaff);
+const hasPetAssistant = computed(() => auth.isStaff && !isLoginRoute.value);
 
 function onKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-    event.preventDefault()
-    ui.openSearch()
+    event.preventDefault();
+    ui.openSearch();
   }
+}
+
+function syncOnlineStatus() {
+  isOffline.value = !navigator.onLine;
 }
 
 function updateProgress() {
-  showBackToTop.value = window.scrollY > Math.min(520, window.innerHeight * 0.6)
+  showBackToTop.value = window.scrollY > Math.min(520, window.innerHeight * 0.6);
 
-  const article = document.querySelector('.article-body')
+  const article = document.querySelector('.article-body');
   if (!article) {
-    readingProgress.value = 0
-    return
+    readingProgress.value = 0;
+    return;
   }
-  const rect = article.getBoundingClientRect()
-  const distance = Math.max(1, (article as HTMLElement).clientHeight - window.innerHeight * 0.35)
-  readingProgress.value = Math.min(100, Math.max(0, (-rect.top + 130) / distance * 100))
+  const rect = article.getBoundingClientRect();
+  const distance = Math.max(1, (article as HTMLElement).clientHeight - window.innerHeight * 0.35);
+  readingProgress.value = Math.min(100, Math.max(0, ((-rect.top + 130) / distance) * 100));
 }
 
 function scheduleProgressUpdate() {
-  if (scrollFrame !== undefined) return
+  if (scrollFrame !== undefined) return;
   scrollFrame = window.requestAnimationFrame(() => {
-    scrollFrame = undefined
-    updateProgress()
-  })
+    scrollFrame = undefined;
+    updateProgress();
+  });
 }
 
 function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function handlePointerMove(event: PointerEvent) {
-  if (event.pointerType === 'touch') return
-  const target = (event.target as HTMLElement).closest<HTMLElement>('.featured-card, .post-card, .project-card, .about-card, .related-grid > a, .values article, .dish-card')
-  if (!target) return
-  const rect = target.getBoundingClientRect()
-  const x = (event.clientX - rect.left) / rect.width
-  const y = (event.clientY - rect.top) / rect.height
-  target.style.setProperty('--mx', `${x * 100}%`)
-  target.style.setProperty('--my', `${y * 100}%`)
-  target.style.setProperty('--rx', `${(0.5 - y) * 2.2}deg`)
-  target.style.setProperty('--ry', `${(x - 0.5) * 2.2}deg`)
-  target.classList.add('is-pointed')
+  if (event.pointerType === 'touch') return;
+  const target = (event.target as HTMLElement).closest<HTMLElement>(
+    '.featured-card, .post-card, .project-card, .about-card, .related-grid > a, .values article, .dish-card',
+  );
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  const x = (event.clientX - rect.left) / rect.width;
+  const y = (event.clientY - rect.top) / rect.height;
+  target.style.setProperty('--mx', `${x * 100}%`);
+  target.style.setProperty('--my', `${y * 100}%`);
+  target.style.setProperty('--rx', `${(0.5 - y) * 2.2}deg`);
+  target.style.setProperty('--ry', `${(x - 0.5) * 2.2}deg`);
+  target.classList.add('is-pointed');
 }
 
 function handlePointerOut(event: PointerEvent) {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('.is-pointed')
-  if (!target || target.contains(event.relatedTarget as Node | null)) return
-  target.classList.remove('is-pointed')
-  target.style.removeProperty('--rx')
-  target.style.removeProperty('--ry')
+  const target = (event.target as HTMLElement).closest<HTMLElement>('.is-pointed');
+  if (!target || target.contains(event.relatedTarget as Node | null)) return;
+  target.classList.remove('is-pointed');
+  target.style.removeProperty('--rx');
+  target.style.removeProperty('--ry');
 }
 
-watch(() => ui.isDark, (value) => document.documentElement.classList.toggle('dark', value as boolean), { immediate: true })
+watch(
+  () => ui.isDark,
+  (value) => document.documentElement.classList.toggle('dark', value as boolean),
+  { immediate: true },
+);
 
-watch(() => route.fullPath, () => {
-  menuOpen.value = false
-  ui.closeSearch()
-  const name = String(route.name)
-  const { apply: applyLD, clear: clearLD } = useStructuredData()
-  clearLD()
-  if (name === 'home') {
-    applyLD(webSite())
-  }
-  const { apply } = usePageMeta()
-  if (name === 'not-found') {
-    apply({
-      title: '页面不存在',
-      description: '请求的页面不存在，可能链接已失效。',
-      robots: 'noindex, nofollow',
-    })
-  } else if (name.startsWith('admin') || name.startsWith('admin-') || name === 'login' || name === 'account') {
-    const titles: Record<string, string> = {
-      'admin-login': '管理员登录',
-      'admin-notes': '学习笔记',
-      'login': '登录',
-      'account': '个人账户',
+watch(
+  () => route.fullPath,
+  () => {
+    menuOpen.value = false;
+    ui.closeSearch();
+    const name = String(route.name);
+    const { apply: applyLD, clear: clearLD } = useStructuredData();
+    clearLD();
+    if (name === 'home') {
+      applyLD(webSite());
     }
-    apply({
-      title: titles[name] || '内容工作台',
-      robots: 'noindex, nofollow',
-    })
-  } else {
-    const pageMeta: Record<string, { title: string; description: string; canonicalPath: string }> = {
-      home: { title: '', description: '', canonicalPath: '' },
-      articles: { title: '文章', description: '阅读所有技术文章与日常随笔', canonicalPath: '/articles' },
-      article: { title: '文章', description: '', canonicalPath: '' },
-      notes: { title: '学习笔记', description: '公开学习笔记，持续更新的认知地图', canonicalPath: '/notes' },
-      series: { title: '系列', description: '按系列浏览文章，追踪完整的知识脉络', canonicalPath: '/series' },
-      'series-detail': { title: '合集详情', description: '', canonicalPath: '' },
-      tag: { title: '标签', description: '', canonicalPath: '' },
-      recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
-      archive: { title: '内容归档', description: '按时间浏览所有公开的文章、学习笔记和菜谱', canonicalPath: '/archive' },
+    const { apply } = usePageMeta();
+    if (name === 'not-found') {
+      apply({
+        title: '页面不存在',
+        description: '请求的页面不存在，可能链接已失效。',
+        robots: 'noindex, nofollow',
+      });
+    } else if (
+      name.startsWith('admin') ||
+      name.startsWith('admin-') ||
+      name === 'login' ||
+      name === 'account'
+    ) {
+      const titles: Record<string, string> = {
+        'admin-login': '管理员登录',
+        'admin-notes': '学习笔记',
+        login: '登录',
+        account: '个人账户',
+      };
+      apply({
+        title: titles[name] || '内容工作台',
+        robots: 'noindex, nofollow',
+      });
+    } else {
+      const pageMeta: Record<string, { title: string; description: string; canonicalPath: string }> = {
+        home: { title: '', description: '', canonicalPath: '' },
+        articles: { title: '文章', description: '阅读所有技术文章与日常随笔', canonicalPath: '/articles' },
+        article: { title: '文章', description: '', canonicalPath: '' },
+        notes: {
+          title: '学习笔记',
+          description: '公开学习笔记，持续更新的认知地图',
+          canonicalPath: '/notes',
+        },
+        series: {
+          title: '系列',
+          description: '按系列浏览文章，追踪完整的知识脉络',
+          canonicalPath: '/series',
+        },
+        'series-detail': { title: '合集详情', description: '', canonicalPath: '' },
+        tag: { title: '标签', description: '', canonicalPath: '' },
+        recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
+        archive: {
+          title: '内容归档',
+          description: '按时间浏览所有公开的文章、学习笔记和菜谱',
+          canonicalPath: '/archive',
+        },
+      };
+      const pm = pageMeta[name] || { title: '', description: '', canonicalPath: '' };
+      apply({
+        title: pm.title,
+        description: pm.description || undefined,
+        canonicalPath: pm.canonicalPath || undefined,
+        openGraph: {
+          title: pm.title || undefined,
+          description: pm.description || undefined,
+          type: name === 'article' ? 'article' : 'website',
+          image: '/og.png',
+          url: pm.canonicalPath || undefined,
+        },
+        twitter: {
+          title: pm.title || undefined,
+          description: pm.description || undefined,
+          image: '/og.png',
+        },
+      });
     }
-    const pm = pageMeta[name] || { title: '', description: '', canonicalPath: '' }
-    apply({
-      title: pm.title,
-      description: pm.description || undefined,
-      canonicalPath: pm.canonicalPath || undefined,
-      openGraph: {
-        title: pm.title || undefined,
-        description: pm.description || undefined,
-        type: name === 'article' ? 'article' : 'website',
-        image: '/og.png',
-        url: pm.canonicalPath || undefined,
-      },
-      twitter: {
-        title: pm.title || undefined,
-        description: pm.description || undefined,
-        image: '/og.png',
-      },
-    })
-  }
-  void nextTick(refreshReveals)
-})
+    void nextTick(refreshReveals);
+  },
+);
 
 onMounted(() => {
-  ui.initTheme()
-  window.addEventListener('keydown', onKeydown)
-  window.addEventListener('scroll', scheduleProgressUpdate, { passive: true })
-  updateProgress()
-  void nextTick(refreshReveals)
-})
+  ui.initTheme();
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('scroll', scheduleProgressUpdate, { passive: true });
+  window.addEventListener('online', syncOnlineStatus);
+  window.addEventListener('offline', syncOnlineStatus);
+  updateProgress();
+  void nextTick(refreshReveals);
+});
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('scroll', scheduleProgressUpdate)
-  if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame)
-  disconnectReveals()
-})
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('scroll', scheduleProgressUpdate);
+  window.removeEventListener('online', syncOnlineStatus);
+  window.removeEventListener('offline', syncOnlineStatus);
+  if (scrollFrame !== undefined) window.cancelAnimationFrame(scrollFrame);
+  disconnectReveals();
+});
 </script>
 
 <template>
-  <div class="site-shell" :class="{ 'admin-mode': isAdminRoute, 'restricted-visitor': isGuest, 'restricted-member': isRestrictedMember, 'has-pet-assistant': hasPetAssistant }" @pointermove="handlePointerMove" @pointerout="handlePointerOut">
-    <div v-if="!isAdminRoute" class="reading-progress" :style="{ width: `${readingProgress}%` }" aria-hidden="true" />
+  <div
+    class="site-shell"
+    :class="{
+      'admin-mode': isAdminRoute,
+      'restricted-visitor': isGuest,
+      'restricted-member': isRestrictedMember,
+      'has-pet-assistant': hasPetAssistant,
+    }"
+    @pointermove="handlePointerMove"
+    @pointerout="handlePointerOut"
+  >
+    <div v-if="isOffline" class="offline-reading-banner" role="status">
+      当前处于离线模式；访问过的文章、菜谱和收藏仍可阅读。
+    </div>
+    <div
+      v-if="!isAdminRoute"
+      class="reading-progress"
+      :style="{ width: `${readingProgress}%` }"
+      aria-hidden="true"
+    />
     <div v-if="!isAdminRoute" class="sakura-petals" aria-hidden="true">
       <i
         v-for="petal in 16"
@@ -189,7 +242,10 @@ onBeforeUnmount(() => {
     <header v-if="!isAdminRoute" class="site-header">
       <RouterLink class="brand" to="/" :aria-label="`${siteConfig.siteName}首页`">
         <span class="brand-stamp">{{ siteConfig.siteName.slice(0, 1) }}</span>
-        <span><strong>{{ siteConfig.siteName }}</strong><small>{{ siteConfig.siteSubtitle }}</small></span>
+        <span
+          ><strong>{{ siteConfig.siteName }}</strong
+          ><small>{{ siteConfig.siteSubtitle }}</small></span
+        >
       </RouterLink>
       <nav class="desktop-nav" aria-label="主导航">
         <RouterLink to="/"><i>⌂</i>首页</RouterLink>
@@ -202,9 +258,26 @@ onBeforeUnmount(() => {
       <div class="header-actions">
         <AmbientSound />
         <RouterLink class="admin-entry-link" :to="auth.isStaff ? '/admin' : '/login'">进入后台 ↗</RouterLink>
-        <button class="icon-button search-trigger" type="button" aria-label="全站搜索" @click="ui.openSearch">⌕ <kbd>⌘K</kbd></button>
-        <button class="icon-button" type="button" :aria-label="ui.isDark ? '切换浅色模式' : '切换深色模式'" @click="ui.toggleTheme">{{ ui.isDark ? '☀' : '◐' }}</button>
-        <button class="menu-button" type="button" :aria-expanded="menuOpen" aria-label="打开导航" @click="menuOpen = !menuOpen">{{ menuOpen ? '关闭' : '菜单' }}</button>
+        <button class="icon-button search-trigger" type="button" aria-label="全站搜索" @click="ui.openSearch">
+          ⌕ <kbd>⌘K</kbd>
+        </button>
+        <button
+          class="icon-button"
+          type="button"
+          :aria-label="ui.isDark ? '切换浅色模式' : '切换深色模式'"
+          @click="ui.toggleTheme"
+        >
+          {{ ui.isDark ? '☀' : '◐' }}
+        </button>
+        <button
+          class="menu-button"
+          type="button"
+          :aria-expanded="menuOpen"
+          aria-label="打开导航"
+          @click="menuOpen = !menuOpen"
+        >
+          {{ menuOpen ? '关闭' : '菜单' }}
+        </button>
       </div>
     </header>
 
@@ -223,7 +296,11 @@ onBeforeUnmount(() => {
     </main>
 
     <footer v-if="!isAdminRoute" class="site-footer section-wrap">
-      <div class="footer-brand"><span class="brand-stamp">{{ siteConfig.siteName.slice(0, 1) }}</span><strong>{{ siteConfig.siteName }}</strong><p>{{ siteConfig.siteSubtitle }}</p></div>
+      <div class="footer-brand">
+        <span class="brand-stamp">{{ siteConfig.siteName.slice(0, 1) }}</span
+        ><strong>{{ siteConfig.siteName }}</strong>
+        <p>{{ siteConfig.siteSubtitle }}</p>
+      </div>
       <div>
         <RouterLink to="/articles">文章</RouterLink>
         <RouterLink to="/series">合集</RouterLink>
@@ -262,6 +339,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.offline-reading-banner {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 120;
+  padding: 8px 16px;
+  background: #624321;
+  color: #fff;
+  text-align: center;
+  font-size: 13px;
+}
 /* L-16：管理员"进入后台"入口（样式随组件走，不动全局样式表） */
 .admin-entry-link {
   padding: 8px 14px;
@@ -274,7 +361,9 @@ onBeforeUnmount(() => {
   letter-spacing: 0.04em;
   text-decoration: none;
   white-space: nowrap;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 .admin-entry-link:hover,
 .admin-entry-link:focus-visible {
@@ -284,30 +373,30 @@ onBeforeUnmount(() => {
 
 /* Guests can browse only the four public sections; keep the router guard
    authoritative while mirroring it in the navigation. */
-.restricted-visitor .desktop-nav a[href="/series"],
-.restricted-visitor .desktop-nav a[href="/archive"],
-.restricted-visitor .mobile-nav a[href="/series"],
-.restricted-visitor .mobile-nav a[href="/archive"],
-.restricted-visitor .site-footer a[href="/series"],
-.restricted-visitor .site-footer a[href="/archive"] {
+.restricted-visitor .desktop-nav a[href='/series'],
+.restricted-visitor .desktop-nav a[href='/archive'],
+.restricted-visitor .mobile-nav a[href='/series'],
+.restricted-visitor .mobile-nav a[href='/archive'],
+.restricted-visitor .site-footer a[href='/series'],
+.restricted-visitor .site-footer a[href='/archive'] {
   display: none;
 }
 
 /* Ordinary signed-in members can read only articles and recipes. */
-.restricted-member .desktop-nav a[href="/"],
-.restricted-member .desktop-nav a[href="/series"],
-.restricted-member .desktop-nav a[href="/archive"],
-.restricted-member .desktop-nav a[href="/notes"],
+.restricted-member .desktop-nav a[href='/'],
+.restricted-member .desktop-nav a[href='/series'],
+.restricted-member .desktop-nav a[href='/archive'],
+.restricted-member .desktop-nav a[href='/notes'],
 .restricted-member .admin-entry-link,
-.restricted-member .mobile-nav a[href="/"],
-.restricted-member .mobile-nav a[href="/series"],
-.restricted-member .mobile-nav a[href="/archive"],
-.restricted-member .mobile-nav a[href="/notes"],
-.restricted-member .mobile-nav a[href="/admin"],
-.restricted-member .site-footer a[href="/series"],
-.restricted-member .site-footer a[href="/archive"],
-.restricted-member .site-footer a[href="/notes"],
-.restricted-member .site-footer a[href="/admin/login"] {
+.restricted-member .mobile-nav a[href='/'],
+.restricted-member .mobile-nav a[href='/series'],
+.restricted-member .mobile-nav a[href='/archive'],
+.restricted-member .mobile-nav a[href='/notes'],
+.restricted-member .mobile-nav a[href='/admin'],
+.restricted-member .site-footer a[href='/series'],
+.restricted-member .site-footer a[href='/archive'],
+.restricted-member .site-footer a[href='/notes'],
+.restricted-member .site-footer a[href='/admin/login'] {
   display: none;
 }
 

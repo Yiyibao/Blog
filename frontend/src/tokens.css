@@ -6,7 +6,7 @@
   --ink: #302b2c;
   --muted: #52484a;
   --faint: #5e5456;
-  --line: rgba(91, 65, 72, 0.10);
+  --line: rgba(91, 65, 72, 0.1);
   --line-strong: rgba(91, 65, 72, 0.18);
   --accent: #dc8fa0;
   --accent-soft: rgba(220, 143, 160, 0.16);
@@ -33,7 +33,8 @@
   --cinema-backdrop: rgba(26, 15, 19, 0.62);
   color: var(--ink);
   background: var(--paper);
-  font-family: "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  font-family:
+    'SF Pro Text', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
   font-synthesis: none;
 }
 

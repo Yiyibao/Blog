@@ -1,8 +1,5 @@
 package com.yubai.blog.admin.recipe;
 
-import java.time.Instant;
-import java.util.UUID;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -11,12 +8,25 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "recipe_extraction_jobs")
 public class RecipeExtractionJobEntity {
-    public enum SourceType { TEXT, WEB_URL, VIDEO_URL }
-    public enum Status { QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED }
+    public enum SourceType {
+        TEXT,
+        WEB_URL,
+        VIDEO_URL
+    }
+
+    public enum Status {
+        QUEUED,
+        RUNNING,
+        SUCCEEDED,
+        FAILED,
+        CANCELLED
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -67,7 +77,8 @@ public class RecipeExtractionJobEntity {
 
     protected RecipeExtractionJobEntity() {}
 
-    public RecipeExtractionJobEntity(SourceType sourceType, String sourceContent, Long providerId, String model) {
+    public RecipeExtractionJobEntity(
+            SourceType sourceType, String sourceContent, Long providerId, String model) {
         this.sourceType = sourceType.name();
         this.sourceContent = sourceContent;
         this.providerId = providerId;
@@ -97,7 +108,10 @@ public class RecipeExtractionJobEntity {
 
     public void fail(String safeMessage) {
         this.status = Status.FAILED.name();
-        this.safeErrorMessage = safeMessage != null && safeMessage.length() > 1000 ? safeMessage.substring(0, 1000) : safeMessage;
+        this.safeErrorMessage =
+                safeMessage != null && safeMessage.length() > 1000
+                        ? safeMessage.substring(0, 1000)
+                        : safeMessage;
         this.finishedAt = Instant.now();
     }
 
@@ -106,23 +120,74 @@ public class RecipeExtractionJobEntity {
         this.finishedAt = Instant.now();
     }
 
+    public void retry() {
+        if (attempts >= 3) throw new IllegalStateException("提取任务已达到最大重试次数");
+        this.status = Status.QUEUED.name();
+        this.stage = "等待重试";
+        this.progress = 0;
+        this.safeErrorMessage = null;
+        this.startedAt = null;
+        this.finishedAt = null;
+    }
+
     public void updateStage(String stage, int progress) {
         this.stage = stage;
         this.progress = progress;
     }
 
-    public Long getId() { return id; }
-    public String getSourceType() { return sourceType; }
-    public String getSourceContent() { return sourceContent; }
-    public String getStatus() { return status; }
-    public String getStage() { return stage; }
-    public int getProgress() { return progress; }
-    public Long getProviderId() { return providerId; }
-    public String getModel() { return model; }
-    public UUID getResultImportToken() { return resultImportToken; }
-    public String getSafeErrorMessage() { return safeErrorMessage; }
-    public int getAttempts() { return attempts; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getStartedAt() { return startedAt; }
-    public Instant getFinishedAt() { return finishedAt; }
+    public Long getId() {
+        return id;
+    }
+
+    public String getSourceType() {
+        return sourceType;
+    }
+
+    public String getSourceContent() {
+        return sourceContent;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getStage() {
+        return stage;
+    }
+
+    public int getProgress() {
+        return progress;
+    }
+
+    public Long getProviderId() {
+        return providerId;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public UUID getResultImportToken() {
+        return resultImportToken;
+    }
+
+    public String getSafeErrorMessage() {
+        return safeErrorMessage;
+    }
+
+    public int getAttempts() {
+        return attempts;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    public Instant getFinishedAt() {
+        return finishedAt;
+    }
 }

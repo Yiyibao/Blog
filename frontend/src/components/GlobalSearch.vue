@@ -1,154 +1,166 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useSearch } from '../composables/useSearch'
-import { splitHighlight } from '../utils/searchHighlight'
-import type { SearchHit } from '../data'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { useSearch } from '../composables/useSearch';
+import { splitHighlight } from '../utils/searchHighlight';
+import type { SearchHit } from '../data';
 
-const props = defineProps<{ open: boolean }>()
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ open: boolean }>();
+const emit = defineEmits<{ close: [] }>();
 
-const router = useRouter()
-const query = ref('')
-const selectedTab = ref<'ALL' | 'POST' | 'NOTE' | 'DISH'>('ALL')
-const searchHistory = ref<string[]>([])
-const inputRef = ref<HTMLInputElement | null>(null)
-const listboxRef = ref<HTMLDivElement | null>(null)
-const activeIndex = ref(0)
-let lastActiveElement: HTMLElement | null = null
+const router = useRouter();
+const query = ref('');
+const selectedTab = ref<'ALL' | 'POST' | 'NOTE' | 'DISH'>('ALL');
+const searchHistory = ref<string[]>([]);
+const inputRef = ref<HTMLInputElement | null>(null);
+const listboxRef = ref<HTMLDivElement | null>(null);
+const activeIndex = ref(0);
+let lastActiveElement: HTMLElement | null = null;
 
-const { results, loading, error, retry } = useSearch(query)
+const { results, loading, error, retry } = useSearch(query);
 
 function loadSearchHistory() {
   try {
-    const raw = localStorage.getItem('yubai_search_history')
-    searchHistory.value = raw ? JSON.parse(raw) : []
+    const raw = localStorage.getItem('yubai_search_history');
+    searchHistory.value = raw ? JSON.parse(raw) : [];
   } catch {
-    searchHistory.value = []
+    searchHistory.value = [];
   }
 }
 
 function saveSearchHistory(term: string) {
-  const trimmed = term.trim()
-  if (!trimmed) return
-  const set = new Set([trimmed, ...searchHistory.value])
-  searchHistory.value = Array.from(set).slice(0, 6)
+  const trimmed = term.trim();
+  if (!trimmed) return;
+  const set = new Set([trimmed, ...searchHistory.value]);
+  searchHistory.value = Array.from(set).slice(0, 6);
   try {
-    localStorage.setItem('yubai_search_history', JSON.stringify(searchHistory.value))
+    localStorage.setItem('yubai_search_history', JSON.stringify(searchHistory.value));
   } catch {}
 }
 
 function clearSearchHistory() {
-  searchHistory.value = []
+  searchHistory.value = [];
   try {
-    localStorage.removeItem('yubai_search_history')
+    localStorage.removeItem('yubai_search_history');
   } catch {}
 }
 
 interface ListItem {
-  type: 'group' | 'result'
-  label?: string
-  hit?: SearchHit
+  type: 'group' | 'result';
+  label?: string;
+  hit?: SearchHit;
 }
 
 const flatItems = computed<ListItem[]>(() => {
-  const items: ListItem[] = []
-  const showAll = selectedTab.value === 'ALL'
+  const items: ListItem[] = [];
+  const showAll = selectedTab.value === 'ALL';
 
   if ((showAll || selectedTab.value === 'POST') && results.value.articles.length) {
-    items.push({ type: 'group', label: '文章' })
-    results.value.articles.forEach(h => items.push({ type: 'result', hit: h }))
+    items.push({ type: 'group', label: '文章' });
+    results.value.articles.forEach((h) => items.push({ type: 'result', hit: h }));
   }
   if ((showAll || selectedTab.value === 'NOTE') && results.value.notes.length) {
-    items.push({ type: 'group', label: '学习笔记' })
-    results.value.notes.forEach(h => items.push({ type: 'result', hit: h }))
+    items.push({ type: 'group', label: '学习笔记' });
+    results.value.notes.forEach((h) => items.push({ type: 'result', hit: h }));
   }
   if ((showAll || selectedTab.value === 'DISH') && results.value.dishes.length) {
-    items.push({ type: 'group', label: '美食' })
-    results.value.dishes.forEach(h => items.push({ type: 'result', hit: h }))
+    items.push({ type: 'group', label: '美食' });
+    results.value.dishes.forEach((h) => items.push({ type: 'result', hit: h }));
   }
-  return items
-})
+  return items;
+});
 
 function firstResultIndex(): number {
-  return flatItems.value.findIndex(i => i.type === 'result')
+  return flatItems.value.findIndex((i) => i.type === 'result');
 }
 
 watch(flatItems, () => {
-  const idx = firstResultIndex()
-  if (idx >= 0) activeIndex.value = idx
-})
+  const idx = firstResultIndex();
+  if (idx >= 0) activeIndex.value = idx;
+});
 
-const resultCount = computed(() => flatItems.value.filter(i => i.type === 'result').length)
-const hasResults = computed(() => resultCount.value > 0)
+const resultCount = computed(() => flatItems.value.filter((i) => i.type === 'result').length);
+const hasResults = computed(() => resultCount.value > 0);
 
 function goToHit(hit: SearchHit) {
-  if (query.value) saveSearchHistory(query.value)
-  const url = hit.url
-  emit('close')
-  query.value = ''
-  if (url) router.push(url)
+  if (query.value) saveSearchHistory(query.value);
+  const url = hit.url;
+  emit('close');
+  query.value = '';
+  if (url) router.push(url);
 }
 
 function selectHistoryTerm(term: string) {
-  query.value = term
+  query.value = term;
 }
 
 function onKeydown(event: KeyboardEvent) {
   const resultIndices = flatItems.value
-    .map((item, index) => item.type === 'result' ? index : -1)
-    .filter(index => index >= 0)
-  if (!resultIndices.length && event.key !== 'Escape') return
-  const currentPosition = Math.max(0, resultIndices.indexOf(activeIndex.value))
+    .map((item, index) => (item.type === 'result' ? index : -1))
+    .filter((index) => index >= 0);
+  if (!resultIndices.length && event.key !== 'Escape') return;
+  const currentPosition = Math.max(0, resultIndices.indexOf(activeIndex.value));
 
   if (event.key === 'ArrowDown') {
-    event.preventDefault()
-    activeIndex.value = resultIndices[(currentPosition + 1) % resultIndices.length]
-    scrollActiveIntoView()
+    event.preventDefault();
+    activeIndex.value = resultIndices[(currentPosition + 1) % resultIndices.length];
+    scrollActiveIntoView();
   } else if (event.key === 'ArrowUp') {
-    event.preventDefault()
-    activeIndex.value = resultIndices[(currentPosition - 1 + resultIndices.length) % resultIndices.length]
-    scrollActiveIntoView()
+    event.preventDefault();
+    activeIndex.value = resultIndices[(currentPosition - 1 + resultIndices.length) % resultIndices.length];
+    scrollActiveIntoView();
   } else if (event.key === 'Enter') {
-    const item = flatItems.value[activeIndex.value]
+    const item = flatItems.value[activeIndex.value];
     if (item?.type === 'result' && item.hit) {
-      event.preventDefault()
-      goToHit(item.hit)
+      event.preventDefault();
+      goToHit(item.hit);
     }
   } else if (event.key === 'Escape') {
-    event.preventDefault()
-    emit('close')
+    event.preventDefault();
+    emit('close');
+  }
+}
+
+function onWindowKeydown(event: KeyboardEvent) {
+  if (props.open && event.key === 'Escape') {
+    event.preventDefault();
+    emit('close');
   }
 }
 
 function scrollActiveIntoView() {
   nextTick(() => {
-    const el = listboxRef.value?.querySelector<HTMLElement>(`[data-index="${activeIndex.value}"]`)
-    if (el && 'scrollIntoView' in el) el.scrollIntoView({ block: 'nearest' })
-  })
+    const el = listboxRef.value?.querySelector<HTMLElement>(`[data-index="${activeIndex.value}"]`);
+    if (el && 'scrollIntoView' in el) el.scrollIntoView({ block: 'nearest' });
+  });
 }
 
-watch(() => props.open, (val) => {
-  if (val) {
-    lastActiveElement = document.activeElement as HTMLElement
-    query.value = ''
-    selectedTab.value = 'ALL'
-    activeIndex.value = 0
-    loadSearchHistory()
-    nextTick(() => inputRef.value?.focus())
-  } else {
-    query.value = ''
-    lastActiveElement?.focus()
-  }
-})
+watch(
+  () => props.open,
+  (val) => {
+    if (val) {
+      lastActiveElement = document.activeElement as HTMLElement;
+      query.value = '';
+      selectedTab.value = 'ALL';
+      activeIndex.value = 0;
+      loadSearchHistory();
+      nextTick(() => inputRef.value?.focus());
+    } else {
+      query.value = '';
+      lastActiveElement?.focus();
+    }
+  },
+);
 
 onMounted(() => {
-  loadSearchHistory()
-})
+  loadSearchHistory();
+  window.addEventListener('keydown', onWindowKeydown);
+});
 
 onBeforeUnmount(() => {
-  lastActiveElement?.focus()
-})
+  window.removeEventListener('keydown', onWindowKeydown);
+  lastActiveElement?.focus();
+});
 </script>
 
 <template>
@@ -178,9 +190,13 @@ onBeforeUnmount(() => {
           role="searchbox"
           aria-autocomplete="list"
           aria-controls="search-listbox"
-          :aria-activedescendant="hasResults && flatItems[activeIndex]?.type === 'result' ? `search-option-${activeIndex}` : undefined"
+          :aria-activedescendant="
+            hasResults && flatItems[activeIndex]?.type === 'result'
+              ? `search-option-${activeIndex}`
+              : undefined
+          "
           @keydown="onKeydown"
-        >
+        />
         <button type="button" @click="emit('close')">ESC</button>
       </div>
 
@@ -191,25 +207,33 @@ onBeforeUnmount(() => {
           class="search-tab"
           :class="{ active: selectedTab === 'ALL' }"
           @click="selectedTab = 'ALL'"
-        >全部</button>
+        >
+          全部
+        </button>
         <button
           type="button"
           class="search-tab"
           :class="{ active: selectedTab === 'POST' }"
           @click="selectedTab = 'POST'"
-        >文章</button>
+        >
+          文章
+        </button>
         <button
           type="button"
           class="search-tab"
           :class="{ active: selectedTab === 'NOTE' }"
           @click="selectedTab = 'NOTE'"
-        >笔记</button>
+        >
+          笔记
+        </button>
         <button
           type="button"
           class="search-tab"
           :class="{ active: selectedTab === 'DISH' }"
           @click="selectedTab = 'DISH'"
-        >美食</button>
+        >
+          美食
+        </button>
       </div>
 
       <p v-if="loading">搜索中…</p>
@@ -227,11 +251,9 @@ onBeforeUnmount(() => {
         :aria-label="`共 ${resultCount} 条结果`"
       >
         <template v-for="(item, i) in flatItems" :key="i">
-          <span
-            v-if="item.type === 'group'"
-            class="search-group-label"
-            role="presentation"
-          >{{ item.label }}</span>
+          <span v-if="item.type === 'group'" class="search-group-label" role="presentation">{{
+            item.label
+          }}</span>
           <button
             v-else
             :id="`search-option-${i}`"
@@ -244,15 +266,13 @@ onBeforeUnmount(() => {
             @click="item.hit && goToHit(item.hit)"
             @mousemove="activeIndex = i"
           >
-            <span
-              v-if="item.hit?.color"
-              :style="{ background: item.hit.color }"
-            >{{ item.hit?.number }}</span>
+            <span v-if="item.hit?.color" :style="{ background: item.hit.color }">{{ item.hit?.number }}</span>
             <span
               v-else
               class="search-type-badge"
               :class="`type-${(item.hit?.type ?? 'NOTE').toLowerCase()}`"
-            >{{ { POST: '文', DISH: '食', NOTE: '笔' }[item.hit?.type ?? 'NOTE'] }}</span>
+              >{{ { POST: '文', DISH: '食', NOTE: '笔' }[item.hit?.type ?? 'NOTE'] }}</span
+            >
             <div>
               <small>{{
                 item.hit?.type === 'POST'
@@ -262,16 +282,19 @@ onBeforeUnmount(() => {
                     : '学习笔记'
               }}</small>
               <!-- 5A：命中词 <mark> 高亮——纯文本分段插值，无 v-html/XSS 面 -->
-              <strong><template v-for="(seg, si) in splitHighlight(item.hit?.title ?? '', query)" :key="si"><mark v-if="seg.hit">{{ seg.text }}</mark><template v-else>{{ seg.text }}</template></template></strong>
+              <strong
+                ><template v-for="(seg, si) in splitHighlight(item.hit?.title ?? '', query)" :key="si"
+                  ><mark v-if="seg.hit">{{ seg.text }}</mark
+                  ><template v-else>{{ seg.text }}</template></template
+                ></strong
+              >
             </div>
             <b>↗</b>
           </button>
         </template>
       </div>
 
-      <div v-else-if="query.trim() && !loading" class="search-empty">
-        没有匹配的结果
-      </div>
+      <div v-else-if="query.trim() && !loading" class="search-empty">没有匹配的结果</div>
       <div v-else-if="!query.trim()" class="search-empty">
         <!-- Search History Pills -->
         <div v-if="searchHistory.length" class="search-history-container">
@@ -293,6 +316,16 @@ onBeforeUnmount(() => {
         </div>
         <span>输入关键词搜索全站内容</span>
       </div>
+      <button
+        type="button"
+        class="search-center-link"
+        @click="
+          router.push({ path: '/search', query: query.trim() ? { q: query.trim() } : {} });
+          emit('close');
+        "
+      >
+        打开搜索中心，使用分类与时间筛选 →
+      </button>
     </div>
   </div>
 </template>
@@ -304,6 +337,16 @@ onBeforeUnmount(() => {
   color: inherit;
   border-radius: 3px;
   padding: 0 1px;
+}
+.search-center-link {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
 }
 
 .search-result.active,

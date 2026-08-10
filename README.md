@@ -4,6 +4,15 @@
 
 一个由 Vue 3 + TypeScript 前端与 Spring Boot + PostgreSQL 后端组成的个人博客。前后端拥有独立的依赖、构建和运行流程，通过 REST API 通信。
 
+> 当前唯一执行路线图为 [`docs/project-audit-and-execution-plan-2026-08-09.md`](docs/project-audit-and-execution-plan-2026-08-09.md)。`docs/checkpoints/` 保存阶段验收记录；其余带日期的计划与 checkpoint 仅作历史依据。
+
+## 生产运行约束
+
+- 唯一生产路线为 **nginx 静态托管前端 + 单实例 Spring Boot + PostgreSQL**；`deploy/` 与 `.github/workflows/deploy.yml` 是部署事实来源。
+- 当前限流、人机验证、登录失败跟踪和 TOTP 挑战使用进程内状态，因此后端副本数必须保持为 **1**。扩容前须先迁移为共享状态或在 API Gateway 统一处理。
+- 已移除旧 Worker/Sites 配置，前端生产构建只生成供 nginx 发布的 `dist/client`。
+- 数据库变更只能追加 Flyway 迁移；部署前必须执行 `scripts/migration-preflight.ps1` 并确认已有可恢复备份。
+
 ## 项目结构
 
 ```text
@@ -61,7 +70,7 @@ mvn spring-boot:run
 - `GET /api/v1/categories`：返回所有至少关联一篇已发布文章的分类（CategorySummary[]，含 name、slug、publishedPostCount）
 - `GET /api/v1/categories/{slug}?page=0&size=10`：返回指定分类详情及已发布文章（CategoryDetail，含 name、slug、description、total、posts 分页列表）
 - `GET /api/v1/dishes?page=0&size=20`：分页返回已发布菜品，并按精选和展示顺序排序
-- `GET /api/v1/dishes/{slug}`：读取菜品、食材、步骤和图片署名
+- `GET /api/v1/dishes/{slug}`：读取菜品、食材、步骤和图片替代文本
 - `GET /api/v1/notes?page=0&size=20`、`GET /api/v1/notes/{id}`（仅返回公开学习笔记；P1-2 起列表为摘要 DTO（NoteSummary，**不含 markdownContent**），正文经 `/{id}` 详情获取）
 - `GET /api/v1/note-assets/{publicId}`（仅当所属笔记已公开时读取笔记内图片）
 - `GET /api/v1/graph/nodes`：返回全量知识图谱节点与边（L-16/D-17 游客不可见 NOTE 节点，登录用户可见全部）
@@ -239,4 +248,4 @@ AI_IMAGE_GPT_HEADER_NAME=x-openai-actor-authorization
 AI_IMAGE_GPT_HEADER_VALUE=local-image-extension
 ```
 
-请求路径为 `GET /api/v1/admin/ai/images/models`、`POST /api/v1/admin/ai/images` 和 `GET/DELETE /api/v1/admin/ai/images/{publicId}`。默认每次生成 1 张、每个来源 IP 每分钟 3 次，单张响应上限 15 MB；需要 Responses API 的 GPT 中转时把 `AI_IMAGE_GPT_WIRE_API` 改为 `responses`，客户端会发送 `image_generation` tool 并解析 `output[].result`。
+请求路径为 `GET /api/v1/admin/ai/images/models`、`POST /api/v1/admin/ai/images` 和 `GET/DELETE /api/v1/admin/ai/images/{publicId}`。默认每次生成 1 张、每个来源 IP 每分钟 3 次，单张响应上限 15 MB；需要 Responses API 的 GPT 中转时把 `AI_IMAGE_GPT_WIRE_API` 改为 `responses`，客户端会发送 `image_generation` tool 并解析 `output[].result`。AI 生图页面还支持上传 PNG、JPG/JPEG、WebP 或 GIF 参考图：上传请求以 multipart 发送，服务端校验后按对应 provider 的图片编辑/Responses 输入格式转发，生成结果仍保存到 `ai_generated_images`。

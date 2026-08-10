@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AdminAiProviders from '../components/AdminAiProviders.vue'
+import AdminAiProviders from '../components/AdminAiProviders.vue';
 </script>
 
 <template>

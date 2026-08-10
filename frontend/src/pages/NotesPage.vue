@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import PublicNotes from '../components/PublicNotes.vue'
+import PublicNotes from '../components/PublicNotes.vue';
 </script>
 
 <template>

@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import type { GraphOverviewLegendItem, GraphOverviewStats } from '../../api/content'
+import type { GraphOverviewLegendItem, GraphOverviewStats } from '../../api/content';
 
 defineProps<{
-  legend: GraphOverviewLegendItem[]
-  stats: GraphOverviewStats | null
-  activeTypeFilter?: string
-}>()
+  legend: GraphOverviewLegendItem[];
+  stats: GraphOverviewStats | null;
+  activeTypeFilter?: string;
+}>();
 
 const emit = defineEmits<{
-  (e: 'filterType', type: string): void
-}>()
+  (e: 'filterType', type: string): void;
+}>();
 
 function formatUpdatedAt(value: string | null | undefined): string {
-  if (!value) return '暂无'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
+  if (!value) return '暂无';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(date)
+  }).format(date);
 }
 </script>
 
@@ -41,19 +41,51 @@ function formatUpdatedAt(value: string | null | undefined): string {
           @keydown.space.prevent="emit('filterType', item.type)"
         >
           <span class="legend-badge" :style="{ backgroundColor: item.color }">
-            <svg v-if="item.type === 'POST'" viewBox="0 0 24 24" width="12" height="12" stroke="#fff" fill="none" stroke-width="2">
+            <svg
+              v-if="item.type === 'POST'"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              stroke="#fff"
+              fill="none"
+              stroke-width="2"
+            >
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
             </svg>
-            <svg v-else-if="item.type === 'NOTE'" viewBox="0 0 24 24" width="12" height="12" stroke="#fff" fill="none" stroke-width="2">
+            <svg
+              v-else-if="item.type === 'NOTE'"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              stroke="#fff"
+              fill="none"
+              stroke-width="2"
+            >
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
-            <svg v-else-if="item.type === 'DISH'" viewBox="0 0 24 24" width="12" height="12" stroke="#fff" fill="none" stroke-width="2">
+            <svg
+              v-else-if="item.type === 'DISH'"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              stroke="#fff"
+              fill="none"
+              stroke-width="2"
+            >
               <path d="M6 13.87A8 8 0 0 1 12 4a8 8 0 0 1 6 9.87" />
               <line x1="4" y1="18" x2="20" y2="18" />
             </svg>
-            <svg v-else-if="item.type === 'SERIES'" viewBox="0 0 24 24" width="12" height="12" stroke="#fff" fill="none" stroke-width="2">
+            <svg
+              v-else-if="item.type === 'SERIES'"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              stroke="#fff"
+              fill="none"
+              stroke-width="2"
+            >
               <polygon points="12 2 2 7 12 12 22 7 12 2" />
               <polyline points="2 17 12 22 22 17" />
               <polyline points="2 12 12 17 22 12" />
@@ -94,7 +126,9 @@ function formatUpdatedAt(value: string | null | undefined): string {
       <p class="quote-text">知识如花，在连接中生长，在分享中绽放。</p>
       <div class="flower-deco">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="#f43f5e" opacity="0.4">
-          <path d="M12 2a4 4 0 0 0-4 4c0 2 2 4 4 4s4-2 4-4a4 4 0 0 0-4-4zm0 8a4 4 0 0 0-4 4c0 2 2 4 4 4s4-2 4-4a4 4 0 0 0-4-4zm-8 2a4 4 0 0 0 4 4c2 0 4-2 4-4s-2-4-4-4a4 4 0 0 0-4 4zm16 0a4 4 0 0 0-4-4c-2 0-4 2-4 4s2 4 4 4a4 4 0 0 0 4-4z" />
+          <path
+            d="M12 2a4 4 0 0 0-4 4c0 2 2 4 4 4s4-2 4-4a4 4 0 0 0-4-4zm0 8a4 4 0 0 0-4 4c0 2 2 4 4 4s4-2 4-4a4 4 0 0 0-4-4zm-8 2a4 4 0 0 0 4 4c2 0 4-2 4-4s-2-4-4-4a4 4 0 0 0-4 4zm16 0a4 4 0 0 0-4-4c-2 0-4 2-4 4s2 4 4 4a4 4 0 0 0 4-4z"
+          />
         </svg>
       </div>
     </div>

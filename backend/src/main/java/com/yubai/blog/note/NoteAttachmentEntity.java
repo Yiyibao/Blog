@@ -1,8 +1,5 @@
 package com.yubai.blog.note;
 
-import java.time.Instant;
-import java.util.UUID;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -10,11 +7,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "note_attachments")
 public class NoteAttachmentEntity {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "public_id", nullable = false, unique = true)
@@ -41,9 +41,13 @@ public class NoteAttachmentEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     protected NoteAttachmentEntity() {}
 
-    static NoteAttachmentEntity create(long noteId, String fileName, String mediaType, byte[] content) {
+    static NoteAttachmentEntity create(
+            long noteId, String fileName, String mediaType, byte[] content) {
         var attachment = new NoteAttachmentEntity();
         attachment.publicId = UUID.randomUUID();
         attachment.noteId = noteId;
@@ -54,7 +58,8 @@ public class NoteAttachmentEntity {
         return attachment;
     }
 
-    static NoteAttachmentEntity createWithStorage(long noteId, String fileName, String mediaType, long byteSize, String storageKey) {
+    static NoteAttachmentEntity createWithStorage(
+            long noteId, String fileName, String mediaType, long byteSize, String storageKey) {
         var attachment = new NoteAttachmentEntity();
         attachment.publicId = UUID.randomUUID();
         attachment.noteId = noteId;
@@ -65,17 +70,64 @@ public class NoteAttachmentEntity {
         return attachment;
     }
 
-    @PrePersist void created() { createdAt = Instant.now(); }
+    @PrePersist
+    void created() {
+        createdAt = Instant.now();
+    }
 
-    public Long getId() { return id; }
-    public UUID getPublicId() { return publicId; }
-    public long getNoteId() { return noteId; }
-    public String getFileName() { return fileName; }
-    public String getMediaType() { return mediaType; }
-    public long getByteSize() { return byteSize; }
-    public byte[] getContent() { return content; }
-    public String getStorageKey() { return storageKey; }
-    void setStorageKey(String storageKey) { this.storageKey = storageKey; }
-    void setContent(byte[] content) { this.content = content; }
-    public Instant getCreatedAt() { return createdAt; }
+    public Long getId() {
+        return id;
+    }
+
+    public UUID getPublicId() {
+        return publicId;
+    }
+
+    public long getNoteId() {
+        return noteId;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public String getMediaType() {
+        return mediaType;
+    }
+
+    public long getByteSize() {
+        return byteSize;
+    }
+
+    public byte[] getContent() {
+        return content;
+    }
+
+    public String getStorageKey() {
+        return storageKey;
+    }
+
+    void setStorageKey(String storageKey) {
+        this.storageKey = storageKey;
+    }
+
+    void setContent(byte[] content) {
+        this.content = content;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    void moveToTrash() {
+        deletedAt = Instant.now();
+    }
+
+    void restore() {
+        deletedAt = null;
+    }
 }

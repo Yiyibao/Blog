@@ -1,19 +1,19 @@
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
-import App from './App.vue'
-import router from './router'
-import './tokens.css'
-import './base.css'
-import './content.css'
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import App from './App.vue';
+import router from './router';
+import './tokens.css';
+import './base.css';
+import './content.css';
 
 router.beforeEach(async (to) => {
   if (to.name === 'recipes') {
-    await import('./recipes.css')
+    await import('./recipes.css');
   } else if (to.name === 'login' || to.name === 'admin-login') {
-    await import('./admin-login.css')
+    await import('./admin-login.css');
   } else if (to.path.startsWith('/admin')) {
-    await import('./admin.css')
+    await import('./admin.css');
   }
-})
+});
 
-createApp(App).use(createPinia()).use(router).mount('#app')
+createApp(App).use(createPinia()).use(router).mount('#app');

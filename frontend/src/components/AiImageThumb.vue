@@ -1,32 +1,32 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { fetchAiImageContent } from '../api/admin'
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { fetchAiImageContent } from '../api/admin';
 
 /**
  * AI 生图历史缩略图：图片内容接口需要管理员 JWT，普通 <img src> 无法直连，
  * 因此在挂载后拉取 blob 生成 objectURL，卸载时回收；预览时父组件复用该 objectURL。
  */
 const props = defineProps<{
-  publicId: string
-  alt: string
-}>()
+  publicId: string;
+  alt: string;
+}>();
 
-const url = ref('')
+const url = ref('');
 
 onMounted(async () => {
   try {
-    const blob = await fetchAiImageContent(props.publicId)
-    url.value = URL.createObjectURL(blob)
+    const blob = await fetchAiImageContent(props.publicId);
+    url.value = URL.createObjectURL(blob);
   } catch {
-    url.value = ''
+    url.value = '';
   }
-})
+});
 
 onBeforeUnmount(() => {
-  if (url.value) URL.revokeObjectURL(url.value)
-})
+  if (url.value) URL.revokeObjectURL(url.value);
+});
 
-defineExpose({ url })
+defineExpose({ url });
 </script>
 
 <template>

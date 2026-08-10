@@ -1,28 +1,28 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 
 // L-15：弹窗 Teleport 到 body——用例间自动卸载组件，防止残留实例跨用例响应
-enableAutoUnmount(afterEach)
-import { createRouter, createMemoryHistory, type Router } from 'vue-router'
-import { createPinia, setActivePinia } from 'pinia'
-import LoginPage from '../pages/LoginPage.vue'
-import { useAuthStore } from '../stores/auth'
+enableAutoUnmount(afterEach);
+import { createRouter, createMemoryHistory, type Router } from 'vue-router';
+import { createPinia, setActivePinia } from 'pinia';
+import LoginPage from '../pages/LoginPage.vue';
+import { useAuthStore } from '../stores/auth';
 
-const mockLogin = vi.fn()
-const mockFetchChallenge = vi.fn()
+const mockLogin = vi.fn();
+const mockFetchChallenge = vi.fn();
 
 vi.mock('../api/admin', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../api/admin')>()
+  const actual = await importOriginal<typeof import('../api/admin')>();
   return {
     ...actual,
     login: (...args: unknown[]) => mockLogin(...args),
     fetchLoginChallenge: (...args: unknown[]) => mockFetchChallenge(...args),
-  }
-})
+  };
+});
 
 vi.mock('../utils/pow', () => ({
   solvePow: vi.fn().mockResolvedValue('42'),
-}))
+}));
 
 const POW_CHALLENGE = {
   challengeId: 'ch-1',
@@ -30,7 +30,7 @@ const POW_CHALLENGE = {
   salt: 'abcd',
   difficulty: 1,
   captchaImage: null,
-}
+};
 
 function loginResult(role: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -41,7 +41,7 @@ function loginResult(role: string, overrides: Record<string, unknown> = {}) {
     role,
     displayName: role === 'PARTNER' ? '小伙伴' : '站长',
     ...overrides,
-  }
+  };
 }
 
 function createTestRouter(): Router {
@@ -53,133 +53,141 @@ function createTestRouter(): Router {
       { path: '/admin', name: 'admin', component: { template: '<div>Admin</div>' } },
       { path: '/recipes', name: 'recipes', component: { template: '<div>Recipes</div>' } },
     ],
-  })
+  });
 }
 
 async function mountPage(url = '/login') {
-  const router = createTestRouter()
-  await router.push(url)
-  await router.isReady()
-  const wrapper = mount(LoginPage, { global: { plugins: [router] } })
-  return { wrapper, router }
+  const router = createTestRouter();
+  await router.push(url);
+  await router.isReady();
+  const wrapper = mount(LoginPage, { global: { plugins: [router] } });
+  return { wrapper, router };
 }
 
 async function fillAndSubmit(wrapper: ReturnType<typeof mount>, options: { remember?: boolean } = {}) {
-  await wrapper.find('input[autocomplete="username"]').setValue('gf')
-  await wrapper.find('input[type="password"]').setValue('红烧肉要少放糖多放辣2026')
-  if (options.remember) await wrapper.find('input[type="checkbox"]').setValue(true)
-  await wrapper.find('form').trigger('submit.prevent')
-  await flushPromises()
+  await wrapper.find('input[autocomplete="username"]').setValue('gf');
+  await wrapper.find('input[type="password"]').setValue('红烧肉要少放糖多放辣2026');
+  if (options.remember) await wrapper.find('input[type="checkbox"]').setValue(true);
+  await wrapper.find('form').trigger('submit.prevent');
+  await flushPromises();
   // L-15：提交先过人机验证弹窗（Teleport 到 body）——点击“我不是机器人”并推进打勾停留计时
-  const startBtn = document.body.querySelector<HTMLButtonElement>('.verify-start')
+  const startBtn = document.body.querySelector<HTMLButtonElement>('.verify-start');
   if (startBtn) {
-    startBtn.click()
-    await flushPromises()
-    vi.advanceTimersByTime(700)
-    await flushPromises()
+    startBtn.click();
+    await flushPromises();
+    vi.advanceTimersByTime(700);
+    await flushPromises();
   }
 }
 
 beforeEach(() => {
-  vi.useFakeTimers()
-  document.body.innerHTML = ''
-  sessionStorage.clear()
-  localStorage.clear()
-  setActivePinia(createPinia())
+  vi.useFakeTimers();
+  document.body.innerHTML = '';
+  sessionStorage.clear();
+  localStorage.clear();
+  setActivePinia(createPinia());
   // auth.ts 的 memorySession 是模块级兜底缓存，仅清 storage 清不掉——必须经 clearSession 一并清除
-  useAuthStore().clearSession()
-  mockLogin.mockReset()
-  mockFetchChallenge.mockReset()
-  mockFetchChallenge.mockResolvedValue(POW_CHALLENGE)
-})
+  useAuthStore().clearSession();
+  mockLogin.mockReset();
+  mockFetchChallenge.mockReset();
+  mockFetchChallenge.mockResolvedValue(POW_CHALLENGE);
+});
 
 afterEach(() => {
-  vi.useRealTimers()
-})
+  vi.useRealTimers();
+});
 
 describe('FD-9 通用登录页', () => {
   it('FD-29：PARTNER 登录后与 ADMIN 一样落地 /admin（同权）', async () => {
-    mockLogin.mockResolvedValue(loginResult('PARTNER'))
-    const { wrapper, router } = await mountPage()
-    await fillAndSubmit(wrapper)
-    expect(router.currentRoute.value.path).toBe('/admin')
-    expect(useAuthStore().isPartner).toBe(true)
-    expect(useAuthStore().isStaff).toBe(true)
-  })
+    mockLogin.mockResolvedValue(loginResult('PARTNER'));
+    const { wrapper, router } = await mountPage();
+    await fillAndSubmit(wrapper);
+    expect(router.currentRoute.value.path).toBe('/admin');
+    expect(useAuthStore().isPartner).toBe(true);
+    expect(useAuthStore().isStaff).toBe(true);
+  });
 
   it('ADMIN 登录后落地 /admin', async () => {
-    mockLogin.mockResolvedValue(loginResult('ADMIN'))
-    const { wrapper, router } = await mountPage()
-    await fillAndSubmit(wrapper)
-    expect(router.currentRoute.value.path).toBe('/admin')
-  })
+    mockLogin.mockResolvedValue(loginResult('ADMIN'));
+    const { wrapper, router } = await mountPage();
+    await fillAndSubmit(wrapper);
+    expect(router.currentRoute.value.path).toBe('/admin');
+  });
 
   it('带 ?next= 时优先回到来路（FD-14 意图接续的载体）', async () => {
-    mockLogin.mockResolvedValue(loginResult('PARTNER'))
-    const { wrapper, router } = await mountPage('/login?next=%2Frecipes%3Fview%3Dmenu%26intent%3DaddDish')
-    await fillAndSubmit(wrapper)
-    expect(router.currentRoute.value.fullPath).toBe('/recipes?view=menu&intent=addDish')
-  })
+    mockLogin.mockResolvedValue(loginResult('PARTNER'));
+    const { wrapper, router } = await mountPage('/login?next=%2Frecipes%3Fview%3Dmenu%26intent%3DaddDish');
+    await fillAndSubmit(wrapper);
+    expect(router.currentRoute.value.fullPath).toBe('/recipes?view=menu&intent=addDish');
+  });
 
   it('拒绝站外 next，回退角色默认页（防开放重定向）', async () => {
-    mockLogin.mockResolvedValue(loginResult('PARTNER'))
-    const { wrapper, router } = await mountPage('/login?next=https%3A%2F%2Fevil.example')
-    await fillAndSubmit(wrapper)
-    expect(router.currentRoute.value.path).toBe('/admin')
-  })
+    mockLogin.mockResolvedValue(loginResult('PARTNER'));
+    const { wrapper, router } = await mountPage('/login?next=https%3A%2F%2Fevil.example');
+    await fillAndSubmit(wrapper);
+    expect(router.currentRoute.value.path).toBe('/admin');
+  });
 
   it('勾选保持登录：remember 传给 login，令牌仅存 sessionStorage', async () => {
-    mockLogin.mockResolvedValue(loginResult('PARTNER'))
-    const { wrapper } = await mountPage()
-    await fillAndSubmit(wrapper, { remember: true })
-    expect(mockLogin).toHaveBeenCalledWith('gf', '红烧肉要少放糖多放辣2026',
-      { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined }, true)
-    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
-    expect(sessionStorage.getItem('yubai-admin-role')).toBe('PARTNER')
-  })
+    mockLogin.mockResolvedValue(loginResult('PARTNER'));
+    const { wrapper } = await mountPage();
+    await fillAndSubmit(wrapper, { remember: true });
+    expect(mockLogin).toHaveBeenCalledWith(
+      'gf',
+      '红烧肉要少放糖多放辣2026',
+      { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined },
+      true,
+    );
+    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token');
+    expect(sessionStorage.getItem('yubai-admin-role')).toBe('PARTNER');
+  });
 
   it('不勾选保持登录：令牌仅存 sessionStorage，localStorage 不受影响', async () => {
-    mockLogin.mockResolvedValue(loginResult('PARTNER'))
-    const { wrapper } = await mountPage()
-    await fillAndSubmit(wrapper)
-    expect(mockLogin).toHaveBeenCalledWith('gf', '红烧肉要少放糖多放辣2026',
-      { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined }, false)
-    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
-  })
+    mockLogin.mockResolvedValue(loginResult('PARTNER'));
+    const { wrapper } = await mountPage();
+    await fillAndSubmit(wrapper);
+    expect(mockLogin).toHaveBeenCalledWith(
+      'gf',
+      '红烧肉要少放糖多放辣2026',
+      { challengeId: 'ch-1', nonce: '42', captchaAnswer: undefined },
+      false,
+    );
+    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token');
+  });
 
   it('已登录访问 /login 直接被送走', async () => {
-    useAuthStore().saveSession(loginResult('PARTNER') as never)
-    const { router } = await mountPage()
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/admin')
-  })
-})
+    useAuthStore().saveSession(loginResult('PARTNER') as never);
+    const { router } = await mountPage();
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/admin');
+  });
+});
 
 describe('FD-9 authStore 会话与启动迁移', () => {
   it('saveSession 写入 sessionStorage，clearSession 清空', () => {
-    const auth = useAuthStore()
-    auth.saveSession(loginResult('PARTNER') as never)
-    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token')
-    auth.clearSession()
-    expect(sessionStorage.getItem('yubai-admin-token')).toBeNull()
-  })
+    const auth = useAuthStore();
+    auth.saveSession(loginResult('PARTNER') as never);
+    expect(sessionStorage.getItem('yubai-admin-token')).toBe('fresh-token');
+    auth.clearSession();
+    expect(sessionStorage.getItem('yubai-admin-token')).toBeNull();
+  });
 
   it('启动时清理遗留 localStorage 密钥', () => {
-    localStorage.setItem('yubai-admin-token', 'legacy-token')
-    localStorage.setItem('yubai-admin-name', 'legacy')
-    setActivePinia(createPinia())
-    useAuthStore()
-    expect(localStorage.getItem('yubai-admin-token')).toBeNull()
-    expect(localStorage.getItem('yubai-admin-name')).toBeNull()
-  })
+    localStorage.setItem('yubai-admin-token', 'legacy-token');
+    localStorage.setItem('yubai-admin-name', 'legacy');
+    setActivePinia(createPinia());
+    useAuthStore();
+    expect(localStorage.getItem('yubai-admin-token')).toBeNull();
+    expect(localStorage.getItem('yubai-admin-name')).toBeNull();
+  });
 
   it('sessionStorage 令牌仍可恢复会话', () => {
-    sessionStorage.setItem('yubai-admin-token', 'session-token')
-    sessionStorage.setItem('yubai-admin-name', 'gxynf')
-    sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z')
-    sessionStorage.setItem('yubai-admin-role', 'ADMIN')
-    setActivePinia(createPinia())
-    const auth = useAuthStore()
-    expect(auth.isAuthenticated).toBe(true)
-  })
-})
+    sessionStorage.setItem('yubai-admin-token', 'session-token');
+    sessionStorage.setItem('yubai-admin-name', 'gxynf');
+    sessionStorage.setItem('yubai-admin-expiry', '2099-12-31T23:59:59Z');
+    sessionStorage.setItem('yubai-admin-role', 'ADMIN');
+    setActivePinia(createPinia());
+    const auth = useAuthStore();
+    expect(auth.isAuthenticated).toBe(true);
+  });
+});

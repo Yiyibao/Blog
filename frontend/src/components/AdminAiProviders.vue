@@ -1,29 +1,39 @@
 <script setup lang="ts">
-import axios from 'axios'
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import axios from 'axios';
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  logout as apiLogout, createAiProvider, deleteAiProvider, fetchAiProviders,
-  hasValidAdminSession, notifyAiProvidersChanged, setDefaultAiProvider, testAiProvider, updateAiProvider,
-  type AiProvider, type AiProviderPayload, type AiProviderTestResult, type AiProviderType,
-} from '../api/admin'
-import { useAiStore } from '../stores/aiStore'
-import AdminSidebar from './AdminSidebar.vue'
+  logout as apiLogout,
+  createAiProvider,
+  deleteAiProvider,
+  fetchAiProviders,
+  hasValidAdminSession,
+  notifyAiProvidersChanged,
+  setDefaultAiProvider,
+  testAiProvider,
+  updateAiProvider,
+  type AiProvider,
+  type AiProviderPayload,
+  type AiProviderTestResult,
+  type AiProviderType,
+} from '../api/admin';
+import { useAiStore } from '../stores/aiStore';
+import AdminSidebar from './AdminSidebar.vue';
 
-const router = useRouter()
-const ai = useAiStore()
+const router = useRouter();
+const ai = useAiStore();
 
-const providers = ref<AiProvider[]>([])
-const loading = ref(true)
-const saving = ref(false)
-const error = ref('')
-const editorOpen = ref(false)
-const editingId = ref<number | null>(null)
-const editingKeyTail = ref<string | null>(null)
+const providers = ref<AiProvider[]>([]);
+const loading = ref(true);
+const saving = ref(false);
+const error = ref('');
+const editorOpen = ref(false);
+const editingId = ref<number | null>(null);
+const editingKeyTail = ref<string | null>(null);
 /** 正在执行行内动作（测试/启停/设默认/删除）的供应商 id，防止重复点击 */
-const busyId = ref<number | null>(null)
-const testingId = ref<number | null>(null)
-const testResults = reactive<Record<number, AiProviderTestResult>>({})
+const busyId = ref<number | null>(null);
+const testingId = ref<number | null>(null);
+const testResults = reactive<Record<number, AiProviderTestResult>>({});
 
 // 密钥只写不回显：表单中的 apiKey 永远从空串开始，保存或关闭后立即清空。
 const form = reactive({
@@ -36,90 +46,102 @@ const form = reactive({
   enabled: true,
   dailyRequestLimit: 200,
   dailyTokenLimit: 200000,
-})
+});
 
-watch(() => form.providerType, () => { form.apiKey = '' })
+watch(
+  () => form.providerType,
+  () => {
+    form.apiKey = '';
+  },
+);
 
 function isOpenCodeType(providerType: AiProviderType) {
-  return providerType === 'OPENCODE_SERVER'
+  return providerType === 'OPENCODE_SERVER';
 }
 
 function providerProtocolLabel(providerType: AiProviderType) {
-  if (providerType === 'OPENCODE_SERVER') return 'OpenCode'
-  if (providerType === 'ANTHROPIC') return 'Anthropic'
-  if (providerType === 'OPENAI_RESPONSES') return 'Responses'
-  return 'OpenAI'
+  if (providerType === 'OPENCODE_SERVER') return 'OpenCode';
+  if (providerType === 'ANTHROPIC') return 'Anthropic';
+  if (providerType === 'OPENAI_RESPONSES') return 'Responses';
+  return 'OpenAI';
 }
 
 function providerProtocolTitle(providerType: AiProviderType) {
-  if (providerType === 'OPENCODE_SERVER') return 'OpenCode Server 协议'
-  if (providerType === 'ANTHROPIC') return 'Anthropic Messages API'
-  if (providerType === 'OPENAI_RESPONSES') return 'OpenAI Responses API'
-  return 'OpenAI 兼容协议'
+  if (providerType === 'OPENCODE_SERVER') return 'OpenCode Server 协议';
+  if (providerType === 'ANTHROPIC') return 'Anthropic Messages API';
+  if (providerType === 'OPENAI_RESPONSES') return 'OpenAI Responses API';
+  return 'OpenAI 兼容协议';
 }
 
 function baseUrlPlaceholder(providerType: AiProviderType) {
-  if (providerType === 'OPENCODE_SERVER') return 'http://127.0.0.1:4096'
-  if (providerType === 'ANTHROPIC') return 'https://api.anthropic.com'
-  if (providerType === 'OPENAI_RESPONSES') return 'https://xinyue.mom'
-  return 'https://api.deepseek.com'
+  if (providerType === 'OPENCODE_SERVER') return 'http://127.0.0.1:4096';
+  if (providerType === 'ANTHROPIC') return 'https://api.anthropic.com';
+  if (providerType === 'OPENAI_RESPONSES') return 'https://xinyue.mom';
+  return 'https://api.deepseek.com';
 }
 
 function handleAuthError(cause: unknown) {
   if (axios.isAxiosError(cause) && cause.response?.status === 401) {
-    logout()
-    return true
+    logout();
+    return true;
   }
-  return false
+  return false;
 }
 
 function apiErrorMessage(cause: unknown, fallback: string) {
   if (axios.isAxiosError(cause)) {
-    const message = (cause.response?.data as { message?: unknown } | undefined)?.message
-    if (typeof message === 'string' && message.trim()) return message
+    const message = (cause.response?.data as { message?: unknown } | undefined)?.message;
+    if (typeof message === 'string' && message.trim()) return message;
   }
-  return fallback
+  return fallback;
 }
 
 function logout() {
-  apiLogout()
-  void router.replace('/admin/login')
+  apiLogout();
+  void router.replace('/admin/login');
 }
 
 async function load() {
-  if (!hasValidAdminSession()) return logout()
-  loading.value = true
-  error.value = ''
+  if (!hasValidAdminSession()) return logout();
+  loading.value = true;
+  error.value = '';
   try {
-    providers.value = await fetchAiProviders()
+    providers.value = await fetchAiProviders();
   } catch (cause) {
-    if (!handleAuthError(cause)) error.value = '暂时无法读取供应商列表，请确认后端服务正在运行。'
+    if (!handleAuthError(cause)) error.value = '暂时无法读取供应商列表，请确认后端服务正在运行。';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 function keyDisplay(provider: AiProvider) {
-  if (provider.providerType === 'OPENCODE_SERVER') return '凭据来自环境变量'
-  if (!provider.hasKey) return '未设置密钥'
-  return provider.keyTail ? `密钥 ····${provider.keyTail}` : '密钥已设置'
+  if (provider.providerType === 'OPENCODE_SERVER') return '凭据来自环境变量';
+  if (!provider.hasKey) return '未设置密钥';
+  return provider.keyTail ? `密钥 ····${provider.keyTail}` : '密钥已设置';
 }
 
 function newProvider() {
-  editingId.value = null
-  editingKeyTail.value = null
-  error.value = ''
+  editingId.value = null;
+  editingKeyTail.value = null;
+  error.value = '';
   Object.assign(form, {
-    name: '', baseUrl: '', providerType: 'OPENAI_COMPATIBLE' as AiProviderType, apiKey: '', models: '', defaultModel: '',
-    enabled: true, dailyRequestLimit: 200, dailyTokenLimit: 200000,
-  })
-  editorOpen.value = true
+    name: '',
+    baseUrl: '',
+    providerType: 'OPENAI_COMPATIBLE' as AiProviderType,
+    apiKey: '',
+    models: '',
+    defaultModel: '',
+    enabled: true,
+    dailyRequestLimit: 200,
+    dailyTokenLimit: 200000,
+  });
+  editorOpen.value = true;
 }
 
 function editProvider(provider: AiProvider) {
-  editingId.value = provider.id
-  editingKeyTail.value = provider.hasKey ? provider.keyTail : null
-  error.value = ''
+  editingId.value = provider.id;
+  editingKeyTail.value = provider.hasKey ? provider.keyTail : null;
+  error.value = '';
   Object.assign(form, {
     name: provider.name,
     baseUrl: provider.baseUrl,
@@ -130,25 +152,28 @@ function editProvider(provider: AiProvider) {
     enabled: provider.enabled,
     dailyRequestLimit: provider.dailyRequestLimit,
     dailyTokenLimit: provider.dailyTokenLimit,
-  })
-  editorOpen.value = true
+  });
+  editorOpen.value = true;
 }
 
 // 保存在途时禁止关闭：否则迟到的响应会关闭（或把错误显示到）用户随后新开的抽屉
 function closeEditor() {
-  if (saving.value) return
-  editorOpen.value = false
-  form.apiKey = ''
-  error.value = ''
+  if (saving.value) return;
+  editorOpen.value = false;
+  form.apiKey = '';
+  error.value = '';
 }
 
 function parsedModels() {
-  return form.models.split(/[\n,]/).map((item) => item.trim()).filter(Boolean)
+  return form.models
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function providerPayload(): AiProviderPayload {
-  const apiKey = form.apiKey.trim()
-  const isOpenCode = isOpenCodeType(form.providerType)
+  const apiKey = form.apiKey.trim();
+  const isOpenCode = isOpenCodeType(form.providerType);
   return {
     name: form.name.trim(),
     baseUrl: form.baseUrl.trim(),
@@ -160,40 +185,43 @@ function providerPayload(): AiProviderPayload {
     enabled: form.enabled,
     dailyRequestLimit: form.dailyRequestLimit,
     dailyTokenLimit: form.dailyTokenLimit,
-  }
+  };
 }
 
 async function save() {
-  saving.value = true
-  error.value = ''
+  saving.value = true;
+  error.value = '';
   try {
-    const id = editingId.value
+    const id = editingId.value;
     if (id) {
-      await updateAiProvider(id, providerPayload())
+      await updateAiProvider(id, providerPayload());
       // 配置已变，旧的连通测试结论对新配置不再成立
-      delete testResults[id]
+      delete testResults[id];
     } else {
-      await createAiProvider(providerPayload())
+      await createAiProvider(providerPayload());
     }
-    notifyAiProvidersChanged()
-    saving.value = false
-    closeEditor()
-    await load()
+    notifyAiProvidersChanged();
+    saving.value = false;
+    closeEditor();
+    await load();
   } catch (cause) {
     if (!handleAuthError(cause)) {
-      error.value = apiErrorMessage(cause, isOpenCodeType(form.providerType)
-        ? '保存失败，请检查必填项和字段格式（base_url 需为环回地址根路径）。'
-        : '保存失败，请检查必填项和字段格式（base_url 需为 https 且非内网地址）。')
+      error.value = apiErrorMessage(
+        cause,
+        isOpenCodeType(form.providerType)
+          ? '保存失败，请检查必填项和字段格式（base_url 需为环回地址根路径）。'
+          : '保存失败，请检查必填项和字段格式（base_url 需为 https 且非内网地址）。',
+      );
     }
   } finally {
-    saving.value = false
+    saving.value = false;
   }
 }
 
 async function toggleEnabled(provider: AiProvider) {
-  if (busyId.value !== null) return
-  busyId.value = provider.id
-  error.value = ''
+  if (busyId.value !== null) return;
+  busyId.value = provider.id;
+  error.value = '';
   try {
     // 不携带 apiKey → 后端保留原密钥；仅翻转启用状态
     await updateAiProvider(provider.id, {
@@ -205,78 +233,79 @@ async function toggleEnabled(provider: AiProvider) {
       enabled: !provider.enabled,
       dailyRequestLimit: provider.dailyRequestLimit,
       dailyTokenLimit: provider.dailyTokenLimit,
-    })
-    notifyAiProvidersChanged()
-    await load()
+    });
+    notifyAiProvidersChanged();
+    await load();
   } catch (cause) {
-    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '切换启用状态失败，请稍后重试。')
+    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '切换启用状态失败，请稍后重试。');
   } finally {
-    busyId.value = null
+    busyId.value = null;
   }
 }
 
 async function makeDefault(provider: AiProvider) {
-  if (busyId.value !== null) return
-  busyId.value = provider.id
-  error.value = ''
+  if (busyId.value !== null) return;
+  busyId.value = provider.id;
+  error.value = '';
   try {
-    await setDefaultAiProvider(provider.id)
-    notifyAiProvidersChanged()
-    await load()
+    await setDefaultAiProvider(provider.id);
+    notifyAiProvidersChanged();
+    await load();
   } catch (cause) {
-    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '设为默认失败，请稍后重试。')
+    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '设为默认失败，请稍后重试。');
   } finally {
-    busyId.value = null
+    busyId.value = null;
   }
 }
 
 async function runTest(provider: AiProvider) {
-  if (testingId.value !== null) return
-  testingId.value = provider.id
-  delete testResults[provider.id]
+  if (testingId.value !== null) return;
+  testingId.value = provider.id;
+  delete testResults[provider.id];
   try {
-    testResults[provider.id] = await testAiProvider(provider.id)
+    testResults[provider.id] = await testAiProvider(provider.id);
   } catch (cause) {
-    if (handleAuthError(cause)) return
-    const status = axios.isAxiosError(cause) ? cause.response?.status : undefined
+    if (handleAuthError(cause)) return;
+    const status = axios.isAxiosError(cause) ? cause.response?.status : undefined;
     testResults[provider.id] = {
       ok: false,
-      message: status === 429
-        ? '测试过于频繁，请稍后再试（每分钟最多 6 次）。'
-        : apiErrorMessage(cause, '测试请求失败，请稍后重试。'),
+      message:
+        status === 429
+          ? '测试过于频繁，请稍后再试（每分钟最多 6 次）。'
+          : apiErrorMessage(cause, '测试请求失败，请稍后重试。'),
       models: [],
-    }
+    };
   } finally {
-    testingId.value = null
+    testingId.value = null;
   }
 }
 
 async function remove(provider: AiProvider) {
-  if (!window.confirm(`确认删除供应商“${provider.name}”？此操作无法撤销。`)) return
-  if (busyId.value !== null) return
-  busyId.value = provider.id
-  error.value = ''
+  if (!window.confirm(`确认删除供应商“${provider.name}”？此操作无法撤销。`)) return;
+  if (busyId.value !== null) return;
+  busyId.value = provider.id;
+  error.value = '';
   try {
-    await deleteAiProvider(provider.id)
-    notifyAiProvidersChanged()
-    delete testResults[provider.id]
-    await load()
+    await deleteAiProvider(provider.id);
+    notifyAiProvidersChanged();
+    delete testResults[provider.id];
+    await load();
   } catch (cause) {
-    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '删除失败，请稍后再试。')
+    if (!handleAuthError(cause)) error.value = apiErrorMessage(cause, '删除失败，请稍后再试。');
   } finally {
-    busyId.value = null
+    busyId.value = null;
   }
 }
 
 onMounted(() => {
-  void load()
-  void ai.ensureProviders()
-  ai.subscribe()
-})
+  void load();
+  void ai.ensureProviders();
+  ai.subscribe();
+});
 
 onBeforeUnmount(() => {
-  ai.unsubscribe()
-})
+  ai.unsubscribe();
+});
 </script>
 
 <template>
@@ -335,10 +364,13 @@ onBeforeUnmount(() => {
 
         <div v-if="loading" class="admin-empty">正在读取供应商列表…</div>
         <div v-else-if="!providers.length" class="admin-empty">
-          还没有配置任何 AI 供应商。点击「新建供应商」注册 OpenAI 兼容、Anthropic Claude 或 OpenCode Server 端点。
+          还没有配置任何 AI 供应商。点击「新建供应商」注册 OpenAI 兼容、Anthropic Claude 或 OpenCode Server
+          端点。
         </div>
         <div v-else class="admin-table provider-table">
-          <div class="admin-table-head"><span>供应商</span><span>模型</span><span>状态</span><span>操作</span></div>
+          <div class="admin-table-head">
+            <span>供应商</span><span>模型</span><span>状态</span><span>操作</span>
+          </div>
           <template v-for="provider in providers" :key="provider.id">
             <article>
               <div class="provider-cell">
@@ -348,15 +380,24 @@ onBeforeUnmount(() => {
                 </small>
                 <strong>
                   {{ provider.name }}
-                  <span class="provider-protocol-chip" :title="providerProtocolTitle(provider.providerType)">{{ providerProtocolLabel(provider.providerType) }}</span>
+                  <span
+                    class="provider-protocol-chip"
+                    :title="providerProtocolTitle(provider.providerType)"
+                    >{{ providerProtocolLabel(provider.providerType) }}</span
+                  >
                   <em v-if="provider.isDefault" class="provider-default-chip">默认</em>
                 </strong>
-                <p>日限额 {{ provider.dailyRequestLimit.toLocaleString() }} 次 / {{ provider.dailyTokenLimit.toLocaleString() }} tokens</p>
+                <p>
+                  日限额 {{ provider.dailyRequestLimit.toLocaleString() }} 次 /
+                  {{ provider.dailyTokenLimit.toLocaleString() }} tokens
+                </p>
               </div>
               <div class="provider-cell">
                 <small>默认模型</small>
                 <strong class="provider-model">{{ provider.defaultModel }}</strong>
-                <p>{{ provider.models.length ? `${provider.models.length} 个可用模型` : '未限制模型列表' }}</p>
+                <p>
+                  {{ provider.models.length ? `${provider.models.length} 个可用模型` : '未限制模型列表' }}
+                </p>
               </div>
               <button
                 type="button"
@@ -372,7 +413,9 @@ onBeforeUnmount(() => {
                 <button type="button" :disabled="testingId !== null" @click="runTest(provider)">
                   {{ testingId === provider.id ? '测试中…' : '测试连通' }}
                 </button>
-                <button type="button" :disabled="busyId !== null" @click="editProvider(provider)">编辑</button>
+                <button type="button" :disabled="busyId !== null" @click="editProvider(provider)">
+                  编辑
+                </button>
                 <button
                   v-if="!provider.isDefault"
                   type="button"
@@ -382,7 +425,9 @@ onBeforeUnmount(() => {
                 >
                   设为默认
                 </button>
-                <button type="button" class="danger" :disabled="busyId !== null" @click="remove(provider)">删除</button>
+                <button type="button" class="danger" :disabled="busyId !== null" @click="remove(provider)">
+                  删除
+                </button>
               </div>
             </article>
             <div
@@ -413,25 +458,32 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="admin-form-grid">
-          <label>名称<input v-model="form.name" required maxlength="60" placeholder="deepseek"></label>
-          <label>Base URL<input v-model="form.baseUrl" type="url" required maxlength="500" :placeholder="baseUrlPlaceholder(form.providerType)"></label>
+          <label>名称<input v-model="form.name" required maxlength="60" placeholder="deepseek" /></label>
+          <label
+            >Base URL<input
+              v-model="form.baseUrl"
+              type="url"
+              required
+              maxlength="500"
+              :placeholder="baseUrlPlaceholder(form.providerType)"
+          /></label>
         </div>
         <label>协议类型</label>
         <div class="admin-type-group">
           <label class="admin-type-radio">
-            <input type="radio" v-model="form.providerType" value="OPENAI_COMPATIBLE">
+            <input type="radio" v-model="form.providerType" value="OPENAI_COMPATIBLE" />
             <span>OpenAI 兼容</span>
           </label>
           <label class="admin-type-radio">
-            <input type="radio" v-model="form.providerType" value="OPENAI_RESPONSES">
+            <input type="radio" v-model="form.providerType" value="OPENAI_RESPONSES" />
             <span>OpenAI Responses</span>
           </label>
           <label class="admin-type-radio">
-            <input type="radio" v-model="form.providerType" value="ANTHROPIC">
+            <input type="radio" v-model="form.providerType" value="ANTHROPIC" />
             <span>Anthropic Claude</span>
           </label>
           <label class="admin-type-radio">
-            <input type="radio" v-model="form.providerType" value="OPENCODE_SERVER">
+            <input type="radio" v-model="form.providerType" value="OPENCODE_SERVER" />
             <span>OpenCode Server（内建）</span>
           </label>
         </div>
@@ -442,24 +494,39 @@ onBeforeUnmount(() => {
             type="password"
             maxlength="500"
             autocomplete="new-password"
-            :placeholder="editingId
-              ? (editingKeyTail ? `留空保留现有密钥（····${editingKeyTail}）` : '留空保留现有配置')
-              : '本地无鉴权端点可留空'"
-          >
+            :placeholder="
+              editingId
+                ? editingKeyTail
+                  ? `留空保留现有密钥（····${editingKeyTail}）`
+                  : '留空保留现有配置'
+                : '本地无鉴权端点可留空'
+            "
+          />
         </label>
         <div v-if="form.providerType === 'OPENAI_RESPONSES'" class="provider-guidance">
-          <p>使用 OpenAI Responses API，后端请求 <code>/responses</code>，Base URL 可填 <code>https://xinyue.mom</code>。</p>
+          <p>
+            使用 OpenAI Responses API，后端请求 <code>/responses</code>，Base URL 可填
+            <code>https://xinyue.mom</code>。
+          </p>
           <p>服务器环境会附加配置的自定义请求头；密钥只在服务端加密保存，不会返回浏览器。</p>
         </div>
         <div v-else-if="form.providerType === 'ANTHROPIC'" class="provider-guidance">
-          <p>Base URL 填写 <code>https://api.anthropic.com</code>（也支持填写带 <code>/v1</code> 的网关地址）。</p>
-          <p>服务端会使用 Anthropic Messages API，并通过 <code>x-api-key</code> 和 <code>anthropic-version: 2023-06-01</code> 发送密钥。</p>
+          <p>
+            Base URL 填写 <code>https://api.anthropic.com</code>（也支持填写带 <code>/v1</code> 的网关地址）。
+          </p>
+          <p>
+            服务端会使用 Anthropic Messages API，并通过 <code>x-api-key</code> 和
+            <code>anthropic-version: 2023-06-01</code> 发送密钥。
+          </p>
           <p>模型 ID 示例：<code>claude-sonnet-4-20250514</code>；密钥会加密保存，编辑时留空可保留原密钥。</p>
         </div>
         <div v-else-if="isOpenCodeType(form.providerType)" class="provider-guidance">
           <p>Base URL 必须填写本地回环地址根路径，例如 <code>http://127.0.0.1:4096</code>。</p>
           <p>供应商/模型 ID 使用已配置的 OpenCode sidecar。</p>
-          <p>凭据来自服务端环境变量 <code>APP_AI_OPENCODE_USERNAME</code> 与 <code>APP_AI_OPENCODE_PASSWORD</code>，不存入数据库。</p>
+          <p>
+            凭据来自服务端环境变量 <code>APP_AI_OPENCODE_USERNAME</code> 与
+            <code>APP_AI_OPENCODE_PASSWORD</code>，不存入数据库。
+          </p>
         </div>
         <label>
           模型列表（每行一个，留空则不限制）
@@ -468,7 +535,12 @@ onBeforeUnmount(() => {
         <div class="admin-form-grid">
           <label>
             默认模型
-            <select v-if="parsedModels().length" v-model="form.defaultModel" required data-testid="default-model">
+            <select
+              v-if="parsedModels().length"
+              v-model="form.defaultModel"
+              required
+              data-testid="default-model"
+            >
               <option v-for="model in parsedModels()" :key="model" :value="model">{{ model }}</option>
             </select>
             <input
@@ -478,17 +550,33 @@ onBeforeUnmount(() => {
               maxlength="120"
               placeholder="deepseek-chat"
               data-testid="default-model"
-            >
+            />
           </label>
-          <label class="admin-check"><input v-model="form.enabled" type="checkbox">启用该供应商</label>
-          <label>日请求上限<input v-model.number="form.dailyRequestLimit" type="number" min="1" max="100000" required></label>
-          <label>日 token 上限<input v-model.number="form.dailyTokenLimit" type="number" min="1000" max="100000000" required></label>
+          <label class="admin-check"><input v-model="form.enabled" type="checkbox" />启用该供应商</label>
+          <label
+            >日请求上限<input
+              v-model.number="form.dailyRequestLimit"
+              type="number"
+              min="1"
+              max="100000"
+              required
+          /></label>
+          <label
+            >日 token 上限<input
+              v-model.number="form.dailyTokenLimit"
+              type="number"
+              min="1000"
+              max="100000000"
+              required
+          /></label>
         </div>
 
         <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
         <footer>
           <button class="button secondary" type="button" :disabled="saving" @click="closeEditor">取消</button>
-          <button class="button primary" type="submit" :disabled="saving">{{ saving ? '正在保存…' : '保存供应商 ↗' }}</button>
+          <button class="button primary" type="submit" :disabled="saving">
+            {{ saving ? '正在保存…' : '保存供应商 ↗' }}
+          </button>
         </footer>
       </form>
     </div>
@@ -561,7 +649,7 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   color: var(--console-muted, #7f7e77);
   font-family: ui-monospace, Consolas, monospace;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
 }
 .provider-default-chip {
   display: inline-block;
@@ -571,7 +659,7 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   color: #9e7553;
   font: 500 10px/1.6 inherit;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   vertical-align: 3px;
 }
 .provider-model {
@@ -581,10 +669,12 @@ onBeforeUnmount(() => {
 .provider-toggle {
   cursor: pointer;
   background: transparent;
-  transition: border-color .2s ease, color .2s ease;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 .provider-toggle:disabled {
-  opacity: .5;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 .provider-actions {
@@ -624,7 +714,10 @@ onBeforeUnmount(() => {
   padding: 3px 10px;
   border: 1px solid color-mix(in srgb, currentcolor 35%, transparent);
   border-radius: 999px;
-  font: 11px/1.6 ui-monospace, Consolas, monospace;
+  font:
+    11px/1.6 ui-monospace,
+    Consolas,
+    monospace;
 }
 
 .provider-protocol-chip {
@@ -635,7 +728,7 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   color: var(--console-muted, #7f7e77);
   font: 500 10px/1.6 inherit;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   vertical-align: 3px;
 }
 .admin-type-group {

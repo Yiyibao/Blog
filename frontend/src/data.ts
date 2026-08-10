@@ -1,106 +1,105 @@
-export type SearchType = 'POST' | 'DISH' | 'NOTE'
+export type SearchType = 'POST' | 'DISH' | 'NOTE';
 
 export interface SearchHit {
-  type: SearchType
-  id: number
-  title: string
-  excerpt: string
-  category: string | null
-  url: string
-  color: string | null
-  number: string | null
-  slug?: string | null
+  type: SearchType;
+  id: number;
+  title: string;
+  excerpt: string;
+  category: string | null;
+  url: string;
+  color: string | null;
+  number: string | null;
+  slug?: string | null;
   // L-8：POST 分页分支实装的文章头元信息（其余类型为 null）
-  date?: string | null
-  readTime?: number | null
-  tags?: string[] | null
+  date?: string | null;
+  readTime?: number | null;
+  tags?: string[] | null;
 }
 
-export type PostStatus = 'DRAFT' | 'PUBLISHED'
+export type PostStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
 // P1-2：列表接口只返回摘要（不含 content 正文），正文仅由详情接口返回。
 export interface PostSummary {
-  id?: number
-  slug: string
-  title: string
-  excerpt: string
-  date: string
-  readTime: number
-  category: string
-  categorySlug?: string
-  tags: string[]
-  color: string
-  number: string
-  featured?: boolean
-  status?: PostStatus
-  likeCount?: number
-  viewsCount?: number
+  id?: number;
+  slug: string;
+  title: string;
+  excerpt: string;
+  date: string;
+  readTime: number;
+  category: string;
+  categorySlug?: string;
+  tags: string[];
+  color: string;
+  number: string;
+  featured?: boolean;
+  status?: PostStatus;
+  scheduledPublishAt?: string | null;
+  likeCount?: number;
+  viewsCount?: number;
 }
 
 export interface PostNeighbor {
-  slug: string
-  title: string
+  slug: string;
+  title: string;
 }
 
 /** 4B：「本文属于合集 X（n/N）」（仅公开详情响应携带）。 */
 export interface PostSeriesRef {
-  slug: string
-  name: string
-  position: number
-  total: number
+  slug: string;
+  name: string;
+  position: number;
+  total: number;
 }
 
 export interface Post extends PostSummary {
-  content: string
+  content: string;
   // 3A：Markdown 化双字段——MARKDOWN 篇走受控渲染管线，HTML 为存量默认
-  markdownContent?: string | null
-  contentFormat?: 'HTML' | 'MARKDOWN'
+  markdownContent?: string | null;
+  contentFormat?: 'HTML' | 'MARKDOWN';
   // 3D：相邻文章导航（仅公开详情响应携带）
-  previous?: PostNeighbor | null
-  next?: PostNeighbor | null
-  series?: PostSeriesRef | null
+  previous?: PostNeighbor | null;
+  next?: PostNeighbor | null;
+  series?: PostSeriesRef | null;
   // 5D：相关推荐（服务端基于共享标签 TOP N → 同分类最新 → 空数组）
-  relatedPosts?: PostSummary[]
+  relatedPosts?: PostSummary[];
 }
 
 export interface CategorySummary {
-  name: string
-  slug: string
-  publishedPostCount: number
+  name: string;
+  slug: string;
+  publishedPostCount: number;
 }
 
 export interface PageResult<T> {
-  items: T[]
-  page: number
-  size: number
-  totalElements: number
-  totalPages: number
+  items: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 }
 
 export interface Dish {
-  id: number
-  slug: string
-  name: string
-  summary: string
-  category: string
-  imageUrl: string
-  imageAlt: string
-  imageCredit: string
-  imageSourceUrl: string
-  prepMinutes: number
-  difficulty: '简单' | '家常' | '进阶'
-  rating: number
-  featured: boolean
-  published: boolean
-  displayOrder: number
+  id: number;
+  slug: string;
+  name: string;
+  summary: string;
+  category: string;
+  imageUrl: string;
+  imageAlt: string;
+  prepMinutes: number;
+  difficulty: '简单' | '家常' | '进阶';
+  rating: number;
+  featured: boolean;
+  published: boolean;
+  displayOrder: number;
   // FD-3：后端 DishResponse 一直在返回该字段（V12 起），前端类型此前缺失
-  favoriteCount: number
+  favoriteCount: number;
   // NF-12：份量基准，默认 2 人份
-  baseServings?: number
-  ingredients: string[]
-  steps: string[]
-  createdAt: string
-  updatedAt: string
+  baseServings?: number;
+  ingredients: string[];
+  steps: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const posts: Post[] = [
@@ -189,5 +188,4 @@ export const posts: Post[] = [
     status: 'PUBLISHED',
     content: `<p class="lead">散步是一种低速的搜索方式。</p><h2 id="light">下午四点的光</h2><p>阳光沿着旧楼的边缘落下，橱窗、树影和路人的衣角暂时拥有同一种颜色。</p><h2 id="collect">收集而不占有</h2><p>按下快门不是为了证明到过，而是提醒自己：平常的一天也有值得认真观看的部分。</p>`,
   },
-]
-
+];

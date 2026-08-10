@@ -1,51 +1,84 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { fetchDailyQuotes } from '../api/content'
-import { useUiStore } from '../stores/uiStore'
+import { ref, computed, onMounted } from 'vue';
+import { fetchDailyQuotes } from '../api/content';
+import { useUiStore } from '../stores/uiStore';
 
 interface Quote {
-  id: string | number
-  content: string
-  author: string
-  category: string
+  id: string | number;
+  content: string;
+  author: string;
+  category: string;
 }
 
-const ui = useUiStore()
+const ui = useUiStore();
 
 const fallbackQuotes: Quote[] = [
-  { id: '1', content: '代码是写给人看的，只是顺便让机器能够运行。', author: '《SICP》', category: '极客哲学' },
-  { id: '2', content: '把寻常日子里的微光拾起，时间便有了可以重读的形状。', author: '日常拾光录', category: '生活随想' },
-  { id: '3', content: '人间烟火气，最抚凡人心。一道好菜是时间的艺术。', author: '美食随笔', category: '生活哲学' },
+  {
+    id: '1',
+    content: '代码是写给人看的，只是顺便让机器能够运行。',
+    author: '《SICP》',
+    category: '极客哲学',
+  },
+  {
+    id: '2',
+    content: '把寻常日子里的微光拾起，时间便有了可以重读的形状。',
+    author: '日常拾光录',
+    category: '生活随想',
+  },
+  {
+    id: '3',
+    content: '人间烟火气，最抚凡人心。一道好菜是时间的艺术。',
+    author: '美食随笔',
+    category: '生活哲学',
+  },
   { id: '4', content: '保持简单，保持专注。复杂是设计的死敌。', author: 'Dieter Rams', category: '设计原则' },
-  { id: '5', content: '终身学习的意义，在于不断重构自己的认知地图。', author: '学习笔记', category: '认知跃迁' },
-]
+  {
+    id: '5',
+    content: '终身学习的意义，在于不断重构自己的认知地图。',
+    author: '学习笔记',
+    category: '认知跃迁',
+  },
+];
 
-const quotes = ref<Quote[]>(fallbackQuotes)
-const currentIndex = ref(0)
-const isTearing = ref(false)
+const quotes = ref<Quote[]>(fallbackQuotes);
+const currentIndex = ref(0);
+const isTearing = ref(false);
 
-const currentQuote = computed(() => quotes.value[currentIndex.value] || fallbackQuotes[0])
+const currentQuote = computed(() => quotes.value[currentIndex.value] || fallbackQuotes[0]);
 
 const todayDate = computed(() => {
-  const d = new Date()
-  const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
-  const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+  const d = new Date();
+  const months = [
+    '一月',
+    '二月',
+    '三月',
+    '四月',
+    '五月',
+    '六月',
+    '七月',
+    '八月',
+    '九月',
+    '十月',
+    '十一月',
+    '十二月',
+  ];
+  const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
   return {
     year: d.getFullYear(),
     monthName: months[d.getMonth()],
     dayNumber: String(d.getDate()).padStart(2, '0'),
     weekday: days[d.getDay()],
-  }
-})
+  };
+});
 
 // NF-7：改走统一 api 层，不再组件内裸 fetch
 async function fetchDailyQuote() {
   try {
-    const data = await fetchDailyQuotes()
+    const data = await fetchDailyQuotes();
     if (Array.isArray(data) && data.length > 0) {
-      quotes.value = data
+      quotes.value = data;
     } else if (data && !Array.isArray(data) && data.content) {
-      quotes.value = [data, ...fallbackQuotes]
+      quotes.value = [data, ...fallbackQuotes];
     }
   } catch {
     // fallback
@@ -53,23 +86,23 @@ async function fetchDailyQuote() {
 }
 
 function nextQuote() {
-  if (isTearing.value) return
-  isTearing.value = true
+  if (isTearing.value) return;
+  isTearing.value = true;
   setTimeout(() => {
-    currentIndex.value = (currentIndex.value + 1) % quotes.value.length
-    isTearing.value = false
-  }, 450)
+    currentIndex.value = (currentIndex.value + 1) % quotes.value.length;
+    isTearing.value = false;
+  }, 450);
 }
 
 function copyQuote() {
-  const text = `“${currentQuote.value.content}” —— ${currentQuote.value.author}`
-  void navigator.clipboard.writeText(text)
-  ui.showToast('金句已复制到剪贴板 ✨')
+  const text = `“${currentQuote.value.content}” —— ${currentQuote.value.author}`;
+  void navigator.clipboard.writeText(text);
+  ui.showToast('金句已复制到剪贴板 ✨');
 }
 
 onMounted(() => {
-  void fetchDailyQuote()
-})
+  void fetchDailyQuote();
+});
 </script>
 
 <template>
@@ -102,9 +135,7 @@ onMounted(() => {
         <button type="button" class="calendar-btn tear-btn" :disabled="isTearing" @click="nextQuote">
           <i>✂</i> 撕下一页 · 换灵感
         </button>
-        <button type="button" class="calendar-btn copy-btn" @click="copyQuote">
-          <i>📋</i> 复制
-        </button>
+        <button type="button" class="calendar-btn copy-btn" @click="copyQuote"><i>📋</i> 复制</button>
       </footer>
     </div>
   </div>
@@ -126,16 +157,27 @@ onMounted(() => {
   border: 1px solid var(--line-strong);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
   overflow: hidden;
-  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s;
+  transition:
+    transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.45s;
   transform-origin: top center;
 }
 .calendar-card.is-tearing {
   animation: tear-off-animation 0.45s ease-in forwards;
 }
 @keyframes tear-off-animation {
-  0% { transform: rotate(0deg) translateY(0); opacity: 1; }
-  50% { transform: rotate(-8deg) translateY(20px) scale(0.96); opacity: 0.6; }
-  100% { transform: rotate(-15deg) translateY(80px) scale(0.9); opacity: 0; }
+  0% {
+    transform: rotate(0deg) translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: rotate(-8deg) translateY(20px) scale(0.96);
+    opacity: 0.6;
+  }
+  100% {
+    transform: rotate(-15deg) translateY(80px) scale(0.9);
+    opacity: 0;
+  }
 }
 
 .calendar-rings {
@@ -149,7 +191,7 @@ onMounted(() => {
   height: 18px;
   border-radius: 6px;
   background: linear-gradient(180deg, #d1d5db 0%, #9ca3af 100%);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .calendar-header-strip {
@@ -173,7 +215,10 @@ onMounted(() => {
   text-align: center;
 }
 .date-large-number {
-  font: 800 64px/1 Georgia, 'Times New Roman', serif;
+  font:
+    800 64px/1 Georgia,
+    'Times New Roman',
+    serif;
   color: var(--accent);
   letter-spacing: -0.04em;
 }

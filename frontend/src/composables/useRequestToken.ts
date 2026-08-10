@@ -4,18 +4,18 @@
  * 本仓库 review 实证过的缺陷模式（列表摘要 DTO + 详情异步补取）。
  */
 export function useRequestToken() {
-  let current = 0
+  let current = 0;
 
   /** 发起新请求前调用：作废所有在途请求并返回本次令牌。 */
   function next(): number {
-    current += 1
-    return current
+    current += 1;
+    return current;
   }
 
   /** 响应落地前调用：令牌已过期则丢弃。 */
   function isCurrent(token: number): boolean {
-    return token === current
+    return token === current;
   }
 
-  return { next, isCurrent }
+  return { next, isCurrent };
 }

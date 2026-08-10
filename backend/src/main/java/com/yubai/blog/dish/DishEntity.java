@@ -1,11 +1,5 @@
 package com.yubai.blog.dish;
 
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -19,7 +13,11 @@ import jakarta.persistence.OrderColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.hibernate.annotations.BatchSize;
 
 @Entity
@@ -46,12 +44,6 @@ public class DishEntity {
 
     @Column(name = "image_alt", nullable = false, length = 240)
     private String imageAlt;
-
-    @Column(name = "image_credit", nullable = false, length = 240)
-    private String imageCredit;
-
-    @Column(name = "image_source_url", nullable = false, columnDefinition = "text")
-    private String imageSourceUrl;
 
     @Column(name = "prep_minutes", nullable = false)
     private int prepMinutes;
@@ -103,24 +95,21 @@ public class DishEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    protected DishEntity() {
-    }
+    protected DishEntity() {}
 
-    public static DishEntity create(DishRequest request) {
+    public static DishEntity create(DishRequest request, String slug) {
         var dish = new DishEntity();
+        dish.slug = slug;
         dish.update(request);
         return dish;
     }
 
     public void update(DishRequest request) {
-        this.slug = request.slug();
         this.name = request.name();
         this.summary = request.summary();
         this.category = request.category();
         this.imageUrl = request.imageUrl();
         this.imageAlt = request.imageAlt();
-        this.imageCredit = request.imageCredit();
-        this.imageSourceUrl = request.imageSourceUrl();
         this.prepMinutes = request.prepMinutes();
         this.difficulty = request.difficulty();
         this.rating = request.rating();
@@ -150,27 +139,83 @@ public class DishEntity {
         this.updatedAt = Instant.now();
     }
 
-    public Long getId() { return id; }
-    public String getSlug() { return slug; }
-    public String getName() { return name; }
-    public String getSummary() { return summary; }
-    public String getCategory() { return category; }
-    public String getImageUrl() { return imageUrl; }
-    public String getImageAlt() { return imageAlt; }
-    public String getImageCredit() { return imageCredit; }
-    public String getImageSourceUrl() { return imageSourceUrl; }
-    public int getPrepMinutes() { return prepMinutes; }
-    public String getDifficulty() { return difficulty; }
-    public BigDecimal getRating() { return rating; }
-    public boolean isFeatured() { return featured; }
-    public boolean isPublished() { return published; }
-    public int getDisplayOrder() { return displayOrder; }
-    public int getFavoriteCount() { return favoriteCount; }
-    public int getViewsCount() { return viewsCount; }
-    public int getBaseServings() { return baseServings; }
-    public List<String> getIngredients() { return Collections.unmodifiableList(ingredients); }
-    public List<String> getSteps() { return Collections.unmodifiableList(steps); }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
+    public Long getId() {
+        return id;
+    }
 
+    public String getSlug() {
+        return slug;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public String getImageAlt() {
+        return imageAlt;
+    }
+
+    public int getPrepMinutes() {
+        return prepMinutes;
+    }
+
+    public String getDifficulty() {
+        return difficulty;
+    }
+
+    public BigDecimal getRating() {
+        return rating;
+    }
+
+    public boolean isFeatured() {
+        return featured;
+    }
+
+    public boolean isPublished() {
+        return published;
+    }
+
+    public int getDisplayOrder() {
+        return displayOrder;
+    }
+
+    public int getFavoriteCount() {
+        return favoriteCount;
+    }
+
+    public int getViewsCount() {
+        return viewsCount;
+    }
+
+    public int getBaseServings() {
+        return baseServings;
+    }
+
+    public List<String> getIngredients() {
+        return Collections.unmodifiableList(ingredients);
+    }
+
+    public List<String> getSteps() {
+        return Collections.unmodifiableList(steps);
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
 }

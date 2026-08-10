@@ -1,5 +1,7 @@
 package com.yubai.blog.admin.recipe;
 
+import com.yubai.blog.common.ApiResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -10,10 +12,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-
-import com.yubai.blog.common.ApiResponse;
-
-import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/admin/recipe-extractions")
@@ -26,9 +24,9 @@ public class AdminRecipeExtractionController {
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<RecipeExtractionResponse> create(@Valid @RequestBody RecipeExtractionRequest request) {
-        return ApiResponse.created(extractionService.create(request));
+    public ResponseEntity<ApiResponse<RecipeExtractionResponse>> create(
+            @Valid @RequestBody RecipeExtractionRequest request) {
+        return ResponseEntity.accepted().body(ApiResponse.ok(extractionService.create(request)));
     }
 
     @GetMapping("/{id}")
@@ -40,5 +38,10 @@ public class AdminRecipeExtractionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancel(@PathVariable long id) {
         extractionService.cancelJob(id);
+    }
+
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<ApiResponse<RecipeExtractionResponse>> retry(@PathVariable long id) {
+        return ResponseEntity.accepted().body(ApiResponse.ok(extractionService.retryJob(id)));
     }
 }

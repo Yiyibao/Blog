@@ -8,11 +8,18 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vue-tsc --noEmit && node scripts/clean-build.mjs && vite build && node scripts/prerender-seo.mjs && node scripts/prepare-sites-build.mjs",
+    "build": "vue-tsc --noEmit && node scripts/clean-build.mjs && vite build && node scripts/prerender-seo.mjs && node scripts/check-build-budget.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:typecheck": "vue-tsc --noEmit -p tsconfig.vitest.json"
+    "test:typecheck": "vue-tsc --noEmit -p tsconfig.vitest.json",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "api:types": "openapi-typescript openapi/blog-api.json -o src/api/generated.ts && prettier --write src/api/generated.ts",
+    "api:types:check": "npm run api:types && git diff --exit-code -- src/api/generated.ts",
+    "lint": "eslint src e2e vite.config.ts vitest.config.ts playwright.config.ts eslint.config.js --max-warnings=0",
+    "format": "prettier --write src vite.config.ts vitest.config.ts playwright.config.ts eslint.config.js",
+    "format:check": "prettier --check src vite.config.ts vitest.config.ts playwright.config.ts eslint.config.js"
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "3.28.0",
@@ -26,7 +33,7 @@
     "@tiptap/starter-kit": "^3.28.0",
     "@tiptap/vue-3": "^3.28.0",
     "axios": "1.18.1",
-    "dompurify": "^3.2.7",
+    "dompurify": "^3.4.13",
     "katex": "^0.17.0",
     "lowlight": "3.3.0",
     "pinia": "3.0.3",
@@ -35,17 +42,28 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.20.1",
     "@vitejs/plugin-vue": "6.0.8",
+    "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
+    "eslint": "^10.8.1",
+    "eslint-plugin-vue": "^10.10.0",
+    "globals": "^17.9.0",
     "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
     "typescript": "5.9.3",
-    "vite": "8.1.5",
+    "typescript-eslint": "^8.66.0",
+    "vite": "^8.2.1",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.10",
     "vue-tsc": "3.1.1"
   },
   "overrides": {
-    "brace-expansion": "5.0.9"
+    "brace-expansion": "5.0.9",
+    "js-yaml": "4.3.1"
   }
 }

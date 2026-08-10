@@ -1,26 +1,33 @@
 <script setup lang="ts">
-import type { VisualNode } from '../../composables/useGraphLayout'
+import type { VisualNode } from '../../composables/useGraphLayout';
 
 defineProps<{
-  node: VisualNode
-  subgraphLoading?: boolean
-}>()
+  node: VisualNode;
+  subgraphLoading?: boolean;
+}>();
 
 const emit = defineEmits<{
-  (e: 'expand'): void
-  (e: 'open'): void
-  (e: 'close'): void
-}>()
+  (e: 'expand'): void;
+  (e: 'open'): void;
+  (e: 'close'): void;
+}>();
 
 function getTypeLabel(type: string): string {
   switch (type) {
-    case 'ROOT': return '中心'
-    case 'POST': return '文章'
-    case 'NOTE': return '笔记'
-    case 'DISH': return '菜谱'
-    case 'SERIES': return '合集'
-    case 'TAG': return '标签'
-    default: return type
+    case 'ROOT':
+      return '中心';
+    case 'POST':
+      return '文章';
+    case 'NOTE':
+      return '笔记';
+    case 'DISH':
+      return '菜谱';
+    case 'SERIES':
+      return '合集';
+    case 'TAG':
+      return '标签';
+    default:
+      return type;
   }
 }
 </script>
@@ -31,9 +38,7 @@ function getTypeLabel(type: string): string {
       <span class="panel-badge" :style="{ backgroundColor: node.color }">
         {{ getTypeLabel(node.type) }}
       </span>
-      <button type="button" class="close-btn" aria-label="关闭详情" @click="emit('close')">
-        ✕
-      </button>
+      <button type="button" class="close-btn" aria-label="关闭详情" @click="emit('close')">✕</button>
     </div>
 
     <div class="panel-body">

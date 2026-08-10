@@ -1,68 +1,68 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { VisualNode } from '../../composables/useGraphLayout'
+import { computed } from 'vue';
+import type { VisualNode } from '../../composables/useGraphLayout';
 
 const props = defineProps<{
-  nodes: VisualNode[]
-  zoom: number
-  panX: number
-  panY: number
-  baseWidth: number
-  baseHeight: number
-}>()
+  nodes: VisualNode[];
+  zoom: number;
+  panX: number;
+  panY: number;
+  baseWidth: number;
+  baseHeight: number;
+}>();
 
 const emit = defineEmits<{
-  (e: 'panTo', x: number, y: number): void
-}>()
+  (e: 'panTo', x: number, y: number): void;
+}>();
 
-const MAP_W = 160
-const MAP_H = 108
+const MAP_W = 160;
+const MAP_H = 108;
 
 // Map logical coords to minimap SVG coords
-const scaleX = computed(() => MAP_W / props.baseWidth)
-const scaleY = computed(() => MAP_H / props.baseHeight)
+const scaleX = computed(() => MAP_W / props.baseWidth);
+const scaleY = computed(() => MAP_H / props.baseHeight);
 
 const viewRect = computed(() => {
-  const currentW = props.baseWidth / props.zoom
-  const currentH = props.baseHeight / props.zoom
-  const currentX = (props.baseWidth - currentW) / 2 + props.panX
-  const currentY = (props.baseHeight - currentH) / 2 + props.panY
+  const currentW = props.baseWidth / props.zoom;
+  const currentH = props.baseHeight / props.zoom;
+  const currentX = (props.baseWidth - currentW) / 2 + props.panX;
+  const currentY = (props.baseHeight - currentH) / 2 + props.panY;
 
   return {
     x: Math.max(0, Math.min(MAP_W, currentX * scaleX.value)),
     y: Math.max(0, Math.min(MAP_H, currentY * scaleY.value)),
     w: Math.min(MAP_W, currentW * scaleX.value),
     h: Math.min(MAP_H, currentH * scaleY.value),
-  }
-})
+  };
+});
 
-let dragging = false
+let dragging = false;
 
 function panFromPointer(event: PointerEvent) {
-  const svg = event.currentTarget as SVGSVGElement
-  const rect = svg.getBoundingClientRect()
-  const clickX = event.clientX - rect.left
-  const clickY = event.clientY - rect.top
+  const svg = event.currentTarget as SVGSVGElement;
+  const rect = svg.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const clickY = event.clientY - rect.top;
 
-  const logicalX = clickX / scaleX.value
-  const logicalY = clickY / scaleY.value
-  emit('panTo', logicalX, logicalY)
+  const logicalX = clickX / scaleX.value;
+  const logicalY = clickY / scaleY.value;
+  emit('panTo', logicalX, logicalY);
 }
 
 function handlePointerDown(event: PointerEvent) {
-  dragging = true
-  ;(event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId)
-  panFromPointer(event)
+  dragging = true;
+  (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
+  panFromPointer(event);
 }
 
 function handlePointerMove(event: PointerEvent) {
-  if (dragging) panFromPointer(event)
+  if (dragging) panFromPointer(event);
 }
 
 function handlePointerUp(event: PointerEvent) {
-  dragging = false
+  dragging = false;
   if ((event.currentTarget as SVGSVGElement).hasPointerCapture(event.pointerId)) {
-    ;(event.currentTarget as SVGSVGElement).releasePointerCapture(event.pointerId)
+    (event.currentTarget as SVGSVGElement).releasePointerCapture(event.pointerId);
   }
 }
 </script>

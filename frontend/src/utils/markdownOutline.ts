@@ -4,26 +4,26 @@
  * ControlledMarkdown 渲染后按同一顺序把 id 写到 h2 元素上，两侧天然对齐。
  */
 export interface OutlineItem {
-  id: string
-  title: string
+  id: string;
+  title: string;
 }
 
 export function extractMarkdownOutline(markdown: string): OutlineItem[] {
-  const items: OutlineItem[] = []
+  const items: OutlineItem[] = [];
   // 跳过围栏代码块内的 "## " 行
-  let inFence = false
+  let inFence = false;
   for (const line of (markdown || '').split(/\r?\n/)) {
     if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence
-      continue
+      inFence = !inFence;
+      continue;
     }
-    if (inFence) continue
-    const match = /^##\s+(.+?)\s*$/.exec(line)
+    if (inFence) continue;
+    const match = /^##\s+(.+?)\s*$/.exec(line);
     if (match) {
-      items.push({ id: `h-${items.length}`, title: stripInlineMarks(match[1]) })
+      items.push({ id: `h-${items.length}`, title: stripInlineMarks(match[1]) });
     }
   }
-  return items
+  return items;
 }
 
 /** 去掉行内 Markdown 记号，目录展示纯文本。 */
@@ -34,5 +34,5 @@ function stripInlineMarks(text: string): string {
     .replace(/\*([^*]*)\*/g, '$1')
     .replace(/~~([^~]*)~~/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .trim()
+    .trim();
 }

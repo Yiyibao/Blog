@@ -1,80 +1,80 @@
 <script setup lang="ts">
-import axios from 'axios'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import axios from 'axios';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import {
   fetchGraphOverview,
   fetchGraphNodes,
   type GraphOverview,
   type GraphOverviewLegendItem,
   type GraphOverviewStats,
-} from '../api/content'
-import { useGraphSubgraph } from '../composables/useGraphSubgraph'
-import { useGraphViewport } from '../composables/useGraphViewport'
-import { computeGardenLayout, type VisualNode } from '../composables/useGraphLayout'
+} from '../api/content';
+import { useGraphSubgraph } from '../composables/useGraphSubgraph';
+import { useGraphViewport } from '../composables/useGraphViewport';
+import { computeGardenLayout, type VisualNode } from '../composables/useGraphLayout';
 
-import GraphCanvas from './knowledge-graph/GraphCanvas.vue'
-import GraphToolbar from './knowledge-graph/GraphToolbar.vue'
-import GraphSidebar from './knowledge-graph/GraphSidebar.vue'
-import GraphSearch from './knowledge-graph/GraphSearch.vue'
-import GraphMiniMap from './knowledge-graph/GraphMiniMap.vue'
-import GraphSelectionPanel from './knowledge-graph/GraphSelectionPanel.vue'
+import GraphCanvas from './knowledge-graph/GraphCanvas.vue';
+import GraphToolbar from './knowledge-graph/GraphToolbar.vue';
+import GraphSidebar from './knowledge-graph/GraphSidebar.vue';
+import GraphSearch from './knowledge-graph/GraphSearch.vue';
+import GraphMiniMap from './knowledge-graph/GraphMiniMap.vue';
+import GraphSelectionPanel from './knowledge-graph/GraphSelectionPanel.vue';
 
 export interface GraphNode {
-  id: string
-  label: string
-  type: 'POST' | 'NOTE' | 'DISH' | 'TAG' | 'SERIES' | 'ROOT' | string
-  url?: string | null
-  category?: string
-  summary?: string
-  kind?: 'ROOT' | 'GROUP' | 'CONTENT'
-  groupId?: string | null
-  subtitle?: string | null
-  imageUrl?: string | null
-  updatedAt?: string | null
-  degree?: number
-  importance?: number
+  id: string;
+  label: string;
+  type: 'POST' | 'NOTE' | 'DISH' | 'TAG' | 'SERIES' | 'ROOT' | string;
+  url?: string | null;
+  category?: string;
+  summary?: string;
+  kind?: 'ROOT' | 'GROUP' | 'CONTENT';
+  groupId?: string | null;
+  subtitle?: string | null;
+  imageUrl?: string | null;
+  updatedAt?: string | null;
+  degree?: number;
+  importance?: number;
 }
 
 export interface GraphEdge {
-  source: string
-  target: string
-  kind?: 'STRUCTURE' | 'RELATION'
-  strength?: number
+  source: string;
+  target: string;
+  kind?: 'STRUCTURE' | 'RELATION';
+  strength?: number;
 }
 
 const props = withDefaults(
   defineProps<{
-    initialNodes?: GraphNode[]
-    initialEdges?: GraphEdge[]
-    selectedRelation?: string
+    initialNodes?: GraphNode[];
+    initialEdges?: GraphEdge[];
+    selectedRelation?: string;
   }>(),
   {
     initialNodes: () => [],
     initialEdges: () => [],
     selectedRelation: '',
-  }
-)
+  },
+);
 
 const emit = defineEmits<{
-  (e: 'selectTag', tag: string): void
-  (e: 'selectNode', node: GraphNode | null): void
-}>()
+  (e: 'selectTag', tag: string): void;
+  (e: 'selectNode', node: GraphNode | null): void;
+}>();
 
-const router = useRouter()
-const containerRef = ref<HTMLElement | null>(null)
+const router = useRouter();
+const containerRef = ref<HTMLElement | null>(null);
 
 // Data state
-const overview = ref<GraphOverview | null>(null)
-const rawNodes = ref<GraphNode[]>([])
-const rawEdges = ref<GraphEdge[]>([])
-const loading = ref(false)
-const loadError = ref('')
+const overview = ref<GraphOverview | null>(null);
+const rawNodes = ref<GraphNode[]>([]);
+const rawEdges = ref<GraphEdge[]>([]);
+const loading = ref(false);
+const loadError = ref('');
 
-const selectedNodeId = ref<string | null>(null)
-const hoveredNodeId = ref<string | null>(null)
-const activeTypeFilter = ref<string>('')
-const TREE_TYPES = new Set(['POST', 'NOTE', 'DISH'])
+const selectedNodeId = ref<string | null>(null);
+const hoveredNodeId = ref<string | null>(null);
+const activeTypeFilter = ref<string>('');
+const TREE_TYPES = new Set(['POST', 'NOTE', 'DISH']);
 
 // Subgraph & Local Mode composable
 const {
@@ -87,11 +87,11 @@ const {
   restoreOverview,
   expandSubgraph,
   autoLocalSubgraph,
-} = useGraphSubgraph()
+} = useGraphSubgraph();
 
 // Viewport composable
-const BASE_W = 1000
-const BASE_H = 680
+const BASE_W = 1000;
+const BASE_H = 680;
 const {
   zoom,
   panX,
@@ -106,215 +106,252 @@ const {
   onPointerUp,
   onWheel,
   toggleFullscreen,
-} = useGraphViewport(BASE_W, BASE_H, containerRef)
+} = useGraphViewport(BASE_W, BASE_H, containerRef);
 
 // Compute Garden Layout
 const gardenLayout = computed(() => {
-  return computeGardenLayout(
-    rawNodes.value,
-    rawEdges.value,
-    BASE_W,
-    BASE_H
-  )
-})
+  return computeGardenLayout(rawNodes.value, rawEdges.value, BASE_W, BASE_H);
+});
 
 const visibleNodesList = computed(() => {
-  let list = gardenLayout.value.nodesList
+  let list = gardenLayout.value.nodesList;
   if (activeTypeFilter.value) {
-    list = list.filter((n) => n.kind === 'ROOT' || n.kind === 'GROUP' || n.type === activeTypeFilter.value)
+    list = list.filter((n) => n.kind === 'ROOT' || n.kind === 'GROUP' || n.type === activeTypeFilter.value);
   }
-  return list
-})
+  return list;
+});
 
 const visibleEdgesList = computed(() => {
-  const visibleIds = new Set(visibleNodesList.value.map((n) => n.id))
-  return gardenLayout.value.edgesList.filter(
-    (e) => visibleIds.has(e.source) && visibleIds.has(e.target)
-  )
-})
+  const visibleIds = new Set(visibleNodesList.value.map((n) => n.id));
+  return gardenLayout.value.edgesList.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
+});
 
 // Neighbor highlighting calculation
 const neighborNodeIds = computed(() => {
-  const targetId = selectedNodeId.value || hoveredNodeId.value
-  if (!targetId) return new Set<string>()
-  const set = new Set<string>([targetId])
+  const targetId = selectedNodeId.value || hoveredNodeId.value;
+  if (!targetId) return new Set<string>();
+  const set = new Set<string>([targetId]);
   rawEdges.value.forEach((e) => {
-    if (e.source === targetId) set.add(e.target)
-    if (e.target === targetId) set.add(e.source)
-  })
-  return set
-})
+    if (e.source === targetId) set.add(e.target);
+    if (e.target === targetId) set.add(e.source);
+  });
+  return set;
+});
 
 const selectedVisualNode = computed(() => {
-  if (!selectedNodeId.value) return null
-  return gardenLayout.value.nodesMap.get(selectedNodeId.value) || null
-})
+  if (!selectedNodeId.value) return null;
+  return gardenLayout.value.nodesMap.get(selectedNodeId.value) || null;
+});
 
 // Legend & Stats calculation
 const legendItems = computed<GraphOverviewLegendItem[]>(() => {
   if (overview.value?.legend && overview.value.legend.length > 0) {
-    return overview.value.legend.filter((item) => TREE_TYPES.has(item.type))
+    return overview.value.legend.filter((item) => TREE_TYPES.has(item.type));
   }
   // Fallback count from current rawNodes
-  const counts: Record<string, number> = {}
+  const counts: Record<string, number> = {};
   rawNodes.value.forEach((n) => {
     if (n.kind !== 'ROOT' && n.kind !== 'GROUP') {
-      counts[n.type] = (counts[n.type] || 0) + 1
+      counts[n.type] = (counts[n.type] || 0) + 1;
     }
-  })
+  });
   return [
     { type: 'POST', label: '文章', color: '#3b82f6', count: counts['POST'] || 0 },
     { type: 'NOTE', label: '学习笔记', color: '#ef6c9a', count: counts['NOTE'] || 0 },
     { type: 'DISH', label: '美食菜谱', color: '#f59e0b', count: counts['DISH'] || 0 },
-  ]
-})
+  ];
+});
 
 const statsData = computed<GraphOverviewStats | null>(() => {
   if (overview.value?.stats) {
-    return overview.value.stats
+    return overview.value.stats;
   }
   return {
-    contentNodeCount: rawNodes.value.filter((n) =>
-      n.kind !== 'ROOT' && n.kind !== 'GROUP' && TREE_TYPES.has(n.type)
+    contentNodeCount: rawNodes.value.filter(
+      (n) => n.kind !== 'ROOT' && n.kind !== 'GROUP' && TREE_TYPES.has(n.type),
     ).length,
     visualNodeCount: rawNodes.value.length,
     relationCount: rawEdges.value.length,
     lastUpdatedAt: null,
     recommendedCenterId: '',
     localModeRecommended: rawNodes.value.length > 300,
-  }
-})
+  };
+});
 
 // Load graph data
 async function loadGraphData() {
   if (props.initialNodes && props.initialNodes.length > 0) {
-    rawNodes.value = props.initialNodes
-    rawEdges.value = props.initialEdges || []
-    saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+    rawNodes.value = props.initialNodes;
+    rawEdges.value = props.initialEdges || [];
+    saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[]);
     if (rawNodes.value.length > 300) {
-      const result = await autoLocalSubgraph(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+      const result = await autoLocalSubgraph(
+        rawNodes.value as unknown as GraphNode[],
+        rawEdges.value as unknown as GraphEdge[],
+      );
       if (result) {
-        rawNodes.value = result.nodes as GraphNode[]
-        rawEdges.value = result.edges as GraphEdge[]
+        rawNodes.value = result.nodes as GraphNode[];
+        rawEdges.value = result.edges as GraphEdge[];
       }
     }
-    return
+    return;
   }
 
-  loading.value = true
-  loadError.value = ''
+  loading.value = true;
+  loadError.value = '';
   try {
     // Try V2 Overview API first
     try {
-      const data = await fetchGraphOverview()
-      overview.value = data
-      rawNodes.value = data.nodes as GraphNode[]
-      rawEdges.value = data.edges as GraphEdge[]
-      saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+      const data = await fetchGraphOverview();
+      overview.value = data;
+      rawNodes.value = data.nodes as GraphNode[];
+      rawEdges.value = data.edges as GraphEdge[];
+      saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[]);
 
       if (data.stats.localModeRecommended || data.nodes.length > 300) {
-        const result = await autoLocalSubgraph(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+        const result = await autoLocalSubgraph(
+          rawNodes.value as unknown as GraphNode[],
+          rawEdges.value as unknown as GraphEdge[],
+        );
         if (result) {
-          rawNodes.value = result.nodes as GraphNode[]
-          rawEdges.value = result.edges as GraphEdge[]
+          rawNodes.value = result.nodes as GraphNode[];
+          rawEdges.value = result.edges as GraphEdge[];
         }
       }
     } catch {
       // Fallback to legacy GET /api/v1/graph/nodes
-      const legacy = await fetchGraphNodes()
-      rawNodes.value = (legacy.nodes || []) as GraphNode[]
-      rawEdges.value = (legacy.edges || []) as GraphEdge[]
-      saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+      const legacy = await fetchGraphNodes();
+      rawNodes.value = (legacy.nodes || []) as GraphNode[];
+      rawEdges.value = (legacy.edges || []) as GraphEdge[];
+      saveSnapshot(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[]);
 
       if (rawNodes.value.length > 300) {
-        const result = await autoLocalSubgraph(rawNodes.value as unknown as GraphNode[], rawEdges.value as unknown as GraphEdge[])
+        const result = await autoLocalSubgraph(
+          rawNodes.value as unknown as GraphNode[],
+          rawEdges.value as unknown as GraphEdge[],
+        );
         if (result) {
-          rawNodes.value = result.nodes as GraphNode[]
-          rawEdges.value = result.edges as GraphEdge[]
+          rawNodes.value = result.nodes as GraphNode[];
+          rawEdges.value = result.edges as GraphEdge[];
         }
       }
     }
   } catch (cause) {
-    loadError.value = axios.isAxiosError(cause) && cause.response
-      ? '数据加载失败'
-      : '无法连接网络，图谱数据加载失败'
+    loadError.value =
+      axios.isAxiosError(cause) && cause.response ? '数据加载失败' : '无法连接网络，图谱数据加载失败';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 // Handlers
 function handleSelectNode(node: VisualNode) {
   if (selectedNodeId.value === node.id) {
-    if (node.type === 'TAG') emit('selectTag', '')
-    selectedNodeId.value = null
-    emit('selectNode', null)
-    return
+    if (node.type === 'TAG') emit('selectTag', '');
+    selectedNodeId.value = null;
+    emit('selectNode', null);
+    return;
   }
-  selectedNodeId.value = node.id
-  emit('selectNode', node as unknown as GraphNode)
+  selectedNodeId.value = node.id;
+  emit('selectNode', node as unknown as GraphNode);
 
   if (node.type === 'TAG') {
-    const tagText = node.label.replace(/^#/, '')
-    emit('selectTag', tagText)
+    const tagText = node.label.replace(/^#/, '');
+    emit('selectTag', tagText);
   }
 }
 
 function handleDblClickNode(node: VisualNode) {
-  if (node.kind !== 'CONTENT') return
-  selectedNodeId.value = node.id
-  void doExpandRelations()
+  if (node.kind !== 'CONTENT') return;
+  selectedNodeId.value = node.id;
+  void doExpandRelations();
 }
 
 function clearSelection() {
-  if (selectedVisualNode.value?.type === 'TAG') emit('selectTag', '')
-  selectedNodeId.value = null
-  emit('selectNode', null)
+  if (selectedVisualNode.value?.type === 'TAG') emit('selectTag', '');
+  selectedNodeId.value = null;
+  emit('selectNode', null);
 }
 
 function handleSearchSelect(node: VisualNode) {
-  handleSelectNode(node)
-  centerOn(node.x, node.y, 1.3)
+  handleSelectNode(node);
+  centerOn(node.x, node.y, 1.3);
 }
 
 function handleOpenContent() {
   if (selectedVisualNode.value?.url && selectedVisualNode.value.type !== 'TAG') {
-    void router.push(selectedVisualNode.value.url)
+    void router.push(selectedVisualNode.value.url);
   }
 }
 
 async function doExpandRelations() {
-  if (!selectedNodeId.value) return
+  if (!selectedNodeId.value) return;
   const result = await expandSubgraph(
     selectedNodeId.value,
     2,
     rawNodes.value as unknown as GraphNode[],
-    rawEdges.value as unknown as GraphEdge[]
-  )
+    rawEdges.value as unknown as GraphEdge[],
+  );
   if (result) {
-    rawNodes.value = result.nodes as GraphNode[]
-    rawEdges.value = result.edges as GraphEdge[]
+    rawNodes.value = result.nodes as GraphNode[];
+    rawEdges.value = result.edges as GraphEdge[];
   }
 }
 
+function downloadGraphFile(content: string, type: string, extension: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `knowledge-graph-${new Date().toLocaleDateString('sv-SE')}.${extension}`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportGraphJson() {
+  downloadGraphFile(
+    JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        filter: activeTypeFilter.value || null,
+        nodes: visibleNodesList.value.map(({ x: _x, y: _y, ...node }) => node),
+        edges: visibleEdgesList.value.map(({ pathD: _path, ...edge }) => edge),
+      },
+      null,
+      2,
+    ),
+    'application/json;charset=utf-8',
+    'json',
+  );
+}
+
+function exportGraphImage() {
+  const source = containerRef.value?.querySelector('svg.graph-svg');
+  if (!source) return;
+  const clone = source.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('width', String(BASE_W));
+  clone.setAttribute('height', String(BASE_H));
+  downloadGraphFile(new XMLSerializer().serializeToString(clone), 'image/svg+xml;charset=utf-8', 'svg');
+}
+
 async function doReturnToOverview() {
-  const snapshot = restoreOverview()
+  const snapshot = restoreOverview();
   if (snapshot) {
-    rawNodes.value = snapshot.nodes as GraphNode[]
-    rawEdges.value = snapshot.edges as GraphEdge[]
-    resetView()
+    rawNodes.value = snapshot.nodes as GraphNode[];
+    rawEdges.value = snapshot.edges as GraphEdge[];
+    resetView();
   }
 }
 
 async function handleToggleFullscreen() {
-  await toggleFullscreen()
-  resetView()
-  requestAnimationFrame(resetView)
+  await toggleFullscreen();
+  resetView();
+  requestAnimationFrame(resetView);
 }
 
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    clearSelection()
+    clearSelection();
   }
 }
 
@@ -322,41 +359,42 @@ watch(
   () => props.initialNodes,
   (newNodes) => {
     if (newNodes && newNodes.length > 0) {
-      rawNodes.value = newNodes
-      rawEdges.value = props.initialEdges || []
-      loadError.value = ''
+      rawNodes.value = newNodes;
+      rawEdges.value = props.initialEdges || [];
+      loadError.value = '';
     }
   },
-  { immediate: true }
-)
+  { immediate: true },
+);
 
-watch([() => props.selectedRelation, rawNodes], ([relation]) => {
-  const normalized = relation.trim().toLocaleLowerCase()
-  if (!normalized) {
-    if (selectedVisualNode.value?.type === 'TAG') selectedNodeId.value = null
-    return
-  }
-  const matchingTag = rawNodes.value.find((node) => node.type === 'TAG'
-    && node.label.replace(/^#/, '').trim().toLocaleLowerCase() === normalized)
-  selectedNodeId.value = matchingTag?.id || null
-}, { immediate: true })
+watch(
+  [() => props.selectedRelation, rawNodes],
+  ([relation]) => {
+    const normalized = relation.trim().toLocaleLowerCase();
+    if (!normalized) {
+      if (selectedVisualNode.value?.type === 'TAG') selectedNodeId.value = null;
+      return;
+    }
+    const matchingTag = rawNodes.value.find(
+      (node) => node.type === 'TAG' && node.label.replace(/^#/, '').trim().toLocaleLowerCase() === normalized,
+    );
+    selectedNodeId.value = matchingTag?.id || null;
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
-  void loadGraphData()
-  window.addEventListener('keydown', handleKeyDown)
-})
+  void loadGraphData();
+  window.addEventListener('keydown', handleKeyDown);
+});
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown)
-})
+  window.removeEventListener('keydown', handleKeyDown);
+});
 </script>
 
 <template>
-  <div
-    ref="containerRef"
-    class="knowledge-graph-v2-container"
-    :class="{ 'is-fullscreen': isFullscreen }"
-  >
+  <div ref="containerRef" class="knowledge-graph-v2-container" :class="{ 'is-fullscreen': isFullscreen }">
     <!-- Header Toolbar Bar -->
     <header class="graph-header">
       <div class="header-title">
@@ -373,13 +411,17 @@ onUnmounted(() => {
         @reset="resetView"
         @toggle-fullscreen="handleToggleFullscreen"
         @return-overview="doReturnToOverview"
+        @export-json="exportGraphJson"
+        @export-image="exportGraphImage"
       />
     </header>
 
     <!-- Status Notice Bar -->
     <div v-if="localMode" class="status-notice local-notice graph-local-mode" role="status">
       <span>局部图谱模式 · 聚焦「{{ localModeCenter }}」</span>
-      <button type="button" class="btn-text return-overview-btn-inline" @click="doReturnToOverview">返回全图</button>
+      <button type="button" class="btn-text return-overview-btn-inline" @click="doReturnToOverview">
+        返回全图
+      </button>
     </div>
 
     <div v-if="subgraphLoading && !loading" class="status-notice info-notice" role="status">
@@ -441,11 +483,7 @@ onUnmounted(() => {
           />
 
           <!-- Floating Search Box -->
-          <GraphSearch
-            :nodes="gardenLayout.nodesList"
-            class="floating-search"
-            @select="handleSearchSelect"
-          />
+          <GraphSearch :nodes="gardenLayout.nodesList" class="floating-search" @select="handleSearchSelect" />
 
           <!-- Floating MiniMap -->
           <GraphMiniMap
@@ -511,7 +549,10 @@ onUnmounted(() => {
 }
 
 .graph-badge {
-  font: 700 10px ui-monospace, Consolas, monospace;
+  font:
+    700 10px ui-monospace,
+    Consolas,
+    monospace;
   color: var(--accent, #f43f5e);
   letter-spacing: 0.15em;
   display: block;

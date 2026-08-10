@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
-import { fetchMusicTracks } from '../api/content'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
+import { fetchMusicTracks } from '../api/content';
 
 interface Track {
-  id: string | number
-  title: string
-  artist: string
-  duration?: number
-  audioUrl: string
-  coverUrl?: string
+  id: string | number;
+  title: string;
+  artist: string;
+  duration?: number;
+  audioUrl: string;
+  coverUrl?: string;
 }
 
 // Built-in fallback light music tracks (self-hosted WAV, always playable)
@@ -23,7 +23,7 @@ const fallbackTracks: Track[] = [
   },
   {
     id: 'track-2',
-    title: '安妮的仙境 (Annie\'s Wonderland)',
+    title: "安妮的仙境 (Annie's Wonderland)",
     artist: '舒缓吉他与长笛',
     audioUrl: '/audio/calm-piano-2.wav',
   },
@@ -33,36 +33,36 @@ const fallbackTracks: Track[] = [
     artist: '自然轻音乐',
     audioUrl: '/audio/calm-piano-3.wav',
   },
-]
+];
 
 /** 占位地址（管理端标记过的 cdn.example.com 假外链）不可播，一律过滤。 */
 function isPlaceholderUrl(url: string) {
-  return url.includes('cdn.example.com')
+  return url.includes('cdn.example.com');
 }
 
-const tracks = ref<Track[]>(fallbackTracks)
-const currentTrackIndex = ref(0)
-const isPlaying = ref(false)
-const volume = ref(0.4)
-const isOpen = ref(false)
-const isLoading = ref(false)
+const tracks = ref<Track[]>(fallbackTracks);
+const currentTrackIndex = ref(0);
+const isPlaying = ref(false);
+const volume = ref(0.4);
+const isOpen = ref(false);
+const isLoading = ref(false);
 /** 连续失败跳曲计数：避免全库不可播时无限循环。 */
-let errorSkipCount = 0
+let errorSkipCount = 0;
 
-let audioEl: HTMLAudioElement | null = null
+let audioEl: HTMLAudioElement | null = null;
 
-const currentTrack = computed(() => tracks.value[currentTrackIndex.value] || fallbackTracks[0])
+const currentTrack = computed(() => tracks.value[currentTrackIndex.value] || fallbackTracks[0]);
 
 // NF-7：改走统一 api 层（错误处理与 baseURL 一致化），不再组件内裸 fetch
 async function fetchRemoteTracks() {
   try {
-    const data = await fetchMusicTracks()
+    const data = await fetchMusicTracks();
     const playable = Array.isArray(data)
       ? data.filter((track) => track.audioUrl && !isPlaceholderUrl(track.audioUrl))
-      : []
+      : [];
     // 过滤占位曲目；全部不可用时保留内置自托管曲目
     if (playable.length > 0) {
-      tracks.value = playable
+      tracks.value = playable;
     }
   } catch {
     // Keep fallback tracks on error
@@ -71,96 +71,105 @@ async function fetchRemoteTracks() {
 
 function initAudio() {
   if (!audioEl) {
-    audioEl = new Audio()
-    audioEl.volume = volume.value
+    audioEl = new Audio();
+    audioEl.volume = volume.value;
     // NF-11：loop=true 会困在单曲循环——改为播完自动切下一首
-    audioEl.loop = false
-    audioEl.onended = () => { nextTrack() }
-    audioEl.onwaiting = () => { isLoading.value = true }
-    audioEl.oncanplay = () => { isLoading.value = false }
+    audioEl.loop = false;
+    audioEl.onended = () => {
+      nextTrack();
+    };
+    audioEl.onwaiting = () => {
+      isLoading.value = true;
+    };
+    audioEl.oncanplay = () => {
+      isLoading.value = false;
+    };
     audioEl.onerror = () => {
-      isLoading.value = false
-      isPlaying.value = false
+      isLoading.value = false;
+      isPlaying.value = false;
       // 当前曲目不可播（404/403/编解码失败）→ 自动尝试下一首（有界，不重置计数）
       if (errorSkipCount < tracks.value.length) {
-        errorSkipCount += 1
-        skipToNext()
+        errorSkipCount += 1;
+        skipToNext();
       }
-    }
+    };
   }
 }
 
 function playTrack(index: number) {
-  currentTrackIndex.value = index
-  initAudio()
-  if (!audioEl) return
+  currentTrackIndex.value = index;
+  initAudio();
+  if (!audioEl) return;
 
-  const target = tracks.value[index]
+  const target = tracks.value[index];
   if (audioEl.src !== target.audioUrl) {
-    audioEl.src = target.audioUrl
+    audioEl.src = target.audioUrl;
   }
 
-  isLoading.value = true
-  audioEl.play().then(() => {
-    isPlaying.value = true
-    isLoading.value = false
-  }).catch(() => {
-    isPlaying.value = false
-    isLoading.value = false
-    // 自动播放被浏览器拦截（需用户手势）或不可播：有界跳过
-    if (errorSkipCount < tracks.value.length) {
-      errorSkipCount += 1
-      skipToNext()
-    }
-  })
+  isLoading.value = true;
+  audioEl
+    .play()
+    .then(() => {
+      isPlaying.value = true;
+      isLoading.value = false;
+    })
+    .catch(() => {
+      isPlaying.value = false;
+      isLoading.value = false;
+      // 自动播放被浏览器拦截（需用户手势）或不可播：有界跳过
+      if (errorSkipCount < tracks.value.length) {
+        errorSkipCount += 1;
+        skipToNext();
+      }
+    });
 }
 
 function togglePlay() {
   if (isPlaying.value) {
-    isPlaying.value = false
-    if (audioEl) audioEl.pause()
+    isPlaying.value = false;
+    if (audioEl) audioEl.pause();
   } else {
-    errorSkipCount = 0
-    playTrack(currentTrackIndex.value)
+    errorSkipCount = 0;
+    playTrack(currentTrackIndex.value);
   }
 }
 
 function prevTrack() {
-  const next = (currentTrackIndex.value - 1 + tracks.value.length) % tracks.value.length
-  errorSkipCount = 0
-  playTrack(next)
+  const next = (currentTrackIndex.value - 1 + tracks.value.length) % tracks.value.length;
+  errorSkipCount = 0;
+  playTrack(next);
 }
 
 /** 用户手动切歌 / 正常播完：重置失败计数后切下一首。 */
 function nextTrack() {
-  errorSkipCount = 0
-  skipToNext()
+  errorSkipCount = 0;
+  skipToNext();
 }
 
 /** 内部跳曲（失败自动跳过时保留计数，防止全库不可播时无限循环）。 */
 function skipToNext() {
-  const next = (currentTrackIndex.value + 1) % tracks.value.length
-  playTrack(next)
+  const next = (currentTrackIndex.value + 1) % tracks.value.length;
+  playTrack(next);
 }
 
 function updateVolume(val: number) {
-  volume.value = val
+  volume.value = val;
   if (audioEl) {
-    audioEl.volume = val
+    audioEl.volume = val;
   }
 }
 
 onMounted(() => {
-  void fetchRemoteTracks()
-})
+  void fetchRemoteTracks();
+});
 
 onBeforeUnmount(() => {
   if (audioEl) {
-    audioEl.pause()
-    audioEl.src = ''
-    audioEl = null
+    audioEl.pause();
+    audioEl.src = '';
+    audioEl = null;
   }
-})
+});
 </script>
 
 <template>
@@ -179,9 +188,7 @@ onBeforeUnmount(() => {
         <span class="vinyl-ring" />
         <span class="vinyl-center">🎵</span>
       </div>
-      <div v-if="isPlaying" class="sound-wave-bars" aria-hidden="true">
-        <span /><span /><span />
-      </div>
+      <div v-if="isPlaying" class="sound-wave-bars" aria-hidden="true"><span /><span /><span /></div>
     </button>
 
     <!-- Expanded Floating Light Music Panel -->
@@ -207,11 +214,22 @@ onBeforeUnmount(() => {
 
       <!-- Playback Controls (Prev, Play/Pause, Next) -->
       <div class="playback-controls">
-        <button type="button" class="ctrl-btn" title="上一首" aria-label="上一首" @click="prevTrack">⏮</button>
-        <button type="button" class="play-btn" :class="{ active: isPlaying }" title="播放/暂停" :aria-label="isPlaying ? '暂停' : '播放'" @click="togglePlay">
-          {{ isLoading ? '⌛' : (isPlaying ? '⏸' : '▶') }}
+        <button type="button" class="ctrl-btn" title="上一首" aria-label="上一首" @click="prevTrack">
+          ⏮
         </button>
-        <button type="button" class="ctrl-btn" title="下一首" aria-label="下一首" @click="nextTrack">⏭</button>
+        <button
+          type="button"
+          class="play-btn"
+          :class="{ active: isPlaying }"
+          title="播放/暂停"
+          :aria-label="isPlaying ? '暂停' : '播放'"
+          @click="togglePlay"
+        >
+          {{ isLoading ? '⌛' : isPlaying ? '⏸' : '▶' }}
+        </button>
+        <button type="button" class="ctrl-btn" title="下一首" aria-label="下一首" @click="nextTrack">
+          ⏭
+        </button>
       </div>
 
       <!-- Track List Selector -->
@@ -244,7 +262,7 @@ onBeforeUnmount(() => {
           :value="volume"
           aria-label="音量"
           @input="updateVolume(parseFloat(($event.target as HTMLInputElement).value))"
-        >
+        />
         <span aria-hidden="true">🔊</span>
       </div>
     </div>
@@ -305,8 +323,12 @@ onBeforeUnmount(() => {
   animation: spin-record 8s linear infinite;
 }
 @keyframes spin-record {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .vinyl-ring {
@@ -340,11 +362,20 @@ onBeforeUnmount(() => {
   border-radius: 2px;
   animation: wave-bar-bounce 1s infinite ease-in-out;
 }
-.sound-wave-bars span:nth-child(2) { animation-delay: 0.2s; }
-.sound-wave-bars span:nth-child(3) { animation-delay: 0.4s; }
+.sound-wave-bars span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.sound-wave-bars span:nth-child(3) {
+  animation-delay: 0.4s;
+}
 @keyframes wave-bar-bounce {
-  0%, 100% { height: 25%; }
-  50% { height: 100%; }
+  0%,
+  100% {
+    height: 25%;
+  }
+  50% {
+    height: 100%;
+  }
 }
 
 /* Expanded Light Music Control Panel */
@@ -362,8 +393,14 @@ onBeforeUnmount(() => {
   animation: panel-fade-down 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes panel-fade-down {
-  from { opacity: 0; transform: translateY(-10px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .panel-header {
@@ -374,7 +411,10 @@ onBeforeUnmount(() => {
 }
 .music-kicker {
   color: var(--accent);
-  font: 600 10px ui-monospace, Consolas, monospace;
+  font:
+    600 10px ui-monospace,
+    Consolas,
+    monospace;
   letter-spacing: 0.15em;
   display: block;
 }
@@ -452,7 +492,9 @@ onBeforeUnmount(() => {
   font-size: 18px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.2s, transform 0.2s;
+  transition:
+    color 0.2s,
+    transform 0.2s;
 }
 .ctrl-btn:hover {
   color: var(--ink);
@@ -502,7 +544,9 @@ onBeforeUnmount(() => {
   border: 1px solid transparent;
   text-align: left;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 .track-item:hover {
   background: var(--surface);
@@ -512,7 +556,9 @@ onBeforeUnmount(() => {
   border-color: var(--accent);
 }
 .track-idx {
-  font: 700 12px Georgia, serif;
+  font:
+    700 12px Georgia,
+    serif;
   color: var(--accent);
   width: 18px;
 }
@@ -544,7 +590,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: var(--muted);
 }
-.volume-bar input[type="range"] {
+.volume-bar input[type='range'] {
   flex: 1;
   accent-color: var(--accent);
 }

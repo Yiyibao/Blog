@@ -1,44 +1,44 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { VisualNode, VisualEdge } from '../../composables/useGraphLayout'
+import { ref } from 'vue';
+import type { VisualNode, VisualEdge } from '../../composables/useGraphLayout';
 
 defineProps<{
-  nodes: VisualNode[]
-  edges: VisualEdge[]
-  viewBox: string
-  selectedNodeId: string | null
-  hoveredNodeId: string | null
-  neighborNodeIds: Set<string>
-  baseWidth: number
-  baseHeight: number
-}>()
+  nodes: VisualNode[];
+  edges: VisualEdge[];
+  viewBox: string;
+  selectedNodeId: string | null;
+  hoveredNodeId: string | null;
+  neighborNodeIds: Set<string>;
+  baseWidth: number;
+  baseHeight: number;
+}>();
 
 const emit = defineEmits<{
-  (e: 'selectNode', node: VisualNode): void
-  (e: 'dblclickNode', node: VisualNode): void
-  (e: 'hoverNode', id: string | null): void
-  (e: 'pointerDown', ev: PointerEvent): void
-  (e: 'pointerMove', ev: PointerEvent): void
-  (e: 'pointerUp', ev?: PointerEvent): void
-  (e: 'wheel', ev: WheelEvent, svgEl: SVGSVGElement | null): void
-}>()
+  (e: 'selectNode', node: VisualNode): void;
+  (e: 'dblclickNode', node: VisualNode): void;
+  (e: 'hoverNode', id: string | null): void;
+  (e: 'pointerDown', ev: PointerEvent): void;
+  (e: 'pointerMove', ev: PointerEvent): void;
+  (e: 'pointerUp', ev?: PointerEvent): void;
+  (e: 'wheel', ev: WheelEvent, svgEl: SVGSVGElement | null): void;
+}>();
 
-const svgRef = ref<SVGSVGElement | null>(null)
-const imageErrorMap = ref<Record<string, boolean>>({})
-const locallyHoveredNodeId = ref<string | null>(null)
+const svgRef = ref<SVGSVGElement | null>(null);
+const imageErrorMap = ref<Record<string, boolean>>({});
+const locallyHoveredNodeId = ref<string | null>(null);
 
 function handleImageError(id: string) {
-  imageErrorMap.value[id] = true
+  imageErrorMap.value[id] = true;
 }
 
 function handleNodeEnter(id: string) {
-  locallyHoveredNodeId.value = id
-  emit('hoverNode', id)
+  locallyHoveredNodeId.value = id;
+  emit('hoverNode', id);
 }
 
 function handleNodeLeave(id: string) {
-  if (locallyHoveredNodeId.value === id) locallyHoveredNodeId.value = null
-  emit('hoverNode', null)
+  if (locallyHoveredNodeId.value === id) locallyHoveredNodeId.value = null;
+  emit('hoverNode', null);
 }
 </script>
 
@@ -102,10 +102,34 @@ function handleNodeLeave(id: string) {
 
         <!-- Floating Petals -->
         <g class="petal-group">
-          <path class="floating-petal p1" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#fda4af" opacity="0.6" transform="translate(180, 100) scale(1.2)" />
-          <path class="floating-petal p2" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#f43f5e" opacity="0.4" transform="translate(750, 140) scale(1.4)" />
-          <path class="floating-petal p3" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#f472b6" opacity="0.5" transform="translate(880, 420) scale(1.1)" />
-          <path class="floating-petal p4" d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z" fill="#fb7185" opacity="0.45" transform="translate(260, 520) scale(1.3)" />
+          <path
+            class="floating-petal p1"
+            d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z"
+            fill="#fda4af"
+            opacity="0.6"
+            transform="translate(180, 100) scale(1.2)"
+          />
+          <path
+            class="floating-petal p2"
+            d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z"
+            fill="#f43f5e"
+            opacity="0.4"
+            transform="translate(750, 140) scale(1.4)"
+          />
+          <path
+            class="floating-petal p3"
+            d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z"
+            fill="#f472b6"
+            opacity="0.5"
+            transform="translate(880, 420) scale(1.1)"
+          />
+          <path
+            class="floating-petal p4"
+            d="M0,0 C3,-6 9,-6 12,0 C9,6 3,6 0,0 Z"
+            fill="#fb7185"
+            opacity="0.45"
+            transform="translate(260, 520) scale(1.3)"
+          />
         </g>
       </g>
 
@@ -121,8 +145,16 @@ function handleNodeLeave(id: string) {
           :class="{
             'is-structure': edge.isStructure,
             'is-relation': !edge.isStructure,
-            highlighted: (selectedNodeId || hoveredNodeId) && (edge.source === (selectedNodeId || hoveredNodeId) || edge.target === (selectedNodeId || hoveredNodeId)),
-            faded: (selectedNodeId || hoveredNodeId) && !(edge.source === (selectedNodeId || hoveredNodeId) || edge.target === (selectedNodeId || hoveredNodeId))
+            highlighted:
+              (selectedNodeId || hoveredNodeId) &&
+              (edge.source === (selectedNodeId || hoveredNodeId) ||
+                edge.target === (selectedNodeId || hoveredNodeId)),
+            faded:
+              (selectedNodeId || hoveredNodeId) &&
+              !(
+                edge.source === (selectedNodeId || hoveredNodeId) ||
+                edge.target === (selectedNodeId || hoveredNodeId)
+              ),
           }"
           :style="{ animationDelay: `${Math.min(idx * 15, 600) + 150}ms` }"
         />
@@ -152,11 +184,11 @@ function handleNodeLeave(id: string) {
             'is-hovered': locallyHoveredNodeId === node.id,
             selected: selectedNodeId === node.id,
             highlighted: (selectedNodeId || hoveredNodeId) && neighborNodeIds.has(node.id),
-            faded: (selectedNodeId || hoveredNodeId) && !neighborNodeIds.has(node.id)
+            faded: (selectedNodeId || hoveredNodeId) && !neighborNodeIds.has(node.id),
           }"
           :style="{
             transform: `translate(${node.x.toFixed(1)}px, ${node.y.toFixed(1)}px)`,
-            animationDelay: `${Math.min(idx * 30, 800)}ms`
+            animationDelay: `${Math.min(idx * 30, 800)}ms`,
           }"
           tabindex="0"
           role="button"
@@ -192,13 +224,29 @@ function handleNodeLeave(id: string) {
 
             <!-- ROOT Node Special Flower Circle & Pulsing Aura -->
             <template v-if="node.kind === 'ROOT'">
-              <circle :r="node.radius + 12" fill="none" stroke="#f43f5e" stroke-opacity="0.25" class="root-aura-pulse" />
-              <circle :r="node.radius + 6" fill="none" stroke="#f43f5e" stroke-opacity="0.4" stroke-width="1.5" stroke-dasharray="3 3" class="root-dash-ring" />
+              <circle
+                :r="node.radius + 12"
+                fill="none"
+                stroke="#f43f5e"
+                stroke-opacity="0.25"
+                class="root-aura-pulse"
+              />
+              <circle
+                :r="node.radius + 6"
+                fill="none"
+                stroke="#f43f5e"
+                stroke-opacity="0.4"
+                stroke-width="1.5"
+                stroke-dasharray="3 3"
+                class="root-dash-ring"
+              />
               <circle :r="node.radius" fill="url(#root-fill)" class="node-circle main-root" />
               <!-- Flower SVG Icon -->
               <g transform="translate(-14, -14)">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="#ffffff">
-                  <path d="M12 2a4 4 0 0 0-4 4c0 2.21 1.79 4 4 4s4-1.79 4-4a4 4 0 0 0-4-4zm0 8a4 4 0 0 0-4 4c0 2.21 1.79 4 4 4s4-1.79 4-4a4 4 0 0 0-4-4zm-8 2a4 4 0 0 0 4 4c2.21 0 4-1.79 4-4s-1.79-4-4-4a4 4 0 0 0-4 4zm16 0a4 4 0 0 0-4-4c-2.21 0-4 1.79-4 4s1.79 4 4 4a4 4 0 0 0 4-4z" />
+                  <path
+                    d="M12 2a4 4 0 0 0-4 4c0 2.21 1.79 4 4 4s4-1.79 4-4a4 4 0 0 0-4-4zm0 8a4 4 0 0 0-4 4c0 2.21 1.79 4 4 4s4-1.79 4-4a4 4 0 0 0-4-4zm-8 2a4 4 0 0 0 4 4c2.21 0 4-1.79 4-4s-1.79-4-4-4a4 4 0 0 0-4 4zm16 0a4 4 0 0 0-4-4c-2.21 0-4 1.79-4 4s1.79 4 4 4a4 4 0 0 0 4-4z"
+                  />
                   <circle cx="12" cy="12" r="3" fill="#fef08a" />
                 </svg>
               </g>
@@ -209,32 +257,72 @@ function handleNodeLeave(id: string) {
               <circle :r="node.radius" :fill="node.color" class="node-circle main-group" />
               <g transform="translate(-11, -11)">
                 <!-- Post Icon -->
-                <svg v-if="node.type === 'POST'" viewBox="0 0 24 24" width="22" height="22" stroke="#fff" fill="none" stroke-width="2">
+                <svg
+                  v-if="node.type === 'POST'"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  stroke="#fff"
+                  fill="none"
+                  stroke-width="2"
+                >
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                   <line x1="16" y1="13" x2="8" y2="13" />
                   <line x1="16" y1="17" x2="8" y2="17" />
                 </svg>
                 <!-- Note Icon -->
-                <svg v-else-if="node.type === 'NOTE'" viewBox="0 0 24 24" width="22" height="22" stroke="#fff" fill="none" stroke-width="2">
+                <svg
+                  v-else-if="node.type === 'NOTE'"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  stroke="#fff"
+                  fill="none"
+                  stroke-width="2"
+                >
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
                 </svg>
                 <!-- Dish Icon -->
-                <svg v-else-if="node.type === 'DISH'" viewBox="0 0 24 24" width="22" height="22" stroke="#fff" fill="none" stroke-width="2">
+                <svg
+                  v-else-if="node.type === 'DISH'"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  stroke="#fff"
+                  fill="none"
+                  stroke-width="2"
+                >
                   <path d="M6 13.87A8 8 0 0 1 12 4a8 8 0 0 1 6 9.87" />
                   <line x1="4" y1="18" x2="20" y2="18" />
                   <path d="M12 18v4" />
                 </svg>
                 <!-- Tag Icon -->
-                <svg v-else-if="node.type === 'TAG'" viewBox="0 0 24 24" width="22" height="22" stroke="#fff" fill="none" stroke-width="2">
+                <svg
+                  v-else-if="node.type === 'TAG'"
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  stroke="#fff"
+                  fill="none"
+                  stroke-width="2"
+                >
                   <line x1="4" y1="9" x2="20" y2="9" />
                   <line x1="4" y1="15" x2="20" y2="15" />
                   <line x1="10" y1="3" x2="8" y2="21" />
                   <line x1="16" y1="3" x2="14" y2="21" />
                 </svg>
                 <!-- Series Icon -->
-                <svg v-else viewBox="0 0 24 24" width="22" height="22" stroke="#fff" fill="none" stroke-width="2">
+                <svg
+                  v-else
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  stroke="#fff"
+                  fill="none"
+                  stroke-width="2"
+                >
                   <polygon points="12 2 2 7 12 12 22 7 12 2" />
                   <polyline points="2 17 12 22 22 17" />
                   <polyline points="2 12 12 17 22 12" />
@@ -260,12 +348,7 @@ function handleNodeLeave(id: string) {
               </g>
 
               <!-- Standard content node circle -->
-              <circle
-                v-else
-                :r="node.radius"
-                :fill="node.color"
-                class="node-circle content-circle"
-              />
+              <circle v-else :r="node.radius" :fill="node.color" class="node-circle content-circle" />
             </template>
 
             <!-- Node Tooltip -->
@@ -273,10 +356,12 @@ function handleNodeLeave(id: string) {
 
             <!-- Label Text -->
             <text
-              v-if="node.kind !== 'CONTENT'
-                || node.type === 'DISH'
-                || (node.type === 'POST' && idx % 2 === 0)
-                || (node.type === 'TAG' && node.degree >= 3)"
+              v-if="
+                node.kind !== 'CONTENT' ||
+                node.type === 'DISH' ||
+                (node.type === 'POST' && idx % 2 === 0) ||
+                (node.type === 'TAG' && node.degree >= 3)
+              "
               :y="node.kind === 'CONTENT' && idx % 2 === 0 ? -node.radius - 7 : node.radius + 13"
               text-anchor="middle"
               class="node-label"
@@ -319,7 +404,10 @@ function handleNodeLeave(id: string) {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
   animation: edge-draw 0.8s ease-out forwards;
-  transition: stroke 0.25s, stroke-opacity 0.25s, stroke-width 0.25s;
+  transition:
+    stroke 0.25s,
+    stroke-opacity 0.25s,
+    stroke-width 0.25s;
 }
 
 .graph-edge.is-structure {
@@ -370,7 +458,9 @@ function handleNodeLeave(id: string) {
   outline: none;
   opacity: 0;
   animation: node-enter 0.5s cubic-bezier(0.34, 1.4, 0.64, 1) forwards;
-  transition: opacity 0.25s, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    opacity 0.25s,
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes node-enter {
@@ -427,10 +517,18 @@ function handleNodeLeave(id: string) {
   animation: float-petal 12s ease-in-out infinite alternate;
 }
 
-.p1 { animation-delay: 0s; }
-.p2 { animation-delay: -3s; }
-.p3 { animation-delay: -6s; }
-.p4 { animation-delay: -9s; }
+.p1 {
+  animation-delay: 0s;
+}
+.p2 {
+  animation-delay: -3s;
+}
+.p3 {
+  animation-delay: -6s;
+}
+.p4 {
+  animation-delay: -9s;
+}
 
 @keyframes float-petal {
   0% {
@@ -530,7 +628,11 @@ function handleNodeLeave(id: string) {
 
 .node-circle {
   transform-origin: center;
-  transition: stroke 0.2s, stroke-width 0.2s, filter 0.25s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition:
+    stroke 0.2s,
+    stroke-width 0.2s,
+    filter 0.25s,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .node-label {

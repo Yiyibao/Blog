@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AdminLogin from '../components/AdminLogin.vue'
+import AdminLogin from '../components/AdminLogin.vue';
 </script>
 
 <template>

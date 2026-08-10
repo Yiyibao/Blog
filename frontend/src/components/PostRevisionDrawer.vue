@@ -1,95 +1,99 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue';
 import {
-  fetchPostRevisions, fetchPostRevision, restorePostRevision,
-  type AdminPost, type PostRevisionDetail, type PostRevisionSummary,
-} from '../api/admin'
-import { diffLines } from '../utils/textDiff'
+  fetchPostRevisions,
+  fetchPostRevision,
+  restorePostRevision,
+  type AdminPost,
+  type PostRevisionDetail,
+  type PostRevisionSummary,
+} from '../api/admin';
+import { diffLines } from '../utils/textDiff';
 
 /**
  * 4C：版本历史抽屉——列表（新到旧）→ 查看某版 → 与当前编辑内容纯文本行 diff → 恢复。
  * 恢复走后端（回写正文并产生新版本），父组件经 restored 事件拿到最新文章回填表单。
  */
 const props = defineProps<{
-  postId: number
+  postId: number;
   /** 当前编辑器里的正文（diff 的「新」侧）。 */
-  currentText: string
-}>()
+  currentText: string;
+}>();
 
 const emit = defineEmits<{
-  (e: 'close'): void
-  (e: 'restored', post: AdminPost): void
-}>()
+  (e: 'close'): void;
+  (e: 'restored', post: AdminPost): void;
+}>();
 
-const revisions = ref<PostRevisionSummary[]>([])
-const selected = ref<PostRevisionDetail | null>(null)
-const loading = ref(true)
-const detailLoading = ref(false)
-const restoring = ref(false)
-const error = ref('')
+const revisions = ref<PostRevisionSummary[]>([]);
+const selected = ref<PostRevisionDetail | null>(null);
+const loading = ref(true);
+const detailLoading = ref(false);
+const restoring = ref(false);
+const error = ref('');
 
 const diff = computed(() => {
-  if (!selected.value) return []
-  const oldText = selected.value.markdownContent ?? selected.value.content
-  return diffLines(oldText, props.currentText)
-})
+  if (!selected.value) return [];
+  const oldText = selected.value.markdownContent ?? selected.value.content;
+  return diffLines(oldText, props.currentText);
+});
 
 const diffStats = computed(() => {
-  let add = 0
-  let del = 0
+  let add = 0;
+  let del = 0;
   for (const line of diff.value) {
-    if (line.type === 'add') add++
-    else if (line.type === 'del') del++
+    if (line.type === 'add') add++;
+    else if (line.type === 'del') del++;
   }
-  return { add, del }
-})
+  return { add, del };
+});
 
 function formatTime(iso: string): string {
-  return iso.replace('T', ' ').slice(0, 19)
+  return iso.replace('T', ' ').slice(0, 19);
 }
 
 async function load() {
-  loading.value = true
-  error.value = ''
+  loading.value = true;
+  error.value = '';
   try {
-    revisions.value = await fetchPostRevisions(props.postId)
+    revisions.value = await fetchPostRevisions(props.postId);
   } catch {
-    error.value = '读取版本历史失败。'
+    error.value = '读取版本历史失败。';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function view(revision: PostRevisionSummary) {
-  detailLoading.value = true
-  error.value = ''
+  detailLoading.value = true;
+  error.value = '';
   try {
-    selected.value = await fetchPostRevision(props.postId, revision.id)
+    selected.value = await fetchPostRevision(props.postId, revision.id);
   } catch {
-    error.value = '读取版本内容失败。'
+    error.value = '读取版本内容失败。';
   } finally {
-    detailLoading.value = false
+    detailLoading.value = false;
   }
 }
 
 async function restore() {
-  if (!selected.value) return
-  if (!window.confirm('恢复该版本？当前编辑器内容将被替换（恢复本身也会记录一版）。')) return
-  restoring.value = true
-  error.value = ''
+  if (!selected.value) return;
+  if (!window.confirm('恢复该版本？当前编辑器内容将被替换（恢复本身也会记录一版）。')) return;
+  restoring.value = true;
+  error.value = '';
   try {
-    const post = await restorePostRevision(props.postId, selected.value.id)
-    emit('restored', post)
-    await load()
-    selected.value = null
+    const post = await restorePostRevision(props.postId, selected.value.id);
+    emit('restored', post);
+    await load();
+    selected.value = null;
   } catch {
-    error.value = '恢复失败，请稍后重试。'
+    error.value = '恢复失败，请稍后重试。';
   } finally {
-    restoring.value = false
+    restoring.value = false;
   }
 }
 
-onMounted(load)
+onMounted(load);
 </script>
 
 <template>
@@ -108,11 +112,7 @@ onMounted(load)
       <div v-else class="drawer-body">
         <ul class="revision-list">
           <li v-for="revision in revisions" :key="revision.id">
-            <button
-              type="button"
-              :class="{ active: selected?.id === revision.id }"
-              @click="view(revision)"
-            >
+            <button type="button" :class="{ active: selected?.id === revision.id }" @click="view(revision)">
               <strong>{{ revision.title }}</strong>
               <small>{{ formatTime(revision.createdAt) }} · {{ revision.contentFormat }}</small>
             </button>
@@ -125,7 +125,10 @@ onMounted(load)
             <header class="detail-head">
               <div>
                 <strong>{{ selected.title }}</strong>
-                <small>对比当前编辑内容：<b class="add">+{{ diffStats.add }}</b> / <b class="del">-{{ diffStats.del }}</b> 行</small>
+                <small
+                  >对比当前编辑内容：<b class="add">+{{ diffStats.add }}</b> /
+                  <b class="del">-{{ diffStats.del }}</b> 行</small
+                >
               </div>
               <button type="button" class="restore-btn" :disabled="restoring" @click="restore">
                 {{ restoring ? '恢复中…' : '恢复此版本' }}
@@ -170,8 +173,15 @@ onMounted(load)
   gap: 10px;
   margin-bottom: 14px;
 }
-.revision-drawer > header strong { font-size: 16px; color: var(--ink); }
-.revision-drawer > header small { color: var(--muted); font-size: 12px; flex: 1; }
+.revision-drawer > header strong {
+  font-size: 16px;
+  color: var(--ink);
+}
+.revision-drawer > header small {
+  color: var(--muted);
+  font-size: 12px;
+  flex: 1;
+}
 .close-btn {
   border: 1px solid var(--line-strong);
   background: var(--surface);
@@ -180,8 +190,14 @@ onMounted(load)
   padding: 4px 10px;
   cursor: pointer;
 }
-.drawer-error { color: #b4452c; font-size: 13px; }
-.drawer-empty { color: var(--muted); font-size: 13px; }
+.drawer-error {
+  color: #b4452c;
+  font-size: 13px;
+}
+.drawer-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
 .drawer-body {
   display: grid;
   grid-template-columns: 220px 1fr;
@@ -210,7 +226,9 @@ onMounted(load)
   flex-direction: column;
   gap: 3px;
 }
-.revision-list button.active { border-color: var(--accent); }
+.revision-list button.active {
+  border-color: var(--accent);
+}
 .revision-list strong {
   font-size: 13px;
   color: var(--ink);
@@ -218,7 +236,10 @@ onMounted(load)
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.revision-list small { color: var(--muted); font-size: 11px; }
+.revision-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
 .revision-detail {
   display: flex;
   flex-direction: column;
@@ -231,10 +252,23 @@ onMounted(load)
   gap: 12px;
   margin-bottom: 10px;
 }
-.detail-head strong { display: block; font-size: 14px; color: var(--ink); }
-.detail-head small { color: var(--muted); font-size: 12px; }
-.detail-head .add { color: #2f7d4f; font-style: normal; }
-.detail-head .del { color: #b4452c; font-style: normal; }
+.detail-head strong {
+  display: block;
+  font-size: 14px;
+  color: var(--ink);
+}
+.detail-head small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.detail-head .add {
+  color: #2f7d4f;
+  font-style: normal;
+}
+.detail-head .del {
+  color: #b4452c;
+  font-style: normal;
+}
 .restore-btn {
   border: none;
   background: var(--accent);
@@ -255,12 +289,29 @@ onMounted(load)
   font-size: 12px;
   line-height: 1.6;
 }
-.diff-view code { display: block; padding: 10px 0; }
-.diff-line { display: block; padding: 0 12px; white-space: pre-wrap; word-break: break-all; color: var(--ink); }
-.diff-line.add { background: color-mix(in srgb, #2f7d4f 12%, transparent); }
-.diff-line.del { background: color-mix(in srgb, #b4452c 12%, transparent); }
+.diff-view code {
+  display: block;
+  padding: 10px 0;
+}
+.diff-line {
+  display: block;
+  padding: 0 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--ink);
+}
+.diff-line.add {
+  background: color-mix(in srgb, #2f7d4f 12%, transparent);
+}
+.diff-line.del {
+  background: color-mix(in srgb, #b4452c 12%, transparent);
+}
 @media (max-width: 700px) {
-  .drawer-body { grid-template-columns: 1fr; }
-  .revision-list { max-height: 30vh; }
+  .drawer-body {
+    grid-template-columns: 1fr;
+  }
+  .revision-list {
+    max-height: 30vh;
+  }
 }
 </style>

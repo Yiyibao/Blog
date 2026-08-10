@@ -14,11 +14,16 @@ import static org.mockito.Mockito.when;
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.config.AiImageProperties;
 import com.yubai.blog.storage.StorageService;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockMultipartFile;
 
 class AiImageServiceTest {
 
@@ -42,13 +47,14 @@ class AiImageServiceTest {
         sessionRepository = mock(AiImageSessionRepository.class);
         storage = mock(StorageService.class);
         client = mock(OpenAiImageClient.class);
-        service = new AiImageService(
-            properties,
-            mock(AiBaseUrlValidator.class),
-            client,
-            repository,
-            sessionRepository,
-            storage);
+        service =
+                new AiImageService(
+                        properties,
+                        mock(AiBaseUrlValidator.class),
+                        client,
+                        repository,
+                        sessionRepository,
+                        storage);
     }
 
     private static AiImageSessionEntity session(Long id, String owner, String title) {
@@ -64,22 +70,28 @@ class AiImageServiceTest {
     }
 
     private AiImageGenerateRequest request(String prompt, Long sessionId) {
-        return new AiImageGenerateRequest(prompt, sessionId, "grok", "grok-imagine-image-quality",
-            1, null, null, null, null);
+        return new AiImageGenerateRequest(
+                prompt, sessionId, "grok", "grok-imagine-image-quality", 1, null, null, null, null);
     }
 
     @Test
     void generateCreatesSessionFromFirstPrompt() {
         var created = session(5L, "admin", null);
-        when(sessionRepository.save(any(AiImageSessionEntity.class))).thenAnswer(invocation -> {
-            var entity = invocation.getArgument(0, AiImageSessionEntity.class);
-            return session(5L, entity.getOwner(), entity.getTitle());
-        });
-        when(client.generate(any(), any(), anyLong())).thenReturn(new AiImageResult(
-            "grok-imagine-image-quality",
-            List.of(new AiImageResult.Image(new byte[]{1, 2, 3}, "image/png", 1024, 1024))));
+        when(sessionRepository.save(any(AiImageSessionEntity.class)))
+                .thenAnswer(
+                        invocation -> {
+                            var entity = invocation.getArgument(0, AiImageSessionEntity.class);
+                            return session(5L, entity.getOwner(), entity.getTitle());
+                        });
+        when(client.generate(any(), any(), anyLong()))
+                .thenReturn(
+                        new AiImageResult(
+                                "grok-imagine-image-quality",
+                                List.of(
+                                        new AiImageResult.Image(
+                                                new byte[] {1, 2, 3}, "image/png", 1024, 1024))));
         when(repository.save(any(AiGeneratedImageEntity.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = service.generate(request("雨后的杭州西湖，国风插画", null), "admin");
 
@@ -100,16 +112,49 @@ class AiImageServiceTest {
         var existing = session(9L, "admin", "已有标题");
         when(sessionRepository.findByIdAndOwner(9L, "admin")).thenReturn(Optional.of(existing));
         when(sessionRepository.save(any(AiImageSessionEntity.class))).thenReturn(existing);
-        when(client.generate(any(), any(), anyLong())).thenReturn(new AiImageResult(
-            "grok-imagine-image-quality",
-            List.of(new AiImageResult.Image(new byte[]{1, 2, 3}, "image/png", 1024, 1024))));
+        when(client.generate(any(), any(), anyLong()))
+                .thenReturn(
+                        new AiImageResult(
+                                "grok-imagine-image-quality",
+                                List.of(
+                                        new AiImageResult.Image(
+                                                new byte[] {1, 2, 3}, "image/png", 1024, 1024))));
         when(repository.save(org.mockito.ArgumentMatchers.<AiGeneratedImageEntity>any()))
-            .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = service.generate(request("新的一轮", 9L), "admin");
 
         assertEquals(9L, result.sessionId());
         assertEquals("已有标题", result.sessionTitle());
+    }
+
+    @Test
+    void validatesAndForwardsReferenceImage() throws Exception {
+        var created = session(12L, "admin", null);
+        when(sessionRepository.save(any(AiImageSessionEntity.class))).thenReturn(created);
+        when(client.generate(any(), any(), anyLong()))
+                .thenReturn(
+                        new AiImageResult(
+                                "grok-imagine-image-quality",
+                                List.of(
+                                        new AiImageResult.Image(
+                                                new byte[] {1, 2, 3}, "image/png", 1, 1))));
+        when(repository.save(any(AiGeneratedImageEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var input = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB), "png", input);
+        var file =
+                new MockMultipartFile(
+                        "referenceImage", "reference.png", "image/png", input.toByteArray());
+
+        service.generate(request("把它改成蓝色海报", null), "admin", file);
+
+        var captor = ArgumentCaptor.forClass(AiImageGenerationRequest.class);
+        verify(client).generate(any(), captor.capture(), anyLong());
+        assertNotNull(captor.getValue().referenceImage());
+        assertEquals("image/png", captor.getValue().referenceImage().mediaType());
+        assertEquals(input.size(), captor.getValue().referenceImage().bytes().length);
     }
 
     @Test
@@ -123,7 +168,7 @@ class AiImageServiceTest {
     @Test
     void listSessionsOrdersByUpdatedAtDesc() {
         when(sessionRepository.findByOwnerOrderByUpdatedAtDesc("admin"))
-            .thenReturn(List.of(session(2L, "admin", "第二条"), session(1L, "admin", null)));
+                .thenReturn(List.of(session(2L, "admin", "第二条"), session(1L, "admin", null)));
 
         var sessions = service.listSessions("admin");
 
@@ -136,10 +181,23 @@ class AiImageServiceTest {
     @Test
     void sessionImagesReturnedInOrder() {
         when(sessionRepository.findByIdAndOwner(1L, "admin"))
-            .thenReturn(Optional.of(session(1L, "admin", "标题")));
+                .thenReturn(Optional.of(session(1L, "admin", "标题")));
         when(repository.findBySessionIdOrderByCreatedAtAsc(1L))
-            .thenReturn(List.of(AiGeneratedImageEntity.create(
-                1L, java.util.UUID.randomUUID(), "grok", "m", "p", "k", "f", "image/png", 1L, "a".repeat(64), 1, 1)));
+                .thenReturn(
+                        List.of(
+                                AiGeneratedImageEntity.create(
+                                        1L,
+                                        java.util.UUID.randomUUID(),
+                                        "grok",
+                                        "m",
+                                        "p",
+                                        "k",
+                                        "f",
+                                        "image/png",
+                                        1L,
+                                        "a".repeat(64),
+                                        1,
+                                        1)));
 
         var images = service.sessionImages(1L, "admin");
 
@@ -156,11 +214,52 @@ class AiImageServiceTest {
     }
 
     @Test
+    void imageContentAndDeleteRecheckSessionOwner() {
+        var publicId = UUID.randomUUID();
+        var entity =
+                AiGeneratedImageEntity.create(
+                        1L,
+                        publicId,
+                        "grok",
+                        "m",
+                        "p",
+                        "private-key",
+                        "private.png",
+                        "image/png",
+                        1L,
+                        "a".repeat(64),
+                        1,
+                        1);
+        when(repository.findByPublicId(publicId)).thenReturn(Optional.of(entity));
+        when(sessionRepository.findByIdAndOwner(1L, "attacker")).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundException.class, () -> service.find(publicId, "attacker"));
+        assertThrows(NotFoundException.class, () -> service.read(publicId, "attacker"));
+        assertThrows(NotFoundException.class, () -> service.delete(publicId, "attacker"));
+
+        verify(repository, never()).delete(entity);
+        verify(storage, never()).read("private-key");
+        verify(storage, never()).delete("private-key");
+    }
+
+    @Test
     void deleteSessionRemovesImagesFilesAndSession() {
-        var entity = AiGeneratedImageEntity.create(
-            1L, java.util.UUID.randomUUID(), "grok", "m", "p", "k", "f", "image/png", 1L, "a".repeat(64), 1, 1);
+        var entity =
+                AiGeneratedImageEntity.create(
+                        1L,
+                        java.util.UUID.randomUUID(),
+                        "grok",
+                        "m",
+                        "p",
+                        "k",
+                        "f",
+                        "image/png",
+                        1L,
+                        "a".repeat(64),
+                        1,
+                        1);
         when(sessionRepository.findByIdAndOwner(1L, "admin"))
-            .thenReturn(Optional.of(session(1L, "admin", "标题")));
+                .thenReturn(Optional.of(session(1L, "admin", "标题")));
         when(repository.findBySessionIdOrderByCreatedAtAsc(1L)).thenReturn(List.of(entity));
 
         service.deleteSession(1L, "admin");
@@ -173,7 +272,8 @@ class AiImageServiceTest {
     @Test
     void deleteMissingSessionThrows() {
         var generationId = 1L;
-        when(sessionRepository.findByIdAndOwner(generationId, "admin")).thenReturn(Optional.empty());
+        when(sessionRepository.findByIdAndOwner(generationId, "admin"))
+                .thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> service.deleteSession(generationId, "admin"));
         verify(storage, never()).delete(any(String.class));

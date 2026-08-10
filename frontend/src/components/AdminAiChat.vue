@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  AiStreamHttpError, appendAiChatMessages, createAiChatSession, deleteAiChatSession,
-  fetchAiChatSessionMessages, fetchAiChatSessions, logout as apiLogout, getAdminSessionName,
-  streamAiChat, type AiChatMessage, type AiChatSession, type AiReasoningSelection,
-} from '../api/admin'
-import { useAiStore } from '../stores/aiStore'
-import AdminSidebar from './AdminSidebar.vue'
-import { AI_CHAT_MAX_INPUT_CHARS } from '../config/aiLimits'
+  AiStreamHttpError,
+  appendAiChatMessages,
+  createAiChatSession,
+  deleteAiChatSession,
+  fetchAiChatSessionMessages,
+  fetchAiChatSessions,
+  logout as apiLogout,
+  getAdminSessionName,
+  streamAiChat,
+  type AiChatMessage,
+  type AiChatSession,
+  type AiReasoningSelection,
+} from '../api/admin';
+import { useAiStore } from '../stores/aiStore';
+import AdminSidebar from './AdminSidebar.vue';
+import { AI_CHAT_MAX_INPUT_CHARS } from '../config/aiLimits';
 
 /**
  * 4A-4：compact=true 时去掉页面级 chrome（侧导航/顶栏），只渲染对话核心——供 AdminPetAssistant 面板复用；
@@ -16,44 +25,47 @@ import { AI_CHAT_MAX_INPUT_CHARS } from '../config/aiLimits'
  * 会话存于 sessionStorage 同一键，面板与全屏两形态天然共享上下文。
  * 供应商/模型选择统一由 aiStore 维护（全屏页、宠物面板、供应商页三处共享并互相同步）。
  */
-const props = withDefaults(defineProps<{
-  compact?: boolean
-  providerId?: number | null
-  model?: string | null
-}>(), {
-  compact: false,
-  providerId: null,
-  model: null,
-})
+const props = withDefaults(
+  defineProps<{
+    compact?: boolean;
+    providerId?: number | null;
+    model?: string | null;
+  }>(),
+  {
+    compact: false,
+    providerId: null,
+    model: null,
+  },
+);
 
 /**
  * 事件仅供宿主（AdminPetAssistant）驱动宠物动画，不复制聊天状态与请求逻辑；
  * 401 仍走原有 logout + 跳转，宿主不得吞掉认证错误。
  */
 const emit = defineEmits<{
-  'stream-start': []
-  'stream-first-delta': []
-  'stream-complete': []
-  'stream-error': []
-  'stream-abort': []
-}>()
+  'stream-start': [];
+  'stream-first-delta': [];
+  'stream-complete': [];
+  'stream-error': [];
+  'stream-abort': [];
+}>();
 
-const STORAGE_KEY = 'yubai-admin-ai-messages'
+const STORAGE_KEY = 'yubai-admin-ai-messages';
 
-const router = useRouter()
-const ai = useAiStore()
-const username = getAdminSessionName() || 'Admin'
-const userInput = ref('')
-const loading = ref(false)
+const router = useRouter();
+const ai = useAiStore();
+const username = getAdminSessionName() || 'Admin';
+const userInput = ref('');
+const loading = ref(false);
 /** 4A-2：收到首个增量后隐藏「思考中…」占位，改由增量气泡实时呈现 */
-const streamingStarted = ref(false)
-const error = ref('')
-const chatBoxRef = ref<HTMLElement | null>(null)
-let abortController: AbortController | null = null
+const streamingStarted = ref(false);
+const error = ref('');
+const chatBoxRef = ref<HTMLElement | null>(null);
+let abortController: AbortController | null = null;
 
-const selectedProvider = computed(() => ai.selectedProvider)
+const selectedProvider = computed(() => ai.selectedProvider);
 
-const modelOptions = computed(() => ai.modelOptions)
+const modelOptions = computed(() => ai.modelOptions);
 
 const reasoningOptions: Array<{ value: AiReasoningSelection; label: string }> = [
   { value: 'auto', label: '自动（供应商默认）' },
@@ -63,7 +75,7 @@ const reasoningOptions: Array<{ value: AiReasoningSelection; label: string }> = 
   { value: 'medium', label: '中' },
   { value: 'high', label: '高' },
   { value: 'xhigh', label: '极高' },
-]
+];
 
 /**
  * The selected effort is sent only to protocols that have a real effort
@@ -72,23 +84,25 @@ const reasoningOptions: Array<{ value: AiReasoningSelection; label: string }> = 
  * changes the model.
  */
 const reasoningSupported = computed(() => {
-  const provider = selectedProvider.value
-  if (!provider || !provider.providerType) return true
-  if (provider.providerType === 'OPENCODE_SERVER') return false
-  if (provider.providerType === 'OPENAI_COMPATIBLE'
-    && provider.baseUrl.toLowerCase().includes('deepseek')) return false
-  return provider.providerType === 'OPENAI_RESPONSES'
-    || provider.providerType === 'OPENAI_COMPATIBLE'
-    || provider.providerType === 'ANTHROPIC'
-})
+  const provider = selectedProvider.value;
+  if (!provider || !provider.providerType) return true;
+  if (provider.providerType === 'OPENCODE_SERVER') return false;
+  if (provider.providerType === 'OPENAI_COMPATIBLE' && provider.baseUrl.toLowerCase().includes('deepseek'))
+    return false;
+  return (
+    provider.providerType === 'OPENAI_RESPONSES' ||
+    provider.providerType === 'OPENAI_COMPATIBLE' ||
+    provider.providerType === 'ANTHROPIC'
+  );
+});
 
 function loadStoredMessages(): AiChatMessage[] {
   try {
-    const raw = window.sessionStorage?.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error('Invalid stored messages')
-    const valid: AiChatMessage[] = []
+    const raw = window.sessionStorage?.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('Invalid stored messages');
+    const valid: AiChatMessage[] = [];
     for (const item of parsed) {
       if (
         item &&
@@ -98,126 +112,128 @@ function loadStoredMessages(): AiChatMessage[] {
         item.content.trim() &&
         item.content.length <= AI_CHAT_MAX_INPUT_CHARS
       ) {
-        valid.push({ role: item.role as 'user' | 'assistant', content: item.content })
+        valid.push({ role: item.role as 'user' | 'assistant', content: item.content });
       } else {
-        throw new Error('Invalid stored message')
+        throw new Error('Invalid stored message');
       }
     }
-    const recent = valid.slice(-20)
-    if (recent.length !== valid.length) saveMessagesToStorage(recent)
-    return recent
+    const recent = valid.slice(-20);
+    if (recent.length !== valid.length) saveMessagesToStorage(recent);
+    return recent;
   } catch {
     try {
-      window.sessionStorage?.removeItem(STORAGE_KEY)
+      window.sessionStorage?.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
-    return []
+    return [];
   }
 }
 
 function saveMessagesToStorage(msgList: AiChatMessage[]) {
   try {
-    window.sessionStorage?.setItem(STORAGE_KEY, JSON.stringify(msgList.slice(-20)))
+    window.sessionStorage?.setItem(STORAGE_KEY, JSON.stringify(msgList.slice(-20)));
   } catch {
     // Privacy mode fallback
   }
 }
 
-const messages = ref<AiChatMessage[]>(loadStoredMessages())
-const sessions = ref<AiChatSession[]>([])
-const sessionsLoading = ref(false)
-const sessionsError = ref('')
-const currentSessionId = ref<number | null>(null)
-const sidebarOpen = ref(true)
+const messages = ref<AiChatMessage[]>(loadStoredMessages());
+const sessions = ref<AiChatSession[]>([]);
+const sessionsLoading = ref(false);
+const sessionsError = ref('');
+const currentSessionId = ref<number | null>(null);
+const sidebarOpen = ref(true);
 
 async function scrollToBottom() {
-  await nextTick()
+  await nextTick();
   if (chatBoxRef.value) {
-    chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight
+    chatBoxRef.value.scrollTop = chatBoxRef.value.scrollHeight;
   }
 }
 
 function logout() {
-  apiLogout()
-  void router.replace('/admin/login')
+  apiLogout();
+  void router.replace('/admin/login');
 }
 
 function clearConversation() {
-  if (!window.confirm('确认清空所有对话记录？')) return
-  messages.value = []
-  error.value = ''
-  currentSessionId.value = null
+  if (!window.confirm('确认清空所有对话记录？')) return;
+  messages.value = [];
+  error.value = '';
+  currentSessionId.value = null;
   try {
-    window.sessionStorage?.removeItem(STORAGE_KEY)
+    window.sessionStorage?.removeItem(STORAGE_KEY);
   } catch {
     // ignore
   }
 }
 
 async function loadSessions() {
-  sessionsLoading.value = true
-  sessionsError.value = ''
+  sessionsLoading.value = true;
+  sessionsError.value = '';
   try {
-    sessions.value = await fetchAiChatSessions()
+    sessions.value = await fetchAiChatSessions();
   } catch (cause) {
-    sessionsError.value = cause instanceof Error ? cause.message : '聊天记录加载失败'
+    sessionsError.value = cause instanceof Error ? cause.message : '聊天记录加载失败';
   } finally {
-    sessionsLoading.value = false
+    sessionsLoading.value = false;
   }
 }
 
 function newChat() {
-  abortController?.abort()
-  currentSessionId.value = null
-  messages.value = []
-  error.value = ''
-  saveMessagesToStorage([])
-  void nextTick(() => scrollToBottom())
+  abortController?.abort();
+  currentSessionId.value = null;
+  messages.value = [];
+  error.value = '';
+  saveMessagesToStorage([]);
+  void nextTick(() => scrollToBottom());
 }
 
 async function openSession(session: AiChatSession) {
-  if (loading.value) abortController?.abort()
-  if (currentSessionId.value === session.id) return
-  currentSessionId.value = session.id
-  error.value = ''
+  if (loading.value) abortController?.abort();
+  if (currentSessionId.value === session.id) return;
+  currentSessionId.value = session.id;
+  error.value = '';
   try {
-    const records = await fetchAiChatSessionMessages(session.id)
-    messages.value = records
-      .map(record => ({ role: record.role, content: record.content }))
-      .slice(-100)
-    saveMessagesToStorage(messages.value)
+    const records = await fetchAiChatSessionMessages(session.id);
+    messages.value = records.map((record) => ({ role: record.role, content: record.content })).slice(-100);
+    saveMessagesToStorage(messages.value);
   } catch (cause) {
-    currentSessionId.value = null
-    error.value = cause instanceof Error ? cause.message : '聊天记录加载失败'
+    currentSessionId.value = null;
+    error.value = cause instanceof Error ? cause.message : '聊天记录加载失败';
   }
-  await scrollToBottom()
+  await scrollToBottom();
 }
 
 async function deleteSession(session: AiChatSession) {
-  if (!window.confirm('确认删除这条聊天记录？')) return
+  if (!window.confirm('确认删除这条聊天记录？')) return;
   try {
-    await deleteAiChatSession(session.id)
-    if (currentSessionId.value === session.id) newChat()
-    await loadSessions()
+    await deleteAiChatSession(session.id);
+    if (currentSessionId.value === session.id) newChat();
+    await loadSessions();
   } catch (cause) {
-    sessionsError.value = cause instanceof Error ? cause.message : '删除聊天记录失败'
+    sessionsError.value = cause instanceof Error ? cause.message : '删除聊天记录失败';
   }
 }
 
 function formatSessionTime(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(new Date(value))
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
 }
 
 async function persistExchange(sessionId: number, userMsg: AiChatMessage, assistantContent: string) {
   const batch = assistantContent.trim()
     ? [userMsg, { role: 'assistant' as const, content: assistantContent }]
-    : [userMsg]
+    : [userMsg];
   try {
-    await appendAiChatMessages(sessionId, batch)
-    await loadSessions()
+    await appendAiChatMessages(sessionId, batch);
+    await loadSessions();
   } catch {
     // 历史保存失败不阻断对话主流程
   }
@@ -225,126 +241,131 @@ async function persistExchange(sessionId: number, userMsg: AiChatMessage, assist
 
 function handleKeyDown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-    event.preventDefault()
-    void sendMessage()
+    event.preventDefault();
+    void sendMessage();
   }
 }
 
 async function sendMessage() {
-  const content = userInput.value.trim()
-  if (!content || loading.value || content.length > AI_CHAT_MAX_INPUT_CHARS) return
+  const content = userInput.value.trim();
+  if (!content || loading.value || content.length > AI_CHAT_MAX_INPUT_CHARS) return;
 
-  const userMsg: AiChatMessage = { role: 'user', content }
+  const userMsg: AiChatMessage = { role: 'user', content };
   // 发送给后端的历史窗口维持 20 条（与服务端限额一致）；
   // 展示层放宽到 100 条，避免达到 20 条后发送瞬间最早一条消息凭空消失
-  const history = [...messages.value, userMsg].slice(-20)
-  messages.value = [...messages.value, userMsg].slice(-100)
-  saveMessagesToStorage(messages.value)
+  const history = [...messages.value, userMsg].slice(-20);
+  messages.value = [...messages.value, userMsg].slice(-100);
+  saveMessagesToStorage(messages.value);
 
-  userInput.value = ''
-  error.value = ''
-  loading.value = true
-  streamingStarted.value = false
-  await scrollToBottom()
+  userInput.value = '';
+  error.value = '';
+  loading.value = true;
+  streamingStarted.value = false;
+  await scrollToBottom();
 
   // 4A-2：流式渲染——先挂空的助手气泡，增量到达时就地追加（必须改代理对象保证响应式）
-  const liveSeed: AiChatMessage = { role: 'assistant', content: '' }
-  messages.value = [...messages.value, liveSeed].slice(-100)
-  const live = messages.value[messages.value.length - 1]!
+  const liveSeed: AiChatMessage = { role: 'assistant', content: '' };
+  messages.value = [...messages.value, liveSeed].slice(-100);
+  const live = messages.value[messages.value.length - 1]!;
 
   // 首次发送时先创建会话记录，流式结束再把本轮问答写入历史（仅全屏形态）
-  let sessionId = currentSessionId.value
+  let sessionId = currentSessionId.value;
   if (!props.compact && sessionId == null) {
     try {
-      const session = await createAiChatSession()
-      sessionId = session.id
-      currentSessionId.value = session.id
+      const session = await createAiChatSession();
+      sessionId = session.id;
+      currentSessionId.value = session.id;
     } catch {
-      messages.value = messages.value.filter((msg) => msg !== live)
-      error.value = '无法创建聊天记录，请稍后重试。'
-      loading.value = false
-      await scrollToBottom()
-      return
+      messages.value = messages.value.filter((msg) => msg !== live);
+      error.value = '无法创建聊天记录，请稍后重试。';
+      loading.value = false;
+      await scrollToBottom();
+      return;
     }
   }
 
-  const controller = new AbortController()
-  abortController = controller
-  emit('stream-start')
+  const controller = new AbortController();
+  abortController = controller;
+  emit('stream-start');
 
   try {
-    const providerId = props.providerId ?? ai.selectedProviderId
-    const model = props.model ?? ai.selectedModel
-    const reasoningEffort = ai.selectedReasoningEffort
-    await streamAiChat(history, {
-      onDelta: (text) => {
-        if (!streamingStarted.value) emit('stream-first-delta')
-        streamingStarted.value = true
-        live.content += text
-        void scrollToBottom()
+    const providerId = props.providerId ?? ai.selectedProviderId;
+    const model = props.model ?? ai.selectedModel;
+    const reasoningEffort = ai.selectedReasoningEffort;
+    await streamAiChat(
+      history,
+      {
+        onDelta: (text) => {
+          if (!streamingStarted.value) emit('stream-first-delta');
+          streamingStarted.value = true;
+          live.content += text;
+          void scrollToBottom();
+        },
       },
-    }, {
-      signal: controller.signal,
-      ...(providerId != null ? { providerId } : {}),
-      ...(model ? { model } : {}),
-      ...(reasoningSupported.value && reasoningEffort !== 'auto' ? { reasoningEffort } : {}),
-    })
+      {
+        signal: controller.signal,
+        ...(providerId != null ? { providerId } : {}),
+        ...(model ? { model } : {}),
+        ...(reasoningSupported.value && reasoningEffort !== 'auto' ? { reasoningEffort } : {}),
+      },
+    );
     if (!live.content.trim()) {
-      throw new AiStreamHttpError(502, 'empty response')
+      throw new AiStreamHttpError(502, 'empty response');
     }
-    saveMessagesToStorage(messages.value)
-    emit('stream-complete')
+    saveMessagesToStorage(messages.value);
+    emit('stream-complete');
   } catch (cause) {
     if (controller.signal.aborted) {
       // 用户主动停止：保留已生成的部分；一无所出则移除空气泡
-      emit('stream-abort')
+      emit('stream-abort');
       if (live.content.trim()) {
-        saveMessagesToStorage(messages.value)
+        saveMessagesToStorage(messages.value);
       } else {
-        messages.value = messages.value.filter((msg) => msg !== live)
+        messages.value = messages.value.filter((msg) => msg !== live);
       }
     } else if (cause instanceof AiStreamHttpError && cause.status === 401) {
-      apiLogout()
-      void router.replace('/admin/login')
-      return
+      apiLogout();
+      void router.replace('/admin/login');
+      return;
     } else {
-      messages.value = messages.value.filter((msg) => msg !== live)
+      messages.value = messages.value.filter((msg) => msg !== live);
       // 展示后端返回的安全、可理解错误（固定中文文案，不含供应商原始响应）；
       // 内部标记（如 empty response）与网络级异常回退到通用文案
-      const detail = cause instanceof AiStreamHttpError && cause.message && cause.message !== 'empty response'
-        ? cause.message
-        : ''
-      error.value = detail || 'AI 响应失败，请检查网络或稍后重试。'
-      emit('stream-error')
+      const detail =
+        cause instanceof AiStreamHttpError && cause.message && cause.message !== 'empty response'
+          ? cause.message
+          : '';
+      error.value = detail || 'AI 响应失败，请检查网络或稍后重试。';
+      emit('stream-error');
     }
   } finally {
-    loading.value = false
-    streamingStarted.value = false
-    abortController = null
-    if (!props.compact && sessionId != null) void persistExchange(sessionId, userMsg, live.content)
-    await scrollToBottom()
+    loading.value = false;
+    streamingStarted.value = false;
+    abortController = null;
+    if (!props.compact && sessionId != null) void persistExchange(sessionId, userMsg, live.content);
+    await scrollToBottom();
   }
 }
 
 function stopStreaming() {
-  abortController?.abort()
+  abortController?.abort();
 }
 
 onMounted(() => {
   // 面板宿主（AdminPetAssistant）负责 compact 形态的供应商/模型加载
   if (!props.compact) {
-    void ai.ensureProviders()
-    ai.subscribe()
-    void loadSessions()
+    void ai.ensureProviders();
+    ai.subscribe();
+    void loadSessions();
   }
-  void scrollToBottom()
-})
+  void scrollToBottom();
+});
 
 // 宿主销毁（收起面板 / logout / 路由切换）时立即中止流式请求，避免后台继续消耗配额
 onBeforeUnmount(() => {
-  if (!props.compact) ai.unsubscribe()
-  abortController?.abort()
-})
+  if (!props.compact) ai.unsubscribe();
+  abortController?.abort();
+});
 </script>
 
 <template>
@@ -358,7 +379,9 @@ onBeforeUnmount(() => {
           <h1>AI 助手对话</h1>
         </div>
         <div class="topbar-actions">
-          <button v-if="messages.length" class="clear-btn" type="button" @click="clearConversation">清空对话</button>
+          <button v-if="messages.length" class="clear-btn" type="button" @click="clearConversation">
+            清空对话
+          </button>
           <RouterLink to="/">查看博客 ↗</RouterLink>
           <button @click="logout">退出登录</button>
         </div>
@@ -390,7 +413,9 @@ onBeforeUnmount(() => {
                     title="删除这条聊天记录"
                     aria-label="删除聊天记录"
                     @click="deleteSession(session)"
-                  >×</button>
+                  >
+                    ×
+                  </button>
                 </li>
               </ul>
               <p v-else-if="!sessionsLoading" class="sessions-empty">暂无聊天记录</p>
@@ -401,138 +426,144 @@ onBeforeUnmount(() => {
             class="sidebar-toggle"
             :aria-label="sidebarOpen ? '隐藏聊天记录' : '展开聊天记录'"
             @click="sidebarOpen = !sidebarOpen"
-          >{{ sidebarOpen ? '◀' : '▶' }}</button>
+          >
+            {{ sidebarOpen ? '◀' : '▶' }}
+          </button>
         </template>
 
         <div class="chat-main-col">
           <div ref="chatBoxRef" class="chat-messages" role="log" aria-live="polite">
-          <div v-if="!messages.length && !loading" class="chat-welcome">
-            <div class="welcome-icon">🤖</div>
-            <h2>管理员 AI 助手</h2>
-            <p>基于可配置的大模型供应商，协助文章撰写、代码重构与内容总结。</p>
-            <small>最多保存最近 20 条消息 · 支持 8,000 字长文本输入</small>
-          </div>
-
-          <div
-            v-for="(msg, index) in messages"
-            v-show="msg.role === 'user' || msg.content !== ''"
-            :key="index"
-            class="chat-bubble-wrap"
-            :class="msg.role"
-          >
-            <div class="bubble-avatar">
-              {{ msg.role === 'user' ? username.slice(0, 1).toUpperCase() : '🤖' }}
+            <div v-if="!messages.length && !loading" class="chat-welcome">
+              <div class="welcome-icon">🤖</div>
+              <h2>管理员 AI 助手</h2>
+              <p>基于可配置的大模型供应商，协助文章撰写、代码重构与内容总结。</p>
+              <small>最多保存最近 20 条消息 · 支持 8,000 字长文本输入</small>
             </div>
-            <div class="bubble-body">
-              <header class="bubble-header">
-                <span class="sender-name">{{ msg.role === 'user' ? username : 'AI 助手' }}</span>
-              </header>
-              <div class="bubble-content">{{ msg.content }}</div>
-            </div>
-          </div>
 
-          <div v-if="loading && !streamingStarted" class="chat-bubble-wrap assistant loading-bubble">
-            <div class="bubble-avatar">🤖</div>
-            <div class="bubble-body">
-              <header class="bubble-header">
-                <span class="sender-name">AI 助手</span>
-              </header>
-              <div class="bubble-content loading-indicator">
-                <span class="dot" /><span class="dot" /><span class="dot" />
-                <span class="loading-text">思考中…</span>
+            <div
+              v-for="(msg, index) in messages"
+              v-show="msg.role === 'user' || msg.content !== ''"
+              :key="index"
+              class="chat-bubble-wrap"
+              :class="msg.role"
+            >
+              <div class="bubble-avatar">
+                {{ msg.role === 'user' ? username.slice(0, 1).toUpperCase() : '🤖' }}
+              </div>
+              <div class="bubble-body">
+                <header class="bubble-header">
+                  <span class="sender-name">{{ msg.role === 'user' ? username : 'AI 助手' }}</span>
+                </header>
+                <div class="bubble-content">{{ msg.content }}</div>
+              </div>
+            </div>
+
+            <div v-if="loading && !streamingStarted" class="chat-bubble-wrap assistant loading-bubble">
+              <div class="bubble-avatar">🤖</div>
+              <div class="bubble-body">
+                <header class="bubble-header">
+                  <span class="sender-name">AI 助手</span>
+                </header>
+                <div class="bubble-content loading-indicator">
+                  <span class="dot" /><span class="dot" /><span class="dot" />
+                  <span class="loading-text">思考中…</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-if="error" class="chat-error-bar" role="alert">
-          <span>{{ error }}</span>
-        </div>
+          <div v-if="error" class="chat-error-bar" role="alert">
+            <span>{{ error }}</span>
+          </div>
 
-        <div class="chat-input-area">
-          <div class="input-wrapper">
-            <textarea
-              v-model="userInput"
-              class="chat-textarea"
-              data-testid="ai-chat-input"
-              placeholder="输入消息，按 Ctrl + Enter 或 Cmd + Enter 快速发送…"
-              :maxlength="AI_CHAT_MAX_INPUT_CHARS"
-              rows="3"
-              :disabled="loading"
-              @keydown="handleKeyDown"
-            />
-            <div v-if="!props.compact" class="chat-model-picker">
-              <label v-if="ai.providers.length > 1" for="ai-chat-provider">供应商</label>
-              <select
-                v-if="ai.providers.length > 1"
-                id="ai-chat-provider"
-                class="chat-model-select"
-                data-testid="chat-provider-select"
-                aria-label="选择供应商"
-                :value="ai.selectedProviderId ?? ''"
+          <div class="chat-input-area">
+            <div class="input-wrapper">
+              <textarea
+                v-model="userInput"
+                class="chat-textarea"
+                data-testid="ai-chat-input"
+                placeholder="输入消息，按 Ctrl + Enter 或 Cmd + Enter 快速发送…"
+                :maxlength="AI_CHAT_MAX_INPUT_CHARS"
+                rows="3"
                 :disabled="loading"
-                @change="ai.selectProvider(($event.target as HTMLSelectElement).value)"
-              >
-                <option v-for="provider in ai.providers" :key="provider.id" :value="provider.id">
-                  {{ provider.name }}
-                </option>
-              </select>
-              <label for="ai-chat-model">模型</label>
-              <select
-                id="ai-chat-model"
-                class="chat-model-select"
-                data-testid="chat-model-select"
-                aria-label="选择模型"
-                :value="ai.selectedModel ?? ''"
-                :disabled="loading || !modelOptions.length"
-                @change="ai.selectModel(($event.target as HTMLSelectElement).value)"
-              >
-                <option v-if="!modelOptions.length" value="">暂无可用模型</option>
-                <option v-for="modelOption in modelOptions" :key="modelOption" :value="modelOption">
-                  {{ modelOption }}
-                </option>
-              </select>
-              <label for="ai-chat-reasoning">推理强度</label>
-              <select
-                id="ai-chat-reasoning"
-                class="chat-model-select chat-reasoning-select"
-                data-testid="chat-reasoning-select"
-                aria-label="选择推理强度"
-                :value="ai.selectedReasoningEffort"
-                :disabled="loading || !reasoningSupported"
-                @change="ai.selectReasoningEffort(($event.target as HTMLSelectElement).value as AiReasoningSelection)"
-              >
-                <option v-for="option in reasoningOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </select>
-              <span v-if="!reasoningSupported" class="chat-model-provider">当前供应商不支持可调推理</span>
-              <span v-if="selectedProvider && ai.providers.length <= 1" class="chat-model-provider">{{ selectedProvider.name }}</span>
-            </div>
-            <div class="input-footer">
-              <span class="char-count" :class="{ 'near-limit': userInput.length > AI_CHAT_MAX_INPUT_CHARS - 1_000 }">
-                {{ userInput.length.toLocaleString() }} / {{ AI_CHAT_MAX_INPUT_CHARS.toLocaleString() }} 字
-              </span>
-              <div class="footer-actions">
-                <button
-                  v-if="loading"
-                  class="stop-btn"
-                  type="button"
-                  @click="stopStreaming"
+                @keydown="handleKeyDown"
+              />
+              <div v-if="!props.compact" class="chat-model-picker">
+                <label v-if="ai.providers.length > 1" for="ai-chat-provider">供应商</label>
+                <select
+                  v-if="ai.providers.length > 1"
+                  id="ai-chat-provider"
+                  class="chat-model-select"
+                  data-testid="chat-provider-select"
+                  aria-label="选择供应商"
+                  :value="ai.selectedProviderId ?? ''"
+                  :disabled="loading"
+                  @change="ai.selectProvider(($event.target as HTMLSelectElement).value)"
                 >
-                  停止生成
-                </button>
-                <button
-                  class="send-btn"
-                  type="button"
-                  :disabled="loading || !userInput.trim() || userInput.length > AI_CHAT_MAX_INPUT_CHARS"
-                  @click="sendMessage"
+                  <option v-for="provider in ai.providers" :key="provider.id" :value="provider.id">
+                    {{ provider.name }}
+                  </option>
+                </select>
+                <label for="ai-chat-model">模型</label>
+                <select
+                  id="ai-chat-model"
+                  class="chat-model-select"
+                  data-testid="chat-model-select"
+                  aria-label="选择模型"
+                  :value="ai.selectedModel ?? ''"
+                  :disabled="loading || !modelOptions.length"
+                  @change="ai.selectModel(($event.target as HTMLSelectElement).value)"
                 >
-                  {{ loading ? '发送中…' : '发送 ↗' }}
-                </button>
+                  <option v-if="!modelOptions.length" value="">暂无可用模型</option>
+                  <option v-for="modelOption in modelOptions" :key="modelOption" :value="modelOption">
+                    {{ modelOption }}
+                  </option>
+                </select>
+                <label for="ai-chat-reasoning">推理强度</label>
+                <select
+                  id="ai-chat-reasoning"
+                  class="chat-model-select chat-reasoning-select"
+                  data-testid="chat-reasoning-select"
+                  aria-label="选择推理强度"
+                  :value="ai.selectedReasoningEffort"
+                  :disabled="loading || !reasoningSupported"
+                  @change="
+                    ai.selectReasoningEffort(
+                      ($event.target as HTMLSelectElement).value as AiReasoningSelection,
+                    )
+                  "
+                >
+                  <option v-for="option in reasoningOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+                <span v-if="!reasoningSupported" class="chat-model-provider">当前供应商不支持可调推理</span>
+                <span v-if="selectedProvider && ai.providers.length <= 1" class="chat-model-provider">{{
+                  selectedProvider.name
+                }}</span>
+              </div>
+              <div class="input-footer">
+                <span
+                  class="char-count"
+                  :class="{ 'near-limit': userInput.length > AI_CHAT_MAX_INPUT_CHARS - 1_000 }"
+                >
+                  {{ userInput.length.toLocaleString() }} / {{ AI_CHAT_MAX_INPUT_CHARS.toLocaleString() }} 字
+                </span>
+                <div class="footer-actions">
+                  <button v-if="loading" class="stop-btn" type="button" @click="stopStreaming">
+                    停止生成
+                  </button>
+                  <button
+                    class="send-btn"
+                    type="button"
+                    :disabled="loading || !userInput.trim() || userInput.length > AI_CHAT_MAX_INPUT_CHARS"
+                    @click="sendMessage"
+                  >
+                    {{ loading ? '发送中…' : '发送 ↗' }}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </div>
       </div>
@@ -606,7 +637,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-right: 1px solid var(--line-strong, #d9d6cf);
   background: var(--surface, #faf8f5);
-  transition: width 0.25s ease, border-right-width 0.25s ease;
+  transition:
+    width 0.25s ease,
+    border-right-width 0.25s ease;
 }
 .chat-history-inner {
   display: flex;
@@ -631,7 +664,10 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s;
 }
 .new-chat-btn:hover {
   border-color: var(--accent, #a17450);
@@ -699,7 +735,10 @@ onBeforeUnmount(() => {
   line-height: 1;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
 }
 .session-item:hover .session-delete,
 .session-item.active .session-delete {
@@ -739,7 +778,10 @@ onBeforeUnmount(() => {
   font-size: 11px;
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(34, 32, 27, 0.12);
-  transition: left 0.25s ease, color 0.2s, border-color 0.2s;
+  transition:
+    left 0.25s ease,
+    color 0.2s,
+    border-color 0.2s;
 }
 .sidebar-toggle:hover {
   color: var(--accent, #a17450);
@@ -776,7 +818,10 @@ onBeforeUnmount(() => {
   margin-bottom: 16px;
 }
 .chat-welcome h2 {
-  font: 500 24px Georgia, 'Noto Serif SC', serif;
+  font:
+    500 24px Georgia,
+    'Noto Serif SC',
+    serif;
   margin: 0 0 8px;
   color: var(--ink, #20211e);
 }
@@ -811,7 +856,9 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  font: 600 14px Georgia, serif;
+  font:
+    600 14px Georgia,
+    serif;
 }
 .user .bubble-avatar {
   background: var(--ink, #292a27);
@@ -876,11 +923,23 @@ onBeforeUnmount(() => {
   background: var(--accent, #d5b18a);
   animation: dot-bounce 1.4s infinite ease-in-out both;
 }
-.dot:nth-child(1) { animation-delay: -0.32s; }
-.dot:nth-child(2) { animation-delay: -0.16s; }
+.dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+.dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
 @keyframes dot-bounce {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 .loading-text {
   font-size: 12px;
@@ -917,7 +976,9 @@ onBeforeUnmount(() => {
   outline: none;
   min-height: 72px;
   max-height: 200px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 .chat-textarea:focus {
   border-color: var(--accent, #d5b18a);
@@ -986,7 +1047,10 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s, opacity 0.2s, transform 0.2s;
+  transition:
+    background 0.2s,
+    opacity 0.2s,
+    transform 0.2s;
 }
 .send-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ink, #292a27) 84%, var(--paper, #ffffff));

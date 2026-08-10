@@ -1,0 +1,6 @@
+dist
+coverage
+public
+outputs
+worker
+package-lock.json

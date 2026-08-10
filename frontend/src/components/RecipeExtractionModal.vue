@@ -1,143 +1,165 @@
 <script setup lang="ts">
-import axios from 'axios'
-import { onMounted, ref } from 'vue'
+import axios from 'axios';
+import { onMounted, ref } from 'vue';
 import {
-  createRecipeExtraction, cancelRecipeExtraction,
-  fetchAiProviders, commitDishImport, cancelDishImport, downloadStagedRecipe,
-  type RecipeExtractionJob, type AiProvider,
-} from '../api/admin'
+  createRecipeExtraction,
+  cancelRecipeExtraction,
+  fetchRecipeExtraction,
+  fetchAiProviders,
+  commitDishImport,
+  cancelDishImport,
+  downloadStagedRecipe,
+  type RecipeExtractionJob,
+  type AiProvider,
+} from '../api/admin';
 
 const emit = defineEmits<{
-  done: []
-}>()
+  done: [];
+}>();
 
-const sourceTab = ref<'TEXT' | 'WEB_URL' | 'VIDEO_URL'>('TEXT')
-const sourceContent = ref('')
-const providers = ref<AiProvider[]>([])
-const selectedProviderId = ref<number | null>(null)
-const selectedModel = ref('')
-const loading = ref(false)
-const error = ref('')
+const sourceTab = ref<'TEXT' | 'WEB_URL' | 'VIDEO_URL'>('TEXT');
+const sourceContent = ref('');
+const providers = ref<AiProvider[]>([]);
+const selectedProviderId = ref<number | null>(null);
+const selectedModel = ref('');
+const loading = ref(false);
+const error = ref('');
 
-const runningJob = ref<RecipeExtractionJob | null>(null)
-const completedJob = ref<RecipeExtractionJob | null>(null)
+const runningJob = ref<RecipeExtractionJob | null>(null);
+const completedJob = ref<RecipeExtractionJob | null>(null);
 
-const history = ref<RecipeExtractionJob[]>([])
+const history = ref<RecipeExtractionJob[]>([]);
 
 onMounted(async () => {
   try {
-    providers.value = await fetchAiProviders()
+    providers.value = await fetchAiProviders();
   } catch {}
-})
+});
 
 async function startExtraction() {
   if (!sourceContent.value.trim()) {
-    error.value = '请输入菜谱文本或 URL'
-    return
+    error.value = '请输入菜谱文本或 URL';
+    return;
   }
   if (sourceTab.value === 'WEB_URL' || sourceTab.value === 'VIDEO_URL') {
-    const url = sourceContent.value.trim()
+    const url = sourceContent.value.trim();
     if (!url.startsWith('https://')) {
-      error.value = '仅支持 HTTPS 链接'
-      return
+      error.value = '仅支持 HTTPS 链接';
+      return;
     }
   }
-  loading.value = true
-  error.value = ''
-  completedJob.value = null
-  runningJob.value = null
+  loading.value = true;
+  error.value = '';
+  completedJob.value = null;
+  runningJob.value = null;
   try {
     const job = await createRecipeExtraction({
       sourceType: sourceTab.value,
       sourceContent: sourceContent.value.trim(),
       providerId: selectedProviderId.value,
       model: selectedModel.value || null,
-    })
-    completedJob.value = job
-    history.value.unshift(job)
-    if (history.value.length > 20) history.value.pop()
-    if (job.preview) {
-      commitSlug.value = job.preview.recipe.recipe.slug || ''
-      commitCategory.value = job.preview.categoryMatch || ''
+    });
+    runningJob.value = job;
+    const completed = await pollUntilFinished(job.id);
+    runningJob.value = null;
+    completedJob.value = completed;
+    history.value.unshift(completed);
+    if (history.value.length > 20) history.value.pop();
+    if (completed.preview) {
+      commitCategory.value = completed.preview.categoryMatch || '';
     }
-    if (job.status === 'FAILED') {
-      error.value = job.safeErrorMessage || '提取失败'
+    if (completed.status === 'FAILED') {
+      error.value = completed.safeErrorMessage || '提取失败';
     }
   } catch (cause) {
     if (axios.isAxiosError(cause) && cause.response?.data?.message) {
-      error.value = cause.response.data.message
+      error.value = cause.response.data.message;
     } else {
-      error.value = '请求失败，请检查网络连接'
+      error.value = '请求失败，请检查网络连接';
     }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
+async function pollUntilFinished(id: number) {
+  const deadline = Date.now() + 3 * 60_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    const job = await fetchRecipeExtraction(id);
+    runningJob.value = job;
+    if (!['QUEUED', 'RUNNING'].includes(job.status)) return job;
+  }
+  throw new Error('菜谱提取任务超时');
+}
+
 async function commitExtraction() {
-  if (!completedJob.value?.preview) return
-  loading.value = true
-  error.value = ''
+  if (!completedJob.value?.preview) return;
+  loading.value = true;
+  error.value = '';
   try {
     await commitDishImport(completedJob.value.preview.token, {
       category: commitCategory.value,
-      correctedSlug: commitSlug.value || undefined,
       published: publishAfterImport.value,
-    })
-    emit('done')
-    close()
+    });
+    emit('done');
+    close();
   } catch (cause) {
     if (axios.isAxiosError(cause) && cause.response?.data?.message) {
-      error.value = cause.response.data.message
+      error.value = cause.response.data.message;
     } else {
-      error.value = '创建菜品草稿失败'
+      error.value = '创建菜品草稿失败';
     }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function handleCancel() {
   if (runningJob.value) {
-    try { await cancelRecipeExtraction(runningJob.value.id) } catch {}
+    try {
+      await cancelRecipeExtraction(runningJob.value.id);
+    } catch {}
   }
   if (completedJob.value?.preview) {
-    try { await cancelDishImport(completedJob.value.preview.token) } catch {}
+    try {
+      await cancelDishImport(completedJob.value.preview.token);
+    } catch {}
   }
-  close()
+  close();
 }
 
 function close() {
-  sourceContent.value = ''
-  runningJob.value = null
-  completedJob.value = null
-  error.value = ''
-  commitSlug.value = ''
-  commitCategory.value = ''
-  publishAfterImport.value = false
+  sourceContent.value = '';
+  runningJob.value = null;
+  completedJob.value = null;
+  error.value = '';
+  commitCategory.value = '';
+  publishAfterImport.value = false;
 }
 
-const commitSlug = ref('')
-const commitCategory = ref('')
-const publishAfterImport = ref(false)
+const commitCategory = ref('');
+const publishAfterImport = ref(false);
 
 async function downloadRecipePackage() {
-  if (!completedJob.value?.preview) return
-  error.value = ''
+  if (!completedJob.value?.preview) return;
+  error.value = '';
   try {
-    await downloadStagedRecipe(completedJob.value.preview.token)
+    await downloadStagedRecipe(completedJob.value.preview.token);
   } catch (cause) {
-    error.value = axios.isAxiosError(cause) && cause.response?.data?.message
-      ? cause.response.data.message : '下载菜谱文件失败。'
+    error.value =
+      axios.isAxiosError(cause) && cause.response?.data?.message
+        ? cause.response.data.message
+        : '下载菜谱文件失败。';
   }
 }
 
 function statusBadgeClass(status: string) {
-  if (status === 'SUCCEEDED') return 'badge-success'
-  if (status === 'FAILED') return 'badge-error'
-  if (status === 'RUNNING') return 'badge-running'
-  if (status === 'CANCELLED') return 'badge-cancelled'
-  return 'badge-queued'
+  if (status === 'SUCCEEDED') return 'badge-success';
+  if (status === 'FAILED') return 'badge-error';
+  if (status === 'RUNNING') return 'badge-running';
+  if (status === 'CANCELLED') return 'badge-cancelled';
+  return 'badge-queued';
 }
 
 function statusLabel(status: string) {
@@ -147,8 +169,8 @@ function statusLabel(status: string) {
     SUCCEEDED: '已完成',
     FAILED: '失败',
     CANCELLED: '已取消',
-  }
-  return labels[status] || status
+  };
+  return labels[status] || status;
 }
 </script>
 
@@ -166,8 +188,12 @@ function statusLabel(status: string) {
       <div v-if="!completedJob" class="extraction-form">
         <div class="source-tabs">
           <button :class="{ active: sourceTab === 'TEXT' }" @click="sourceTab = 'TEXT'">文本粘贴</button>
-          <button :class="{ active: sourceTab === 'WEB_URL' }" @click="sourceTab = 'WEB_URL'">网页链接</button>
-          <button :class="{ active: sourceTab === 'VIDEO_URL' }" @click="sourceTab = 'VIDEO_URL'">视频链接</button>
+          <button :class="{ active: sourceTab === 'WEB_URL' }" @click="sourceTab = 'WEB_URL'">
+            网页链接
+          </button>
+          <button :class="{ active: sourceTab === 'VIDEO_URL' }" @click="sourceTab = 'VIDEO_URL'">
+            视频链接
+          </button>
         </div>
 
         <div v-if="sourceTab === 'TEXT'" class="editor-card">
@@ -190,10 +216,14 @@ function statusLabel(status: string) {
               v-model="sourceContent"
               type="url"
               class="extraction-input"
-              :placeholder="sourceTab === 'VIDEO_URL' ? '粘贴 B 站、YouTube、抖音或小红书视频链接' : 'https://example.com/recipe'"
+              :placeholder="
+                sourceTab === 'VIDEO_URL'
+                  ? '粘贴 B 站、YouTube、抖音或小红书视频链接'
+                  : 'https://example.com/recipe'
+              "
               maxlength="2048"
               :disabled="loading"
-            >
+            />
           </label>
           <p v-if="sourceTab === 'VIDEO_URL'" class="source-help">
             仅提取视频标题、简介、字幕和缩略图，不下载完整视频；没有字幕或详细简介时会停止生成。
@@ -214,15 +244,22 @@ function statusLabel(status: string) {
               placeholder="模型名称（可选）"
               maxlength="120"
               :disabled="loading"
-            >
+            />
           </div>
         </div>
 
         <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
 
         <footer>
-          <button class="button secondary" type="button" :disabled="loading" @click="handleCancel">取消</button>
-          <button class="button primary" type="button" :disabled="loading || !sourceContent.trim()" @click="startExtraction">
+          <button class="button secondary" type="button" :disabled="loading" @click="handleCancel">
+            取消
+          </button>
+          <button
+            class="button primary"
+            type="button"
+            :disabled="loading || !sourceContent.trim()"
+            @click="startExtraction"
+          >
             {{ loading ? '提取中…' : '开始提取' }}
           </button>
         </footer>
@@ -236,7 +273,11 @@ function statusLabel(status: string) {
 
           <div class="import-preview-layout">
             <div class="import-cover">
-              <img :src="completedJob.preview.coverPreviewUrl" :alt="completedJob.preview.recipe.cover.alt || completedJob.preview.recipe.recipe.name" decoding="async">
+              <img
+                :src="completedJob.preview.coverPreviewUrl"
+                :alt="completedJob.preview.recipe.cover.alt || completedJob.preview.recipe.recipe.name"
+                decoding="async"
+              />
             </div>
             <div class="import-details">
               <h3>{{ completedJob.preview.recipe.recipe.name }}</h3>
@@ -256,16 +297,12 @@ function statusLabel(status: string) {
             <div class="card-title"><span class="badge-dot" />导入设置</div>
             <div class="admin-form-grid">
               <label>
-                <span>Slug（路由别名）</span>
-                <input v-model="commitSlug" type="text" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="120">
-              </label>
-              <label>
                 <span>菜品分类</span>
-                <input v-model="commitCategory" type="text" placeholder="输入分类名称">
+                <input v-model="commitCategory" type="text" placeholder="输入分类名称" />
               </label>
             </div>
             <label class="publish-option">
-              <input v-model="publishAfterImport" type="checkbox">
+              <input v-model="publishAfterImport" type="checkbox" />
               <span>创建后直接发布，使其立即进入菜单模块的可选菜品</span>
             </label>
           </div>
@@ -285,12 +322,19 @@ function statusLabel(status: string) {
 
           <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
           <footer>
-            <button class="button secondary" type="button" :disabled="loading" @click="handleCancel">取消</button>
+            <button class="button secondary" type="button" :disabled="loading" @click="handleCancel">
+              取消
+            </button>
             <button class="button secondary" type="button" :disabled="loading" @click="downloadRecipePackage">
               下载 .yrecipe
             </button>
-            <button class="button primary" type="button" :disabled="loading || !commitCategory" @click="commitExtraction">
-              {{ loading ? '正在创建…' : (publishAfterImport ? '创建并发布菜品' : '创建菜品草稿') }}
+            <button
+              class="button primary"
+              type="button"
+              :disabled="loading || !commitCategory"
+              @click="commitExtraction"
+            >
+              {{ loading ? '正在创建…' : publishAfterImport ? '创建并发布菜品' : '创建菜品草稿' }}
             </button>
           </footer>
         </div>
@@ -301,14 +345,25 @@ function statusLabel(status: string) {
           </div>
           <p class="admin-error">{{ completedJob.safeErrorMessage || '未知错误' }}</p>
           <footer>
-            <button class="button secondary" type="button" @click="completedJob = null; error = ''">重新尝试</button>
+            <button
+              class="button secondary"
+              type="button"
+              @click="
+                completedJob = null;
+                error = '';
+              "
+            >
+              重新尝试
+            </button>
             <button class="button secondary" type="button" @click="handleCancel">关闭</button>
           </footer>
         </div>
 
         <div v-else class="result-other">
           <div class="result-header">
-            <span class="status-badge" :class="statusBadgeClass(completedJob.status)">{{ statusLabel(completedJob.status) }}</span>
+            <span class="status-badge" :class="statusBadgeClass(completedJob.status)">{{
+              statusLabel(completedJob.status)
+            }}</span>
           </div>
           <footer>
             <button class="button secondary" type="button" @click="handleCancel">关闭</button>
@@ -326,10 +381,14 @@ function statusLabel(status: string) {
             :class="{ active: job.id === completedJob?.id }"
           >
             <div class="history-info">
-              <span class="history-source">{{ job.sourceType === 'TEXT' ? '文本' : (job.sourceType === 'VIDEO_URL' ? '视频' : '网页') }}</span>
+              <span class="history-source">{{
+                job.sourceType === 'TEXT' ? '文本' : job.sourceType === 'VIDEO_URL' ? '视频' : '网页'
+              }}</span>
               <span class="history-time">{{ new Date(job.createdAt).toLocaleString('zh-CN') }}</span>
             </div>
-            <span class="status-badge small" :class="statusBadgeClass(job.status)">{{ statusLabel(job.status) }}</span>
+            <span class="status-badge small" :class="statusBadgeClass(job.status)">{{
+              statusLabel(job.status)
+            }}</span>
           </div>
         </div>
       </div>
@@ -371,7 +430,7 @@ function statusLabel(status: string) {
 .source-tabs button.active {
   background: var(--surface-solid, #ffffff);
   color: var(--ink, #1e293b);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 .source-tabs button:hover:not(.active) {
   color: var(--ink, #1e293b);
@@ -427,7 +486,8 @@ function statusLabel(status: string) {
   display: flex;
   gap: 10px;
 }
-.provider-select-row select, .model-input {
+.provider-select-row select,
+.model-input {
   flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--line-strong, #d1d5db);
@@ -454,11 +514,26 @@ function statusLabel(status: string) {
   padding: 2px 8px;
   font-size: 11px;
 }
-.badge-success { background: #d1fae5; color: #065f46; }
-.badge-error { background: #fee2e2; color: #991b1b; }
-.badge-running { background: #dbeafe; color: #1e40af; }
-.badge-cancelled { background: #f3f4f6; color: #6b7280; }
-.badge-queued { background: #fef3c7; color: #92400e; }
+.badge-success {
+  background: #d1fae5;
+  color: #065f46;
+}
+.badge-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.badge-running {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.badge-cancelled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.badge-queued {
+  background: #fef3c7;
+  color: #92400e;
+}
 .result-failed {
   text-align: center;
   padding: 40px 20px;

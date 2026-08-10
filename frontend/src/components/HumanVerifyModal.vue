@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import axios from 'axios'
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { fetchLoginChallenge, type LoginChallenge, type LoginVerification } from '../api/admin'
-import { solvePow } from '../utils/pow'
+import axios from 'axios';
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { fetchLoginChallenge, type LoginChallenge, type LoginVerification } from '../api/admin';
+import { solvePow } from '../utils/pow';
 
 /**
  * L-15：人机验证点击式弹窗——把 L-7 的三层验证（PoW / 图形码升级 / 冷却）显性化为独立交互。
@@ -10,170 +10,173 @@ import { solvePow } from '../utils/pow'
  * 关闭弹窗 = 中止本次登录（由宿主处理 cancel）。
  */
 const props = defineProps<{
-  open: boolean
-  username?: string
-}>()
+  open: boolean;
+  username?: string;
+}>();
 
 const emit = defineEmits<{
-  (e: 'verified', verification: LoginVerification): void
-  (e: 'cancel'): void
-}>()
+  (e: 'verified', verification: LoginVerification): void;
+  (e: 'cancel'): void;
+}>();
 
-type Stage = 'idle' | 'solving' | 'captcha' | 'done' | 'cooldown' | 'error'
+type Stage = 'idle' | 'solving' | 'captcha' | 'done' | 'cooldown' | 'error';
 
-const stage = ref<Stage>('idle')
-const progress = ref(0)
-const captchaImage = ref('')
-const captchaAnswer = ref('')
-const noticeText = ref('')
-const cooldownSeconds = ref(0)
+const stage = ref<Stage>('idle');
+const progress = ref(0);
+const captchaImage = ref('');
+const captchaAnswer = ref('');
+const noticeText = ref('');
+const cooldownSeconds = ref(0);
 
-const modalEl = ref<HTMLElement | null>(null)
-const startBtn = ref<HTMLButtonElement | null>(null)
+const modalEl = ref<HTMLElement | null>(null);
+const startBtn = ref<HTMLButtonElement | null>(null);
 
-let challenge: LoginChallenge | null = null
-let solvedNonce = ''
-let progressTimer: number | undefined
-let cooldownTimer: number | undefined
-let doneTimer: number | undefined
+let challenge: LoginChallenge | null = null;
+let solvedNonce = '';
+let progressTimer: number | undefined;
+let cooldownTimer: number | undefined;
+let doneTimer: number | undefined;
 
 function clearTimers() {
-  window.clearInterval(progressTimer)
-  window.clearInterval(cooldownTimer)
-  window.clearTimeout(doneTimer)
+  window.clearInterval(progressTimer);
+  window.clearInterval(cooldownTimer);
+  window.clearTimeout(doneTimer);
 }
 
 function resetToIdle() {
-  clearTimers()
-  stage.value = 'idle'
-  progress.value = 0
-  captchaImage.value = ''
-  captchaAnswer.value = ''
-  noticeText.value = ''
-  cooldownSeconds.value = 0
-  challenge = null
-  solvedNonce = ''
+  clearTimers();
+  stage.value = 'idle';
+  progress.value = 0;
+  captchaImage.value = '';
+  captchaAnswer.value = '';
+  noticeText.value = '';
+  cooldownSeconds.value = 0;
+  challenge = null;
+  solvedNonce = '';
 }
 
-watch(() => props.open, (open) => {
-  if (open) {
-    resetToIdle()
-    void nextTick(() => startBtn.value?.focus())
-  } else {
-    clearTimers()
-  }
-})
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      resetToIdle();
+      void nextTick(() => startBtn.value?.focus());
+    } else {
+      clearTimers();
+    }
+  },
+);
 
 /** PoW 无法上报真实进度——以趋近 90% 的缓动进度呈现计算在途，求解结束补满。 */
 function startProgress() {
-  progress.value = 6
+  progress.value = 6;
   progressTimer = window.setInterval(() => {
-    progress.value = Math.min(90, progress.value + Math.max(1, (90 - progress.value) * 0.08))
-  }, 120)
+    progress.value = Math.min(90, progress.value + Math.max(1, (90 - progress.value) * 0.08));
+  }, 120);
 }
 
 async function start() {
-  noticeText.value = ''
-  stage.value = 'solving'
-  startProgress()
+  noticeText.value = '';
+  stage.value = 'solving';
+  startProgress();
   try {
-    challenge = await fetchLoginChallenge(props.username?.trim() || undefined)
-    solvedNonce = await solvePow(challenge.salt, challenge.difficulty)
-    window.clearInterval(progressTimer)
-    progress.value = 100
+    challenge = await fetchLoginChallenge(props.username?.trim() || undefined);
+    solvedNonce = await solvePow(challenge.salt, challenge.difficulty);
+    window.clearInterval(progressTimer);
+    progress.value = 100;
     if (challenge.type === 'IMAGE') {
-      captchaImage.value = challenge.captchaImage ?? ''
-      stage.value = 'captcha'
-      void nextTick(() => modalEl.value?.querySelector<HTMLInputElement>('#verify-captcha-answer')?.focus())
+      captchaImage.value = challenge.captchaImage ?? '';
+      stage.value = 'captcha';
+      void nextTick(() => modalEl.value?.querySelector<HTMLInputElement>('#verify-captcha-answer')?.focus());
     } else {
-      finish()
+      finish();
     }
   } catch (cause) {
-    handleFailure(cause)
+    handleFailure(cause);
   }
 }
 
 function finish(answer?: string) {
-  stage.value = 'done'
+  stage.value = 'done';
   const payload: LoginVerification = {
     challengeId: challenge!.challengeId,
     nonce: solvedNonce,
     ...(answer ? { captchaAnswer: answer } : {}),
-  }
+  };
   // 打勾动画停留后回传，宿主随即发起登录
-  doneTimer = window.setTimeout(() => emit('verified', payload), 500)
+  doneTimer = window.setTimeout(() => emit('verified', payload), 500);
 }
 
 function submitCaptcha() {
   if (!captchaAnswer.value.trim()) {
-    noticeText.value = '请输入图中字符后再继续。'
-    return
+    noticeText.value = '请输入图中字符后再继续。';
+    return;
   }
-  finish(captchaAnswer.value.trim())
+  finish(captchaAnswer.value.trim());
 }
 
 /** 图形码换一张：challenge 一次性使用，需重新取号并重解 PoW。 */
 function refreshCaptcha() {
-  captchaAnswer.value = ''
-  void start()
+  captchaAnswer.value = '';
+  void start();
 }
 
 function handleFailure(cause: unknown) {
-  window.clearInterval(progressTimer)
-  progress.value = 0
+  window.clearInterval(progressTimer);
+  progress.value = 0;
   if (axios.isAxiosError(cause) && cause.response?.status === 429) {
-    const retryAfterRaw = cause.response.headers?.['retry-after']
-    const retryAfter = Number(Array.isArray(retryAfterRaw) ? retryAfterRaw[0] : retryAfterRaw)
-    const message = (cause.response.data as { message?: string } | undefined)?.message
-    noticeText.value = message || '尝试过于频繁，已进入冷却。'
-    cooldownSeconds.value = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.round(retryAfter) : 0
-    stage.value = 'cooldown'
+    const retryAfterRaw = cause.response.headers?.['retry-after'];
+    const retryAfter = Number(Array.isArray(retryAfterRaw) ? retryAfterRaw[0] : retryAfterRaw);
+    const message = (cause.response.data as { message?: string } | undefined)?.message;
+    noticeText.value = message || '尝试过于频繁，已进入冷却。';
+    cooldownSeconds.value = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.round(retryAfter) : 0;
+    stage.value = 'cooldown';
     if (cooldownSeconds.value > 0) {
       cooldownTimer = window.setInterval(() => {
-        cooldownSeconds.value -= 1
+        cooldownSeconds.value -= 1;
         if (cooldownSeconds.value <= 0) {
-          window.clearInterval(cooldownTimer)
-          stage.value = 'idle'
-          noticeText.value = ''
+          window.clearInterval(cooldownTimer);
+          stage.value = 'idle';
+          noticeText.value = '';
         }
-      }, 1000)
+      }, 1000);
     }
   } else {
-    noticeText.value = '安全校验暂时不可用，请检查网络后重试。'
-    stage.value = 'error'
+    noticeText.value = '安全校验暂时不可用，请检查网络后重试。';
+    stage.value = 'error';
   }
 }
 
 function cancel() {
-  clearTimers()
-  emit('cancel')
+  clearTimers();
+  emit('cancel');
 }
 
 /** 焦点陷阱：Tab 循环限制在弹窗内；Esc 关闭（= 中止登录）。 */
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    event.stopPropagation()
-    cancel()
-    return
+    event.stopPropagation();
+    cancel();
+    return;
   }
-  if (event.key !== 'Tab' || !modalEl.value) return
-  const focusables = Array.from(modalEl.value.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), input:not([disabled])'
-  ))
-  if (focusables.length === 0) return
-  const first = focusables[0]
-  const last = focusables[focusables.length - 1]
-  const active = document.activeElement
+  if (event.key !== 'Tab' || !modalEl.value) return;
+  const focusables = Array.from(
+    modalEl.value.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'),
+  );
+  if (focusables.length === 0) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
   if (event.shiftKey && active === first) {
-    event.preventDefault()
-    last.focus()
+    event.preventDefault();
+    last.focus();
   } else if (!event.shiftKey && active === last) {
-    event.preventDefault()
-    first.focus()
+    event.preventDefault();
+    first.focus();
   }
 }
 
-onBeforeUnmount(clearTimers)
+onBeforeUnmount(clearTimers);
 </script>
 
 <template>
@@ -195,7 +198,17 @@ onBeforeUnmount(clearTimers)
 
         <!-- aria-live：状态机各阶段的可听化播报 -->
         <p class="sr-only" aria-live="polite">
-          {{ stage === 'solving' ? '安全校验计算中' : stage === 'captcha' ? '需要输入图形验证码' : stage === 'done' ? '验证通过' : stage === 'cooldown' ? '已进入冷却' : '' }}
+          {{
+            stage === 'solving'
+              ? '安全校验计算中'
+              : stage === 'captcha'
+                ? '需要输入图形验证码'
+                : stage === 'done'
+                  ? '验证通过'
+                  : stage === 'cooldown'
+                    ? '已进入冷却'
+                    : ''
+          }}
         </p>
 
         <div v-if="stage === 'idle' || stage === 'error'" class="verify-body">
@@ -207,7 +220,13 @@ onBeforeUnmount(clearTimers)
         </div>
 
         <div v-else-if="stage === 'solving'" class="verify-body">
-          <div class="verify-progress" role="progressbar" :aria-valuenow="Math.round(progress)" aria-valuemin="0" aria-valuemax="100">
+          <div
+            class="verify-progress"
+            role="progressbar"
+            :aria-valuenow="Math.round(progress)"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
             <i :style="{ width: `${progress}%` }" />
           </div>
           <p class="verify-hint">正在完成安全校验，请稍候…</p>
@@ -215,8 +234,13 @@ onBeforeUnmount(clearTimers)
 
         <div v-else-if="stage === 'captcha'" class="verify-body">
           <p class="verify-hint">再确认一步：输入下图字符（不区分大小写）。</p>
-          <button type="button" class="verify-captcha-image" title="看不清？点击换一张" @click="refreshCaptcha">
-            <img v-if="captchaImage" :src="captchaImage" alt="图形验证码，点击可更换">
+          <button
+            type="button"
+            class="verify-captcha-image"
+            title="看不清？点击换一张"
+            @click="refreshCaptcha"
+          >
+            <img v-if="captchaImage" :src="captchaImage" alt="图形验证码，点击可更换" />
           </button>
           <div class="verify-captcha-row">
             <input
@@ -226,7 +250,7 @@ onBeforeUnmount(clearTimers)
               inputmode="text"
               placeholder="输入图中字符"
               @keydown.enter.prevent="submitCaptcha"
-            >
+            />
             <button type="button" class="verify-secondary" @click="refreshCaptcha">换一张</button>
             <button type="button" class="verify-primary" @click="submitCaptcha">确认</button>
           </div>
@@ -270,15 +294,24 @@ onBeforeUnmount(clearTimers)
   animation: verify-pop 0.3s cubic-bezier(0.22, 1.2, 0.36, 1);
 }
 @keyframes verify-pop {
-  from { opacity: 0; transform: translateY(14px) scale(0.96); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .verify-head {
   position: relative;
   margin-bottom: 18px;
 }
 .verify-kicker {
-  font: 600 10px ui-monospace, Consolas, monospace;
+  font:
+    600 10px ui-monospace,
+    Consolas,
+    monospace;
   letter-spacing: 0.16em;
   color: var(--accent);
 }
@@ -300,9 +333,15 @@ onBeforeUnmount(clearTimers)
   font-size: 20px;
   cursor: pointer;
 }
-.verify-close:hover { color: var(--accent); }
+.verify-close:hover {
+  color: var(--accent);
+}
 
-.verify-body { display: flex; flex-direction: column; gap: 14px; }
+.verify-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
 .verify-start {
   display: flex;
@@ -315,7 +354,9 @@ onBeforeUnmount(clearTimers)
   color: var(--ink);
   font-size: 15px;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 .verify-start:hover,
 .verify-start:focus-visible {
@@ -344,9 +385,21 @@ onBeforeUnmount(clearTimers)
   background: var(--accent);
   transition: width 0.15s linear;
 }
-.verify-hint { margin: 0; font-size: 13px; color: var(--muted); }
-.verify-notice { margin: 0; font-size: 13px; color: #b4452c; }
-.verify-cooldown { margin: 0; font-size: 14px; color: var(--ink); }
+.verify-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.verify-notice {
+  margin: 0;
+  font-size: 13px;
+  color: #b4452c;
+}
+.verify-cooldown {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
 
 .verify-captcha-image {
   border: 1px solid var(--line);
@@ -356,8 +409,14 @@ onBeforeUnmount(clearTimers)
   cursor: pointer;
   overflow: hidden;
 }
-.verify-captcha-image img { display: block; width: 100%; }
-.verify-captcha-row { display: flex; gap: 8px; }
+.verify-captcha-image img {
+  display: block;
+  width: 100%;
+}
+.verify-captcha-row {
+  display: flex;
+  gap: 8px;
+}
 .verify-captcha-row input {
   flex: 1;
   min-width: 0;
@@ -385,7 +444,9 @@ onBeforeUnmount(clearTimers)
   color: var(--ink);
 }
 
-.verify-done { align-items: center; }
+.verify-done {
+  align-items: center;
+}
 .verify-check {
   display: grid;
   place-items: center;
@@ -398,8 +459,14 @@ onBeforeUnmount(clearTimers)
   animation: check-pop 0.4s cubic-bezier(0.22, 1.4, 0.36, 1);
 }
 @keyframes check-pop {
-  from { transform: scale(0.4); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .sr-only {
@@ -415,7 +482,12 @@ onBeforeUnmount(clearTimers)
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .verify-modal, .verify-check { animation: none; }
-  .verify-progress i { transition: none; }
+  .verify-modal,
+  .verify-check {
+    animation: none;
+  }
+  .verify-progress i {
+    transition: none;
+  }
 }
 </style>

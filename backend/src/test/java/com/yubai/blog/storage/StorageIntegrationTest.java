@@ -7,13 +7,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yubai.blog.TestDatabase;
+import com.yubai.blog.common.RateLimiter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
-
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,14 +30,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yubai.blog.TestDatabase;
-import com.yubai.blog.common.RateLimiter;
-
-/**
- * 6B：存储集成测试——验证上传落盘、下载走存储、删除清文件、bytea 惰性迁移。
- */
+/** 6B：存储集成测试——验证上传落盘、下载走存储、删除清文件、bytea 惰性迁移。 */
 @SpringBootTest
 @AutoConfigureMockMvc
 class StorageIntegrationTest {
@@ -44,7 +39,9 @@ class StorageIntegrationTest {
 
     private static byte[] buildTinyPng(int width, int height) {
         try {
-            var image = new java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            var image =
+                    new java.awt.image.BufferedImage(
+                            width, height, java.awt.image.BufferedImage.TYPE_INT_RGB);
             var out = new java.io.ByteArrayOutputStream();
             javax.imageio.ImageIO.write(image, "png", out);
             return out.toByteArray();
@@ -53,8 +50,7 @@ class StorageIntegrationTest {
         }
     }
 
-    @TempDir
-    static Path tempStorageDir;
+    @TempDir static Path tempStorageDir;
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -94,31 +90,47 @@ class StorageIntegrationTest {
             }
         }
         token = login();
-        var body = """
+        var body =
+                """
             {"title":"Storage test","markdownContent":"# Storage","folder":"Tests","status":"DRAFT","tags":[],"version":0}
             """;
-        var result = mockMvc.perform(post("/api/v1/admin/notes")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isCreated()).andReturn();
-        noteId = objectMapper.readTree(result.getResponse().getContentAsString())
-            .path("data").path("id").asLong();
+        var result =
+                mockMvc.perform(
+                                post("/api/v1/admin/notes")
+                                        .header("Authorization", "Bearer " + token)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(body))
+                        .andExpect(status().isCreated())
+                        .andReturn();
+        noteId =
+                objectMapper
+                        .readTree(result.getResponse().getContentAsString())
+                        .path("data")
+                        .path("id")
+                        .asLong();
     }
 
     @Test
     void uploadPersistsFileToDisk() throws Exception {
         var image = new MockMultipartFile("file", "test.png", "image/png", PNG_SAMPLE);
-        var response = mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
-                .file(image).header("Authorization", "Bearer " + token))
-            .andExpect(status().isCreated()).andReturn();
+        var response =
+                mockMvc.perform(
+                                multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                                        .file(image)
+                                        .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isCreated())
+                        .andReturn();
         var data = objectMapper.readTree(response.getResponse().getContentAsString()).path("data");
 
         var attachmentId = data.path("id").asLong();
         var publicId = data.path("publicId").asText();
 
         // File should exist on disk
-        var storageKey = jdbc.queryForObject(
-            "SELECT storage_key FROM note_attachments WHERE id = ?", String.class, attachmentId);
+        var storageKey =
+                jdbc.queryForObject(
+                        "SELECT storage_key FROM note_attachments WHERE id = ?",
+                        String.class,
+                        attachmentId);
         assertThat(storageKey).isNotNull().contains(publicId);
 
         var fileOnDisk = localFileStorage.getRootDir().resolve(storageKey);
@@ -126,24 +138,38 @@ class StorageIntegrationTest {
         assertThat(Files.readAllBytes(fileOnDisk)).isEqualTo(PNG_SAMPLE);
 
         // Download through API should return the same bytes
-        mockMvc.perform(get("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId + "/content")
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk())
-            .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(PNG_SAMPLE));
+        mockMvc.perform(
+                        get("/api/v1/admin/notes/"
+                                        + noteId
+                                        + "/attachments/"
+                                        + attachmentId
+                                        + "/content")
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(
+                        result ->
+                                assertThat(result.getResponse().getContentAsByteArray())
+                                        .isEqualTo(PNG_SAMPLE));
 
         // Cleanup
-        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isNoContent());
-        assertThat(fileOnDisk).doesNotExist();
+        mockMvc.perform(
+                        delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(fileOnDisk).exists();
+        purgeAttachment(attachmentId, fileOnDisk);
     }
 
     @Test
     void missingNoteDoesNotWriteFile() throws Exception {
         var image = new MockMultipartFile("file", "broken.png", "image/png", PNG_SAMPLE);
-        var response = mockMvc.perform(multipart("/api/v1/admin/notes/" + 99999 + "/attachments")
-                .file(image).header("Authorization", "Bearer " + token))
-            .andExpect(status().isNotFound()).andReturn();
+        var response =
+                mockMvc.perform(
+                                multipart("/api/v1/admin/notes/" + 99999 + "/attachments")
+                                        .file(image)
+                                        .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isNotFound())
+                        .andReturn();
 
         // After the failed upload, no orphan files should remain in storage
         try (var files = Files.list(localFileStorage.getRootDir())) {
@@ -157,27 +183,51 @@ class StorageIntegrationTest {
         var fileName = "legacy.png";
         var mediaType = "image/png";
 
-        jdbc.update("""
+        jdbc.update(
+                """
             INSERT INTO note_attachments (public_id, note_id, file_name, media_type, byte_size, content, created_at)
             VALUES (?, ?, ?, ?, ?, ?, now())
-            """, publicId, noteId, fileName, mediaType, PNG_SAMPLE.length, PNG_SAMPLE);
+            """,
+                publicId,
+                noteId,
+                fileName,
+                mediaType,
+                PNG_SAMPLE.length,
+                PNG_SAMPLE);
 
         // Initially no storage_key
-        var storageKeyBefore = jdbc.queryForObject(
-            "SELECT storage_key FROM note_attachments WHERE public_id = ?", String.class, publicId);
+        var storageKeyBefore =
+                jdbc.queryForObject(
+                        "SELECT storage_key FROM note_attachments WHERE public_id = ?",
+                        String.class,
+                        publicId);
         assertThat(storageKeyBefore).isNull();
 
         // Get attachment id then access via admin endpoint triggers lazy migration
-        var attachmentId = jdbc.queryForObject(
-            "SELECT id FROM note_attachments WHERE public_id = ?", Long.class, publicId);
-        mockMvc.perform(get("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId + "/content")
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isOk())
-            .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(PNG_SAMPLE));
+        var attachmentId =
+                jdbc.queryForObject(
+                        "SELECT id FROM note_attachments WHERE public_id = ?",
+                        Long.class,
+                        publicId);
+        mockMvc.perform(
+                        get("/api/v1/admin/notes/"
+                                        + noteId
+                                        + "/attachments/"
+                                        + attachmentId
+                                        + "/content")
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(
+                        result ->
+                                assertThat(result.getResponse().getContentAsByteArray())
+                                        .isEqualTo(PNG_SAMPLE));
 
         // After access, storage_key should be set
-        var storageKeyAfter = jdbc.queryForObject(
-            "SELECT storage_key FROM note_attachments WHERE public_id = ?", String.class, publicId);
+        var storageKeyAfter =
+                jdbc.queryForObject(
+                        "SELECT storage_key FROM note_attachments WHERE public_id = ?",
+                        String.class,
+                        publicId);
         assertThat(storageKeyAfter).isNotNull().contains(publicId.toString());
 
         // File should exist on disk
@@ -186,71 +236,119 @@ class StorageIntegrationTest {
         assertThat(Files.readAllBytes(fileOnDisk)).isEqualTo(PNG_SAMPLE);
 
         // bytea content should still be present (compatibility window)
-        var contentStillThere = jdbc.queryForObject(
-            "SELECT content IS NOT NULL FROM note_attachments WHERE public_id = ?", Boolean.class, publicId);
+        var contentStillThere =
+                jdbc.queryForObject(
+                        "SELECT content IS NOT NULL FROM note_attachments WHERE public_id = ?",
+                        Boolean.class,
+                        publicId);
         assertThat(contentStillThere).isTrue();
 
         // Cleanup
-        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isNoContent());
-        assertThat(fileOnDisk).doesNotExist();
+        mockMvc.perform(
+                        delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        assertThat(fileOnDisk).exists();
+        purgeAttachment(attachmentId, fileOnDisk);
     }
 
     @Test
     void deleteRemovesFileFromDisk() throws Exception {
         var image = new MockMultipartFile("file", "del.png", "image/png", PNG_SAMPLE);
-        var response = mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
-                .file(image).header("Authorization", "Bearer " + token))
-            .andExpect(status().isCreated()).andReturn();
+        var response =
+                mockMvc.perform(
+                                multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                                        .file(image)
+                                        .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isCreated())
+                        .andReturn();
         var data = objectMapper.readTree(response.getResponse().getContentAsString()).path("data");
         var attachmentId = data.path("id").asLong();
 
-        var storageKey = jdbc.queryForObject(
-            "SELECT storage_key FROM note_attachments WHERE id = ?", String.class, attachmentId);
+        var storageKey =
+                jdbc.queryForObject(
+                        "SELECT storage_key FROM note_attachments WHERE id = ?",
+                        String.class,
+                        attachmentId);
         var fileOnDisk = localFileStorage.getRootDir().resolve(storageKey);
         assertThat(fileOnDisk).exists();
 
-        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isNoContent());
+        mockMvc.perform(
+                        delete("/api/v1/admin/notes/" + noteId + "/attachments/" + attachmentId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
 
-        assertThat(fileOnDisk).doesNotExist();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM note_attachments WHERE id = ?", Integer.class, attachmentId))
-            .isZero();
+        assertThat(fileOnDisk).exists();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT COUNT(*) FROM note_attachments WHERE id = ?",
+                                Integer.class,
+                                attachmentId))
+                .isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT deleted_at IS NOT NULL FROM note_attachments WHERE id = ?",
+                                Boolean.class,
+                                attachmentId))
+                .isTrue();
+        purgeAttachment(attachmentId, fileOnDisk);
+    }
+
+    private void purgeAttachment(long attachmentId, Path fileOnDisk) throws Exception {
+        jdbc.update("DELETE FROM note_attachments WHERE id = ?", attachmentId);
+        Files.deleteIfExists(fileOnDisk);
+        var parent = fileOnDisk.getParent();
+        if (parent != null) Files.deleteIfExists(parent);
     }
 
     @Test
     void deleteNoteRemovesAllAttachmentFiles() throws Exception {
         var image1 = new MockMultipartFile("file", "a.png", "image/png", PNG_SAMPLE);
-        var r1 = mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
-                .file(image1).header("Authorization", "Bearer " + token))
-            .andExpect(status().isCreated()).andReturn();
+        var r1 =
+                mockMvc.perform(
+                                multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                                        .file(image1)
+                                        .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isCreated())
+                        .andReturn();
         var att1 = objectMapper.readTree(r1.getResponse().getContentAsString()).path("data");
         var id1 = att1.path("id").asLong();
 
         var image2 = new MockMultipartFile("file", "b.png", "image/png", PNG_SAMPLE);
-        var r2 = mockMvc.perform(multipart("/api/v1/admin/notes/" + noteId + "/attachments")
-                .file(image2).header("Authorization", "Bearer " + token))
-            .andExpect(status().isCreated()).andReturn();
+        var r2 =
+                mockMvc.perform(
+                                multipart("/api/v1/admin/notes/" + noteId + "/attachments")
+                                        .file(image2)
+                                        .header("Authorization", "Bearer " + token))
+                        .andExpect(status().isCreated())
+                        .andReturn();
         var att2 = objectMapper.readTree(r2.getResponse().getContentAsString()).path("data");
         var id2 = att2.path("id").asLong();
 
-        var key1 = jdbc.queryForObject("SELECT storage_key FROM note_attachments WHERE id = ?", String.class, id1);
-        var key2 = jdbc.queryForObject("SELECT storage_key FROM note_attachments WHERE id = ?", String.class, id2);
+        var key1 =
+                jdbc.queryForObject(
+                        "SELECT storage_key FROM note_attachments WHERE id = ?", String.class, id1);
+        var key2 =
+                jdbc.queryForObject(
+                        "SELECT storage_key FROM note_attachments WHERE id = ?", String.class, id2);
         var file1 = localFileStorage.getRootDir().resolve(key1);
         var file2 = localFileStorage.getRootDir().resolve(key2);
         assertThat(file1).exists();
         assertThat(file2).exists();
 
-        mockMvc.perform(delete("/api/v1/admin/notes/" + noteId)
-                .header("Authorization", "Bearer " + token))
-            .andExpect(status().isNoContent());
+        mockMvc.perform(
+                        delete("/api/v1/admin/notes/" + noteId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
 
         assertThat(file1).doesNotExist();
         assertThat(file2).doesNotExist();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM note_attachments WHERE note_id = ?", Integer.class, noteId))
-            .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT COUNT(*) FROM note_attachments WHERE note_id = ?",
+                                Integer.class,
+                                noteId))
+                .isZero();
     }
 
     private String login() throws Exception {
@@ -258,24 +356,43 @@ class StorageIntegrationTest {
     }
 
     private String loginAs(String username, String password) throws Exception {
-        var result = mockMvc.perform(post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(loginBody(username, password)))
-            .andExpect(status().isOk()).andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString())
-            .path("data").path("token").asText();
+        var result =
+                mockMvc.perform(
+                                post("/api/v1/auth/login")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(loginBody(username, password)))
+                        .andExpect(status().isOk())
+                        .andReturn();
+        return objectMapper
+                .readTree(result.getResponse().getContentAsString())
+                .path("data")
+                .path("token")
+                .asText();
     }
 
     private String loginBody(String username, String password) throws Exception {
-        var challenge = objectMapper.readTree(mockMvc.perform(get("/api/v1/auth/challenge")
-                .param("username", username))
-            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
-            .path("data");
-        var body = objectMapper.createObjectNode()
-            .put("username", username)
-            .put("password", password)
-            .put("challengeId", challenge.path("challengeId").asText())
-            .put("nonce", solvePow(challenge.path("salt").asText(), challenge.path("difficulty").asInt()));
+        var challenge =
+                objectMapper
+                        .readTree(
+                                mockMvc.perform(
+                                                get("/api/v1/auth/challenge")
+                                                        .param("username", username))
+                                        .andExpect(status().isOk())
+                                        .andReturn()
+                                        .getResponse()
+                                        .getContentAsString())
+                        .path("data");
+        var body =
+                objectMapper
+                        .createObjectNode()
+                        .put("username", username)
+                        .put("password", password)
+                        .put("challengeId", challenge.path("challengeId").asText())
+                        .put(
+                                "nonce",
+                                solvePow(
+                                        challenge.path("salt").asText(),
+                                        challenge.path("difficulty").asInt()));
         if ("IMAGE".equals(challenge.path("type").asText())) {
             body.put("captchaAnswer", "AB3CD");
         }
@@ -288,8 +405,12 @@ class StorageIntegrationTest {
             var prefix = "0".repeat(difficulty);
             for (long nonce = 0; ; nonce++) {
                 var candidate = Long.toString(nonce);
-                var hash = java.util.HexFormat.of().formatHex(
-                    digest.digest((salt + candidate).getBytes(StandardCharsets.UTF_8)));
+                var hash =
+                        java.util.HexFormat.of()
+                                .formatHex(
+                                        digest.digest(
+                                                (salt + candidate)
+                                                        .getBytes(StandardCharsets.UTF_8)));
                 if (hash.startsWith(prefix)) {
                     return candidate;
                 }

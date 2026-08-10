@@ -1,17 +1,19 @@
 <script setup lang="ts">
 defineProps<{
-  isFullscreen: boolean
-  localMode?: boolean
-  subgraphActive?: boolean
-}>()
+  isFullscreen: boolean;
+  localMode?: boolean;
+  subgraphActive?: boolean;
+}>();
 
 const emit = defineEmits<{
-  (e: 'zoomIn'): void
-  (e: 'zoomOut'): void
-  (e: 'reset'): void
-  (e: 'toggleFullscreen'): void
-  (e: 'returnOverview'): void
-}>()
+  (e: 'zoomIn'): void;
+  (e: 'zoomOut'): void;
+  (e: 'reset'): void;
+  (e: 'toggleFullscreen'): void;
+  (e: 'returnOverview'): void;
+  (e: 'exportJson'): void;
+  (e: 'exportImage'): void;
+}>();
 </script>
 
 <template>
@@ -68,10 +70,24 @@ const emit = defineEmits<{
       @click="emit('toggleFullscreen')"
     >
       <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
-        <path v-if="!isFullscreen" d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-        <path v-else d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+        <path
+          v-if="!isFullscreen"
+          d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"
+        />
+        <path
+          v-else
+          d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
+        />
       </svg>
       <span>{{ isFullscreen ? '退出' : '全屏' }}</span>
+    </button>
+
+    <button type="button" class="tool-btn" title="导出当前图谱 JSON" @click="emit('exportJson')">
+      <span>JSON</span>
+    </button>
+
+    <button type="button" class="tool-btn" title="导出当前图谱图片" @click="emit('exportImage')">
+      <span>图片</span>
     </button>
 
     <button
@@ -113,7 +129,9 @@ const emit = defineEmits<{
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
   white-space: nowrap;
 }
 

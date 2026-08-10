@@ -86,6 +86,7 @@ app:
     password: ${APP_PARTNER_PASSWORD:}
     display-name: ${APP_PARTNER_DISPLAY_NAME:}
   attachment:
+    max-total-bytes: ${APP_ATTACHMENT_MAX_TOTAL_BYTES:1073741824}
     storage:
       dir: ${APP_ATTACHMENT_STORAGE_DIR:./data/attachments}
   recipe:
@@ -131,6 +132,34 @@ app:
     opencode-password: ${APP_AI_OPENCODE_PASSWORD:}
     opencode-agent: ${APP_AI_OPENCODE_AGENT:blog-ai}
     opencode-provider-id: ${APP_AI_OPENCODE_PROVIDER_ID:opencode-go}
+    platform:
+      # M1 Internal Alpha flags. Production defaults remain closed until release gates pass.
+      tasks-enabled: ${APP_AI_PLATFORM_TASKS_ENABLED:false}
+      multimodal-enabled: ${APP_AI_PLATFORM_MULTIMODAL_ENABLED:false}
+      memory-enabled: ${APP_AI_PLATFORM_MEMORY_ENABLED:false}
+      artifacts-enabled: ${APP_AI_PLATFORM_ARTIFACTS_ENABLED:false}
+      max-file-bytes: ${APP_AI_PLATFORM_MAX_FILE_BYTES:15000000}
+      max-owner-file-bytes: ${APP_AI_PLATFORM_MAX_OWNER_FILE_BYTES:100000000}
+      max-owner-files: ${APP_AI_PLATFORM_MAX_OWNER_FILES:100}
+      max-extracted-chars: ${APP_AI_PLATFORM_MAX_EXTRACTED_CHARS:120000}
+      max-pdf-pages: ${APP_AI_PLATFORM_MAX_PDF_PAGES:100}
+      max-docx-entries: ${APP_AI_PLATFORM_MAX_DOCX_ENTRIES:2000}
+      max-docx-uncompressed-bytes: ${APP_AI_PLATFORM_MAX_DOCX_UNCOMPRESSED_BYTES:40000000}
+      max-csv-rows: ${APP_AI_PLATFORM_MAX_CSV_ROWS:10000}
+      max-csv-columns: ${APP_AI_PLATFORM_MAX_CSV_COLUMNS:200}
+      max-concurrent-tasks: ${APP_AI_PLATFORM_MAX_CONCURRENT_TASKS:4}
+      max-concurrent-tasks-per-user: ${APP_AI_PLATFORM_MAX_CONCURRENT_TASKS_PER_USER:2}
+      max-concurrent-tasks-per-provider: ${APP_AI_PLATFORM_MAX_CONCURRENT_TASKS_PER_PROVIDER:2}
+      max-queued-tasks: ${APP_AI_PLATFORM_MAX_QUEUED_TASKS:16}
+      queue-wait-seconds: ${APP_AI_PLATFORM_QUEUE_WAIT_SECONDS:20}
+      file-retention-days: ${APP_AI_PLATFORM_FILE_RETENTION_DAYS:30}
+      artifact-retention-days: ${APP_AI_PLATFORM_ARTIFACT_RETENTION_DAYS:30}
+      # Independent context windows; token limits use a conservative character estimate.
+      max-memory-context-tokens: ${APP_AI_PLATFORM_MAX_MEMORY_CONTEXT_TOKENS:1500}
+      max-session-summary-tokens: ${APP_AI_PLATFORM_MAX_SESSION_SUMMARY_TOKENS:1000}
+      max-recent-message-tokens: ${APP_AI_PLATFORM_MAX_RECENT_MESSAGE_TOKENS:4000}
+      max-recent-messages: ${APP_AI_PLATFORM_MAX_RECENT_MESSAGES:16}
+      max-summary-source-messages: ${APP_AI_PLATFORM_MAX_SUMMARY_SOURCE_MESSAGES:120}
     image:
       enabled: ${AI_IMAGE_ENABLED:false}
       max-prompt-chars: ${AI_IMAGE_MAX_PROMPT_CHARS:32000}
