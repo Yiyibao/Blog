@@ -281,6 +281,8 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <AmbientSound v-if="isAdminRoute" class="admin-ambient-sound" />
+
     <nav v-if="menuOpen" class="mobile-nav" aria-label="移动端导航">
       <RouterLink to="/">首页 <span>01</span></RouterLink>
       <RouterLink to="/articles">文章 <span>02</span></RouterLink>
@@ -402,11 +404,26 @@ onBeforeUnmount(() => {
 
 /* FD-29：管理角色在场时宠物固定右下角，"回到顶部"上移避让，不重叠 */
 .site-shell.has-pet-assistant .sakura-back-top {
-  bottom: calc(clamp(18px, 2.4vw, 32px) + 134px);
+  bottom: calc(clamp(18px, 2.4vw, 32px) + 94px);
 }
+
+.admin-ambient-sound {
+  position: fixed;
+  z-index: 510;
+  top: 26px;
+  right: clamp(280px, 24vw, 360px);
+}
+
+@media (max-width: 820px) {
+  .admin-ambient-sound {
+    top: 84px;
+    right: 16px;
+  }
+}
+
 @media (max-width: 560px) {
   .site-shell.has-pet-assistant .sakura-back-top {
-    bottom: calc(16px + 108px);
+    bottom: calc(16px + 76px);
   }
 }
 </style>

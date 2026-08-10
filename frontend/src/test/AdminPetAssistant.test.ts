@@ -793,19 +793,19 @@ describe('P5 宠物尺寸与拖动', () => {
     await flushPromises();
   }
 
-  it('宠物 0.8 倍：桌面渲染 307px 宽（384 → 307）', async () => {
+  it('宠物缩至上一版的 70%：桌面渲染 215px 宽（307 → 215）', async () => {
     const { wrapper } = await mountAssistant('ADMIN', '/');
     const sprite = wrapper.find('.pet-sprite');
-    expect(sprite.attributes('style')).toContain('width: 307px');
+    expect(sprite.attributes('style')).toContain('width: 215px');
   });
 
   it('默认落点：右下角（视口内），以内联 left/top 定位', async () => {
     const { wrapper } = await mountAssistant('ADMIN', '/');
     const container = wrapper.find('[data-testid="admin-pet-assistant"]');
     const style = container.attributes('style') ?? '';
-    // jsdom 视口 1024×768：x = 1024-307-20 = 697；y = 768-(307×208/192+36)-18
-    const stackH = (307 * 208) / 192 + 36;
-    expect(style).toContain('left: 697px');
+    // jsdom 视口 1024×768：x = 1024-215-20 = 789；y = 768-(215×208/192+36)-18
+    const stackH = (215 * 208) / 192 + 36;
+    expect(style).toContain('left: 789px');
     expect(style).toContain(`top: ${768 - stackH - 18}px`);
   });
 
@@ -817,8 +817,8 @@ describe('P5 宠物尺寸与拖动', () => {
     // 拖到 (300, 250)：起点 (100,100) → 位移 (+200,+150)，起点默认在右下角 → 越界后夹紧到视口内
     await dragPet(wrapper, { x: 100, y: 100 }, { x: 300, y: 250 });
     const style = container.attributes('style') ?? '';
-    const maxX = 1024 - 307 - 4;
-    const maxY = 768 - ((307 * 208) / 192 + 36) - 4;
+    const maxX = 1024 - 215 - 4;
+    const maxY = 768 - ((215 * 208) / 192 + 36) - 4;
     expect(style).toContain(`left: ${maxX}px`);
     expect(style).toContain(`top: ${maxY}px`);
 
@@ -855,16 +855,16 @@ describe('P5 宠物尺寸与拖动', () => {
     window.localStorage.setItem('yubai-admin-pet-pos', JSON.stringify({ x: 99999, y: 99999 }));
     const { wrapper: wrapper2 } = await mountAssistant('ADMIN', '/');
     const style2 = wrapper2.find('[data-testid="admin-pet-assistant"]').attributes('style') ?? '';
-    expect(style2).toContain('left: 713px'); // 1024-307-4
-    expect(style2).toContain(`top: ${768 - ((307 * 208) / 192 + 36) - 4}px`);
+    expect(style2).toContain('left: 805px'); // 1024-215-4
+    expect(style2).toContain(`top: ${768 - ((215 * 208) / 192 + 36) - 4}px`);
   });
 
   it('损坏的位置数据被忽略，回落默认右下角', async () => {
     window.localStorage.setItem('yubai-admin-pet-pos', 'not-json{{{');
     const { wrapper } = await mountAssistant('ADMIN', '/');
     const style = wrapper.find('[data-testid="admin-pet-assistant"]').attributes('style') ?? '';
-    expect(style).toContain('left: 697px');
-    expect(style).toContain(`top: ${768 - ((307 * 208) / 192 + 36) - 18}px`);
+    expect(style).toContain('left: 789px');
+    expect(style).toContain(`top: ${768 - ((215 * 208) / 192 + 36) - 18}px`);
   });
 
   it('面板打开时把宠物拖到顶部 → 面板向下翻转（panel-below）', async () => {
@@ -872,11 +872,11 @@ describe('P5 宠物尺寸与拖动', () => {
     await openPanel(wrapper);
     expect(wrapper.find('[data-testid="pet-chat-panel"]').exists()).toBe(true);
 
-    // 起点默认 y=506，拖到顶部（夹紧为 4）→ 上方空间不足 → 向下翻转
+    // 从默认右下角拖到顶部（夹紧为 4）→ 上方空间不足 → 向下翻转
     await dragPet(wrapper, { x: 500, y: 600 }, { x: 500, y: 20 });
     expect(wrapper.find('[data-testid="pet-chat-panel"]').classes()).toContain('panel-below');
 
-    // 拖回底部（夹紧 y=520，下方无空间）→ 恢复向上展开
+    // 拖回底部（到达新尺寸对应的下边界）→ 恢复向上展开
     await dragPet(wrapper, { x: 500, y: 20 }, { x: 500, y: 700 });
     expect(wrapper.find('[data-testid="pet-chat-panel"]').classes()).not.toContain('panel-below');
   });

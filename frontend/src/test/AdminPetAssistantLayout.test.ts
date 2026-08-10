@@ -135,11 +135,11 @@ describe('P1 移动端聊天面板布局契约', () => {
   });
 
   it('移动端保留 safe area，且面板底部高于宠物栈（宠物与输入框同屏可见）', () => {
-    expect(panelMobile).toMatch(/bottom:\s*calc\(8px\s*\+\s*env\(safe-area-inset-bottom\)\s*\+\s*330px\)/);
+    expect(panelMobile).toMatch(/bottom:\s*calc\(8px\s*\+\s*env\(safe-area-inset-bottom\)\s*\+\s*250px\)/);
     expect(panelMobile).toMatch(/height:\s*min\(72dvh,\s*620px\)/);
-    // 面板 bottom 偏移 330px > 移动宠物高度(243 × 208/192 ≈ 263.3px) + 隐藏按钮(≈30px)，
+    // 面板 bottom 偏移 250px > 移动宠物高度(170 × 208/192 ≈ 184.2px) + 隐藏按钮(≈30px)，
     // 保证面板悬浮在宠物栈上方而不遮挡宠物
-    expect(330).toBeGreaterThan(263.3 + 30);
+    expect(250).toBeGreaterThan(184.2 + 30);
   });
 
   it('桌面端 380px 浮层行为不回归（media query 之外保持 absolute + 380px）', () => {

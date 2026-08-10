@@ -27,9 +27,9 @@ import type { IdleActionId } from './petIdleScheduler';
 const HIDDEN_KEY = 'yubai-admin-pet-hidden';
 const PET_POS_KEY = 'yubai-admin-pet-pos';
 const GAZE_RADIUS = 420;
-/** P5：宠物尺寸——桌面 307、移动 243（当前 384/304 的 0.8 倍）。 */
-const DESKTOP_SIZE = 307;
-const MOBILE_SIZE = 243;
+/** 宠物显示尺寸缩至上一版的 70%：桌面 307→215、移动 243→170。 */
+const DESKTOP_SIZE = 215;
+const MOBILE_SIZE = 170;
 /** 小于该位移视为点击而非拖动 */
 const DRAG_CLICK_THRESHOLD = 6;
 /** 面板尺寸用于「贴顶时向下翻转」「贴左时向右翻转」的几何判断 */
@@ -805,7 +805,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 720px) {
   /* P1：移动端面板直接以 viewport 为定位基准（position: fixed + 双侧 inset），
-     不再从右下角宠物容器向外延伸；bottom 偏移 = 宠物(≈263px) + 隐藏按钮(≈30px) + 间距，
+     不再从右下角宠物容器向外延伸；bottom 偏移 = 宠物(≈184px) + 隐藏按钮(≈30px) + 间距，
      保证面板与宠物、输入框同屏可见。宠物容器位置由拖动逻辑控制，不再用 CSS 定位。 */
   .pet-chat-panel {
     position: fixed;
@@ -814,7 +814,7 @@ onBeforeUnmount(() => {
     width: auto;
     max-width: none;
     top: auto;
-    bottom: calc(8px + env(safe-area-inset-bottom) + 330px);
+    bottom: calc(8px + env(safe-area-inset-bottom) + 250px);
     height: min(72dvh, 620px);
     border-radius: 16px 16px 0 0;
   }

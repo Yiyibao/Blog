@@ -2643,24 +2643,12 @@ a {
 }
 
 .site-shell:not(.admin-mode) .hero-stage .hero-copy {
-  width: min(1180px, calc(100% - 48px));
+  width: min(1280px, calc(100% - 48px));
   max-width: none;
-  padding: clamp(26px, 4vw, 52px);
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: clamp(24px, 3vw, 36px);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  background: linear-gradient(145deg, rgba(27, 43, 44, 0.72), rgba(12, 27, 29, 0.5)), rgba(18, 34, 36, 0.56);
-  box-shadow:
-    0 28px 90px rgba(4, 10, 11, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
-  -webkit-backdrop-filter: blur(18px) saturate(128%);
-  backdrop-filter: blur(18px) saturate(128%);
   opacity: var(--hero-copy-opacity, 1);
   transform: translate3d(0, var(--hero-copy-y, 0), 0) scale(var(--hero-copy-scale, 1));
   will-change: opacity, transform;
@@ -2673,14 +2661,14 @@ a {
   margin-bottom: 15px;
   color: #ffe1e7;
   font-weight: 600;
-  text-shadow: none;
+  text-shadow: 0 3px 24px rgba(0, 0, 0, 0.48);
 }
 
 .site-shell:not(.admin-mode) .hero-stage .eyebrow {
   margin-bottom: 30px;
   color: rgba(255, 255, 255, 0.92);
   font-weight: 600;
-  text-shadow: none;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.42);
 }
 
 .site-shell:not(.admin-mode) .hero-stage .eyebrow > span {
@@ -2699,7 +2687,9 @@ a {
   letter-spacing: -0.055em;
   white-space: nowrap;
   text-wrap: nowrap;
-  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.28);
+  text-shadow:
+    0 5px 36px rgba(0, 0, 0, 0.52),
+    0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .site-shell:not(.admin-mode) .hero-stage h1 em {
@@ -2726,7 +2716,7 @@ a {
   font-size: 17px;
   font-weight: 500;
   line-height: 1.9;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.34);
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.58);
 }
 
 .site-shell:not(.admin-mode) .hero-stage .hero-actions {
@@ -2734,7 +2724,7 @@ a {
 }
 .site-shell:not(.admin-mode) .hero-stage .button.primary {
   color: #fff;
-  background: #8b3e54;
+  background: rgba(201, 111, 134, 0.92);
   box-shadow: 0 12px 34px rgba(27, 23, 25, 0.22);
   backdrop-filter: blur(12px);
 }
@@ -2752,14 +2742,25 @@ a {
 .site-shell:not(.admin-mode) .hero-stage .hero-scroll {
   left: 50%;
   bottom: 26px;
-  padding: 5px 8px;
-  border-radius: 999px;
-  color: #34292c;
-  background: rgba(255, 255, 255, 0.88);
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.76);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.48);
   opacity: var(--hero-copy-opacity, 1);
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+.site-shell:not(.admin-mode) .hero-stage .hero-scroll:hover {
+  color: #fff;
+  transform: translateX(-50%) translateY(-2px);
+}
+.site-shell:not(.admin-mode) .hero-stage .hero-scroll:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid rgba(244, 182, 195, 0.9);
+  outline-offset: 7px;
 }
 .site-shell:not(.admin-mode) .hero-stage .hero-scroll i {
-  height: 36px;
+  height: 32px;
   background: linear-gradient(#f4b6c3 50%, rgba(255, 255, 255, 0.3) 50%);
   background-size: 100% 200%;
 }
@@ -2813,11 +2814,6 @@ a {
 @media (max-width: 560px) {
   .site-shell:not(.admin-mode) .hero-stage .hero-copy {
     width: calc(100% - 24px);
-    border-radius: 24px;
-    background:
-      linear-gradient(145deg, rgba(27, 43, 44, 0.78), rgba(12, 27, 29, 0.62)), rgba(18, 34, 36, 0.66);
-    -webkit-backdrop-filter: blur(14px) saturate(120%);
-    backdrop-filter: blur(14px) saturate(120%);
   }
   .site-shell:not(.admin-mode) .hero-stage h1 {
     font-size: clamp(28px, 7.2vw, 40px);

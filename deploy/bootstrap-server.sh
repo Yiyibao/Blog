@@ -103,6 +103,10 @@ umask 0077
     printf 'APP_AI_OPENCODE_PASSWORD=%s\n' "${OPENCODE_PASSWORD}"
     printf 'APP_AI_OPENCODE_AGENT=blog-ai\n'
     printf 'APP_AI_OPENCODE_PROVIDER_ID=opencode-go\n'
+    printf 'APP_AI_PLATFORM_TASKS_ENABLED=true\n'
+    printf 'APP_AI_PLATFORM_MULTIMODAL_ENABLED=true\n'
+    printf 'APP_AI_PLATFORM_MEMORY_ENABLED=true\n'
+    printf 'APP_AI_PLATFORM_ARTIFACTS_ENABLED=true\n'
     printf 'APP_RECIPE_VIDEO_ENABLED=true\n'
     printf 'APP_RECIPE_YT_DLP_PATH=%s\n' "${YT_DLP_BIN}"
 } > "${ENV_FILE}"

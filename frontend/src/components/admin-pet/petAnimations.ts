@@ -8,7 +8,7 @@
  *   目录 /pets/xinn/hd/）。行号、有效帧数与逐帧时长以 hatch-pet 的
  *   animation-rows.md 为准；透明未使用单元格不算动画帧。
  *
- * 组件对外的显示尺寸（307/243）与素材像素尺寸分离：PetSprite 依据
+ * 组件对外的显示尺寸与素材像素尺寸分离：PetSprite 依据
  * sourceCellWidth/sourceCellHeight 计算裁切与缩放，不再硬编码 192×208。
  */
 export const ATLAS = {

@@ -83,6 +83,16 @@ afterEach(() => {
 });
 
 describe('FD-29 App 级宠物挂载条件', () => {
+  it('音乐开关在公开页页眉和后台工具区都保持可见', async () => {
+    const publicPage = await mountApp('ADMIN', '/');
+    expect(publicPage.findAll('ambient-sound-stub')).toHaveLength(1);
+    expect(publicPage.find('ambient-sound-stub').classes()).not.toContain('admin-ambient-sound');
+
+    const adminPage = await mountApp('ADMIN', '/admin');
+    expect(adminPage.findAll('ambient-sound-stub')).toHaveLength(1);
+    expect(adminPage.find('ambient-sound-stub').classes()).toContain('admin-ambient-sound');
+  });
+
   it('游客不挂载宠物宿主，shell 无避让类', async () => {
     const wrapper = await mountApp('GUEST', '/');
     expect(wrapper.find('.pet-host-stub').exists()).toBe(false);
