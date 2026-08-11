@@ -118,25 +118,48 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Upload release (rsync over SSH)
+      - name: Package release archive
+        shell: bash
         run: |
+          set -euo pipefail
           release="release-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          archive_path="$RUNNER_TEMP/release-${GITHUB_SHA::7}.tar.gz"
+          archive_name="$(basename "$archive_path")"
+          tar -C dist -czf "$archive_path" .
           echo "RELEASE_DIR=$release" >> "$GITHUB_ENV"
-          rsync -az -e "ssh -i ~/.ssh/id_deploy" dist/ \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/releases/$release/"
+          echo "ARCHIVE_PATH=$archive_path" >> "$GITHUB_ENV"
+          echo "ARCHIVE_NAME=$archive_name" >> "$GITHUB_ENV"
+
+      - name: Upload release archive (SCP over SSH)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -C \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            -i ~/.ssh/id_deploy \
+            "$ARCHIVE_PATH" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/releases/$ARCHIVE_NAME"
 
       # Remote script — args passed positionally (runner env vars not inherited by SSH)
       - name: Atomic switch, restart, health check with rollback
         run: |
           ssh -i ~/.ssh/id_deploy "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            bash -s "$DEPLOY_PATH" "$RELEASE_DIR" <<'EOF'
+            bash -s "$DEPLOY_PATH" "$RELEASE_DIR" "$ARCHIVE_NAME" <<'EOF'
           set -euo pipefail
           DEPLOY_PATH="$1"
           RELEASE_DIR="$2"
+          ARCHIVE_NAME="$3"
+          ARCHIVE_PATH="${DEPLOY_PATH}/releases/${ARCHIVE_NAME}"
+          RELEASE_PATH="${DEPLOY_PATH}/releases/${RELEASE_DIR}"
+
+          mkdir -p "$RELEASE_PATH"
+          tar -xzf "$ARCHIVE_PATH" -C "$RELEASE_PATH"
+          rm -f "$ARCHIVE_PATH"
 
           # Ensure nginx (www-data) can traverse and read frontend files
-          find "${DEPLOY_PATH}/releases/${RELEASE_DIR}" -type d -exec chmod o+rx {} +
-          find "${DEPLOY_PATH}/releases/${RELEASE_DIR}" -type f -exec chmod o+r {} +
+          find "$RELEASE_PATH" -type d -exec chmod o+rx {} +
+          find "$RELEASE_PATH" -type f -exec chmod o+r {} +
 
           OLD_TARGET=$(readlink "${DEPLOY_PATH}/current" 2>/dev/null || echo "")
 
