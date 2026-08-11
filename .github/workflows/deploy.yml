@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: deploy-production
@@ -125,35 +125,48 @@ jobs:
           release="release-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
           archive_path="$RUNNER_TEMP/release-${GITHUB_SHA::7}.tar.gz"
           archive_name="$(basename "$archive_path")"
+          release_tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+            release_tag="deploy-${GITHUB_RUN_ID}"
+          fi
           tar -C dist -czf "$archive_path" .
           echo "RELEASE_DIR=$release" >> "$GITHUB_ENV"
           echo "ARCHIVE_PATH=$archive_path" >> "$GITHUB_ENV"
           echo "ARCHIVE_NAME=$archive_name" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
 
-      - name: Upload release archive (SCP over SSH)
+      - name: Publish release archive
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          scp -C \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=20 \
-            -i ~/.ssh/id_deploy \
-            "$ARCHIVE_PATH" \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/releases/$ARCHIVE_NAME"
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TAG" \
+              --notes "Production deployment archive for $GITHUB_SHA"
+          fi
+          gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
 
       # Remote script — args passed positionally (runner env vars not inherited by SSH)
       - name: Atomic switch, restart, health check with rollback
         run: |
           ssh -i ~/.ssh/id_deploy "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            bash -s "$DEPLOY_PATH" "$RELEASE_DIR" "$ARCHIVE_NAME" <<'EOF'
+            bash -s "$DEPLOY_PATH" "$RELEASE_DIR" "$RELEASE_TAG" "$ARCHIVE_NAME" "$GITHUB_REPOSITORY" <<'EOF'
           set -euo pipefail
           DEPLOY_PATH="$1"
           RELEASE_DIR="$2"
-          ARCHIVE_NAME="$3"
+          RELEASE_TAG="$3"
+          ARCHIVE_NAME="$4"
+          GITHUB_REPOSITORY="$5"
           ARCHIVE_PATH="${DEPLOY_PATH}/releases/${ARCHIVE_NAME}"
           RELEASE_PATH="${DEPLOY_PATH}/releases/${RELEASE_DIR}"
+          ARCHIVE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ARCHIVE_NAME}"
 
           mkdir -p "$RELEASE_PATH"
+          curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 --max-time 900 \
+            "$ARCHIVE_URL" -o "$ARCHIVE_PATH"
           tar -xzf "$ARCHIVE_PATH" -C "$RELEASE_PATH"
           rm -f "$ARCHIVE_PATH"
 
