@@ -5,6 +5,9 @@ public enum AiArtifactFormat {
     TEXT("text/plain", ".txt"),
     JSON("application/json", ".json"),
     CSV("text/csv", ".csv"),
+    PDF("application/pdf", ".pdf"),
+    DOCX("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx"),
+    XLSX("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx"),
     IMAGE(null, null);
 
     private final String mediaType;
@@ -21,5 +24,9 @@ public enum AiArtifactFormat {
 
     public String extension() {
         return extension;
+    }
+
+    public boolean isDocument() {
+        return this == PDF || this == DOCX || this == XLSX;
     }
 }

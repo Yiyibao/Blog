@@ -14,13 +14,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiArtifactService {
-    private static final int MAX_ARTIFACT_BYTES = 2_000_000;
     private final AiArtifactRepository repository;
     private final AiTaskService taskService;
     private final AiTaskPartRepository partRepository;
@@ -29,7 +29,31 @@ public class AiArtifactService {
     private final StorageService storage;
     private final AiPlatformProperties properties;
     private final ObjectMapper objectMapper;
+    private final AiDocumentRenderer documentRenderer;
 
+    @Autowired
+    public AiArtifactService(
+            AiArtifactRepository repository,
+            AiTaskService taskService,
+            AiTaskPartRepository partRepository,
+            AiImageService imageService,
+            AiTaskEventService eventService,
+            StorageService storage,
+            AiPlatformProperties properties,
+            ObjectMapper objectMapper,
+            AiDocumentRenderer documentRenderer) {
+        this.repository = repository;
+        this.taskService = taskService;
+        this.partRepository = partRepository;
+        this.imageService = imageService;
+        this.eventService = eventService;
+        this.storage = storage;
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.documentRenderer = documentRenderer;
+    }
+
+    /** Source-compatible constructor for focused lifecycle tests and older integrations. */
     public AiArtifactService(
             AiArtifactRepository repository,
             AiTaskService taskService,
@@ -39,14 +63,16 @@ public class AiArtifactService {
             StorageService storage,
             AiPlatformProperties properties,
             ObjectMapper objectMapper) {
-        this.repository = repository;
-        this.taskService = taskService;
-        this.partRepository = partRepository;
-        this.imageService = imageService;
-        this.eventService = eventService;
-        this.storage = storage;
-        this.properties = properties;
-        this.objectMapper = objectMapper;
+        this(
+                repository,
+                taskService,
+                partRepository,
+                imageService,
+                eventService,
+                storage,
+                properties,
+                objectMapper,
+                new AiDocumentRenderer(objectMapper));
     }
 
     @Transactional
@@ -54,7 +80,7 @@ public class AiArtifactService {
         taskService.requireOwned(taskId, owner);
         var name = normalizeName(request.name(), request.format());
         var materialized = materialize(taskId, owner, request);
-        if (materialized.bytes().length > MAX_ARTIFACT_BYTES) {
+        if (materialized.bytes().length > Math.max(1, properties.getMaxArtifactBytes())) {
             throw new AiServiceException(HttpStatus.PAYLOAD_TOO_LARGE, "AI artifact is too large");
         }
         var hash = AiFileService.sha256(materialized.bytes());
@@ -96,6 +122,18 @@ public class AiArtifactService {
                             saved.getName(),
                             "mediaType",
                             saved.getMediaType()));
+            var sequence = Math.toIntExact(partRepository.countByTaskId(taskId) + 1);
+            partRepository.save(
+                    AiTaskPartEntity.create(
+                            taskId,
+                            sequence,
+                            AiPartRole.ASSISTANT,
+                            AiPartKind.ARTIFACT_REF,
+                            null,
+                            null,
+                            null,
+                            saved.getId(),
+                            "artifact:" + saved.getId()));
             return AiArtifactResponse.from(saved);
         } catch (RuntimeException exception) {
             storage.delete(storageKey);
@@ -173,6 +211,12 @@ public class AiArtifactService {
                     new MaterializedArtifact(request.format().mediaType(), normalizeJson(content));
             case CSV ->
                     new MaterializedArtifact(request.format().mediaType(), sanitizeCsv(content));
+            case PDF, DOCX, XLSX -> {
+                var rendered =
+                        documentRenderer.render(
+                                request.format(), nameWithoutExtension(request.name()), content);
+                yield new MaterializedArtifact(rendered.mediaType(), rendered.bytes());
+            }
             case IMAGE -> throw new IllegalStateException("handled above");
         };
     }
@@ -283,8 +327,17 @@ public class AiArtifactService {
             case "image/webp" -> ".webp";
             case "image/gif" -> ".gif";
             case "image/png" -> ".png";
+            case "application/pdf" -> ".pdf";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ->
+                    ".docx";
+            case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> ".xlsx";
             default -> ".bin";
         };
+    }
+
+    private static String nameWithoutExtension(String name) {
+        var index = name.lastIndexOf('.');
+        return index > 0 ? name.substring(0, index) : name;
     }
 
     private record MaterializedArtifact(String mediaType, byte[] bytes) {

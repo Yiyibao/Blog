@@ -43,6 +43,15 @@ const router = createRouter({
       component: () => import('../pages/AdminAiPage.vue'),
       meta: { requiresAuth: true, capability: Capabilities.AI_USAGE },
     },
+    ...(import.meta.env.DEV
+      ? [
+          {
+            path: '/admin/ai-preview',
+            name: 'ai-workspace-preview',
+            component: () => import('../pages/AdminAiPage.vue'),
+          },
+        ]
+      : []),
     {
       path: '/admin/ai/images',
       name: 'admin-ai-images',
@@ -90,7 +99,14 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore();
   const routeName = String(to.name ?? '');
-  const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes', 'search']);
+  const guestVisibleRoutes = new Set([
+    'home',
+    'articles',
+    'article',
+    'recipes',
+    'search',
+    'ai-workspace-preview',
+  ]);
   const authEntryRoutes = new Set(['login', 'admin-login']);
   const memberVisibleRoutes = new Set(['articles', 'article', 'recipes']);
   // FD-8：requiresAuth + capability——

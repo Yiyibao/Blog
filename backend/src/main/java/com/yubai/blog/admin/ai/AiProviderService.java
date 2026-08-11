@@ -1,21 +1,25 @@
 package com.yubai.blog.admin.ai;
 
+import com.yubai.blog.ai.AiProviderCapability;
 import com.yubai.blog.common.NotFoundException;
 import com.yubai.blog.config.AiProperties;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 4A-1：AI 供应商注册表。密钥 AES-GCM 加密入库、响应只回显尾 4 位；
- * base_url 经 SSRF 校验；既有 env 配置在注册表为空时 seed 为第一行（保持向后兼容）。
+ * 4A-1：AI 供应商注册表。密钥 AES-GCM 加密入库、响应只回显尾 4 位； base_url 经 SSRF 校验；既有 env 配置在注册表为空时 seed 为第一行（保持向后兼容）。
  */
 @Service
 public class AiProviderService {
@@ -31,12 +35,19 @@ public class AiProviderService {
     private final AnthropicClient anthropicClient;
     private final OpenCodeServerClient opencodeClient;
     private final AiProperties properties;
+    private final AiProviderModelRepository modelRepository;
 
     @Autowired
-    public AiProviderService(AiProviderRepository repository, AiCrypto crypto,
-                             AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient openaiClient,
-                             AnthropicClient anthropicClient, OpenCodeServerClient opencodeClient,
-                             OpenAiResponsesClient responsesClient, AiProperties properties) {
+    public AiProviderService(
+            AiProviderRepository repository,
+            AiCrypto crypto,
+            AiBaseUrlValidator baseUrlValidator,
+            OpenAiCompatibleClient openaiClient,
+            AnthropicClient anthropicClient,
+            OpenCodeServerClient opencodeClient,
+            OpenAiResponsesClient responsesClient,
+            AiProperties properties,
+            AiProviderModelRepository modelRepository) {
         this.repository = repository;
         this.crypto = crypto;
         this.baseUrlValidator = baseUrlValidator;
@@ -45,22 +56,38 @@ public class AiProviderService {
         this.anthropicClient = anthropicClient;
         this.opencodeClient = opencodeClient;
         this.properties = properties;
+        this.modelRepository = modelRepository;
     }
 
     /** Source-compatible constructor used by focused unit tests and small integrations. */
-    public AiProviderService(AiProviderRepository repository, AiCrypto crypto,
-                             AiBaseUrlValidator baseUrlValidator, OpenAiCompatibleClient openaiClient,
-                             AnthropicClient anthropicClient, OpenCodeServerClient opencodeClient,
-                             AiProperties properties) {
-        this(repository, crypto, baseUrlValidator, openaiClient, anthropicClient, opencodeClient,
-            new OpenAiResponsesClient(properties), properties);
+    public AiProviderService(
+            AiProviderRepository repository,
+            AiCrypto crypto,
+            AiBaseUrlValidator baseUrlValidator,
+            OpenAiCompatibleClient openaiClient,
+            AnthropicClient anthropicClient,
+            OpenCodeServerClient opencodeClient,
+            AiProperties properties) {
+        this(
+                repository,
+                crypto,
+                baseUrlValidator,
+                openaiClient,
+                anthropicClient,
+                opencodeClient,
+                new OpenAiResponsesClient(properties),
+                properties,
+                null);
     }
 
     @Transactional(readOnly = true)
     public List<AiProviderResponse> list() {
         return repository.findAll().stream()
-            .map(entity -> AiProviderResponse.from(entity, keyTail(entity)))
-            .toList();
+                .map(
+                        entity ->
+                                AiProviderResponse.from(
+                                        entity, keyTail(entity), modelCapabilities(entity)))
+                .toList();
     }
 
     @Transactional
@@ -69,46 +96,56 @@ public class AiProviderService {
             throw new AiServiceException(HttpStatus.CONFLICT, "同名供应商已存在");
         }
         var providerType = request.providerTypeOrDefault();
-        var baseUrl = providerType == AiProviderType.OPENCODE_SERVER
-            ? baseUrlValidator.validateForOpenCodeServer(request.baseUrl())
-            : baseUrlValidator.validate(request.baseUrl());
+        var baseUrl =
+                providerType == AiProviderType.OPENCODE_SERVER
+                        ? baseUrlValidator.validateForOpenCodeServer(request.baseUrl())
+                        : baseUrlValidator.validate(request.baseUrl());
         // OPENCODE_SERVER 不需要 DB apiKey（使用 env Basic password）
         String encryptedKey = null;
         if (providerType != AiProviderType.OPENCODE_SERVER && hasText(request.apiKey())) {
             encryptedKey = crypto.encrypt(request.apiKey().trim());
         }
-        var entity = AiProviderEntity.create(
-            request.name().trim(),
-            baseUrl,
-            encryptedKey,
-            joinModels(request.models()),
-            request.defaultModel().trim(),
-            request.enabledOrDefault(),
-            request.dailyRequestLimitOrDefault(),
-            request.dailyTokenLimitOrDefault(),
-            request.providerTypeOrDefault());
+        var entity =
+                AiProviderEntity.create(
+                        request.name().trim(),
+                        baseUrl,
+                        encryptedKey,
+                        joinModels(request.models()),
+                        request.defaultModel().trim(),
+                        request.enabledOrDefault(),
+                        request.dailyRequestLimitOrDefault(),
+                        request.dailyTokenLimitOrDefault(),
+                        request.providerTypeOrDefault());
         if (repository.count() == 0) {
             entity.markDefault(true);
         }
         var saved = repository.save(entity);
-        return AiProviderResponse.from(saved, keyTail(saved));
+        syncModelCapabilities(saved, request.modelCapabilities());
+        return AiProviderResponse.from(saved, keyTail(saved), modelCapabilities(saved));
     }
 
     @Transactional
     public AiProviderResponse update(Long id, AiProviderRequest request) {
-        var entity = repository.findById(id)
-            .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
+        var entity = repository.findById(id).orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
         var newName = request.name().trim();
-        if (!entity.getName().equalsIgnoreCase(newName) && repository.existsByNameIgnoreCase(newName)) {
+        if (!entity.getName().equalsIgnoreCase(newName)
+                && repository.existsByNameIgnoreCase(newName)) {
             throw new AiServiceException(HttpStatus.CONFLICT, "同名供应商已存在");
         }
         var providerType = request.providerTypeOrDefault();
-        var baseUrl = providerType == AiProviderType.OPENCODE_SERVER
-            ? baseUrlValidator.validateForOpenCodeServer(request.baseUrl())
-            : baseUrlValidator.validate(request.baseUrl());
-        entity.update(newName, baseUrl, joinModels(request.models()), request.defaultModel().trim(),
-            request.enabledOrDefault(), request.dailyRequestLimitOrDefault(), request.dailyTokenLimitOrDefault(),
-            providerType);
+        var baseUrl =
+                providerType == AiProviderType.OPENCODE_SERVER
+                        ? baseUrlValidator.validateForOpenCodeServer(request.baseUrl())
+                        : baseUrlValidator.validate(request.baseUrl());
+        entity.update(
+                newName,
+                baseUrl,
+                joinModels(request.models()),
+                request.defaultModel().trim(),
+                request.enabledOrDefault(),
+                request.dailyRequestLimitOrDefault(),
+                request.dailyTokenLimitOrDefault(),
+                providerType);
         // OPENCODE_SERVER 忽略/清除 DB apiKey（使用 env Basic password）
         if (providerType == AiProviderType.OPENCODE_SERVER) {
             entity.replaceApiKey(null);
@@ -116,28 +153,30 @@ public class AiProviderService {
             entity.replaceApiKey(crypto.encrypt(request.apiKey().trim()));
         }
         var saved = repository.save(entity);
-        return AiProviderResponse.from(saved, keyTail(saved));
+        syncModelCapabilities(saved, request.modelCapabilities());
+        return AiProviderResponse.from(saved, keyTail(saved), modelCapabilities(saved));
     }
 
     @Transactional
     public void delete(Long id) {
-        var entity = repository.findById(id)
-            .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
+        var entity = repository.findById(id).orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
         var wasDefault = entity.isDefault();
         repository.delete(entity);
         repository.flush();
         if (wasDefault) {
-            repository.findFirstByEnabledTrueOrderByIdAsc().ifPresent(next -> {
-                next.markDefault(true);
-                repository.save(next);
-            });
+            repository
+                    .findFirstByEnabledTrueOrderByIdAsc()
+                    .ifPresent(
+                            next -> {
+                                next.markDefault(true);
+                                repository.save(next);
+                            });
         }
     }
 
     @Transactional
     public AiProviderResponse setDefault(Long id) {
-        var entity = repository.findById(id)
-            .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
+        var entity = repository.findById(id).orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
         if (!entity.isEnabled()) {
             throw new AiServiceException(HttpStatus.BAD_REQUEST, "已停用的供应商不能设为默认");
         }
@@ -151,18 +190,15 @@ public class AiProviderService {
         repository.flush();
         entity.markDefault(true);
         var saved = repository.save(entity);
-        return AiProviderResponse.from(saved, keyTail(saved));
+        return AiProviderResponse.from(saved, keyTail(saved), modelCapabilities(saved));
     }
 
     /**
-     * 连通性测试：按供应商类型调用对应客户端的 listModels。
-     * 失败作为结果返回而非抛错，便于界面展示。
-     * 刻意不加 @Transactional——外部 HTTP 最长阻塞 requestTimeout 秒，
-     * 包在事务里会长时间占用连接池连接，几次并发点击即可耗尽 HikariCP。
+     * 连通性测试：按供应商类型调用对应客户端的 listModels。 失败作为结果返回而非抛错，便于界面展示。 刻意不加 @Transactional——外部 HTTP 最长阻塞
+     * requestTimeout 秒， 包在事务里会长时间占用连接池连接，几次并发点击即可耗尽 HikariCP。
      */
     public AiProviderTestResult testConnection(Long id) {
-        var entity = repository.findById(id)
-            .orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
+        var entity = repository.findById(id).orElseThrow(() -> new NotFoundException("AI 供应商不存在"));
         try {
             var endpoint = toEndpoint(entity, entity.getDefaultModel());
             var client = clientFor(entity.getProviderType());
@@ -173,32 +209,60 @@ public class AiProviderService {
         }
     }
 
-    /**
-     * 聊天调用的端点解析：显式 providerId → 注册表默认 → 任一启用行 → 既有 env 配置回退。
-     */
+    /** 聊天调用的端点解析：显式 providerId → 注册表默认 → 任一启用行 → 既有 env 配置回退。 */
     @Transactional(readOnly = true)
     public AiEndpoint resolveEndpoint(Long providerId, String requestedModel) {
         if (providerId != null) {
-            var entity = repository.findById(providerId)
-                .filter(AiProviderEntity::isEnabled)
-                .orElseThrow(() -> new AiServiceException(HttpStatus.BAD_REQUEST, "供应商不存在或已停用"));
+            var entity =
+                    repository
+                            .findById(providerId)
+                            .filter(AiProviderEntity::isEnabled)
+                            .orElseThrow(
+                                    () ->
+                                            new AiServiceException(
+                                                    HttpStatus.BAD_REQUEST, "供应商不存在或已停用"));
             return toEndpoint(entity, resolveModel(entity, requestedModel));
         }
-        var registryEntity = repository.findFirstByIsDefaultTrueAndEnabledTrue()
-            .or(repository::findFirstByEnabledTrueOrderByIdAsc)
-            .orElse(null);
+        var registryEntity =
+                repository
+                        .findFirstByIsDefaultTrueAndEnabledTrue()
+                        .or(repository::findFirstByEnabledTrueOrderByIdAsc)
+                        .orElse(null);
         if (registryEntity != null) {
             return toEndpoint(registryEntity, resolveModel(registryEntity, requestedModel));
         }
         if (properties.isEnabled() && hasText(properties.getApiKey())) {
             return new AiEndpoint(
-                properties.getBaseUrl(),
-                properties.getApiKey(),
-                requestedModel != null && !requestedModel.isBlank() ? requestedModel : properties.getModel(),
-                properties.getRequestTimeout(),
-                properties.getMaxOutputTokens());
+                    properties.getBaseUrl(),
+                    properties.getApiKey(),
+                    requestedModel != null && !requestedModel.isBlank()
+                            ? requestedModel
+                            : properties.getModel(),
+                    properties.getRequestTimeout(),
+                    properties.getMaxOutputTokens());
         }
-        throw new AiServiceException(HttpStatus.SERVICE_UNAVAILABLE, "AI service is not configured");
+        throw new AiServiceException(
+                HttpStatus.SERVICE_UNAVAILABLE, "AI service is not configured");
+    }
+
+    /**
+     * Deterministic candidate list used by the multimodal harness for explicit capability routing.
+     */
+    @Transactional(readOnly = true)
+    public List<AiEndpoint> enabledEndpoints() {
+        return repository.findAll().stream()
+                .filter(AiProviderEntity::isEnabled)
+                .sorted(java.util.Comparator.comparing(AiProviderEntity::getId))
+                .flatMap(
+                        entity -> {
+                            var models = new java.util.LinkedHashSet<String>();
+                            models.add(entity.getDefaultModel());
+                            models.addAll(AiProviderResponse.parseModels(entity.getModels()));
+                            return models.stream()
+                                    .filter(AiProviderService::hasText)
+                                    .map(model -> toEndpoint(entity, model));
+                        })
+                .toList();
     }
 
     /** 既有 env 配置 seed：注册表为空且 env 已启用时迁移为第一行，保持升级后行为不变。 */
@@ -213,39 +277,51 @@ public class AiProviderService {
         if (!properties.isEnabled() || !hasText(properties.getApiKey())) {
             return;
         }
-        var entity = AiProviderEntity.create(
-            "deepseek",
-            properties.getBaseUrl().replaceAll("/+$", ""),
-            crypto.encrypt(properties.getApiKey()),
-            properties.getModel(),
-            properties.getModel(),
-            true,
-            200,
-            200_000,
-            AiProviderType.OPENAI_COMPATIBLE);
+        var entity =
+                AiProviderEntity.create(
+                        "deepseek",
+                        properties.getBaseUrl().replaceAll("/+$", ""),
+                        crypto.encrypt(properties.getApiKey()),
+                        properties.getModel(),
+                        properties.getModel(),
+                        true,
+                        200,
+                        200_000,
+                        AiProviderType.OPENAI_COMPATIBLE);
         entity.markDefault(true);
         repository.save(entity);
         log.info("AI 供应商注册表为空，已从环境变量配置生成默认供应商 deepseek");
     }
 
+    @EventListener(ApplicationReadyEvent.class)
+    @Order(org.springframework.core.Ordered.LOWEST_PRECEDENCE)
+    @Transactional
+    public void materializeExplicitCapabilityRows() {
+        if (modelRepository == null) return;
+        repository.findAll().forEach(provider -> syncModelCapabilities(provider, null));
+    }
+
     /**
-     * Materialize the native Anthropic environment configuration as an encrypted
-     * provider row. This keeps the existing provider selector and usage budgets
-     * working while ensuring the plaintext token only lives in the process env.
+     * Materialize the native Anthropic environment configuration as an encrypted provider row. This
+     * keeps the existing provider selector and usage budgets working while ensuring the plaintext
+     * token only lives in the process env.
      */
     @Transactional
     public void seedFromAnthropicEnv() {
-        if (!hasText(properties.getAnthropicBaseUrl()) || !hasText(properties.getAnthropicAuthToken())) {
+        if (!hasText(properties.getAnthropicBaseUrl())
+                || !hasText(properties.getAnthropicAuthToken())) {
             return;
         }
         if (!crypto.isReady()) {
-            log.warn("ANTHROPIC_AUTH_TOKEN is configured but APP_AI_MASTER_KEY is unavailable; provider was not materialized");
+            log.warn(
+                    "ANTHROPIC_AUTH_TOKEN is configured but APP_AI_MASTER_KEY is unavailable; provider was not materialized");
             return;
         }
         var baseUrl = baseUrlValidator.validate(properties.getAnthropicBaseUrl());
-        var configuredModel = hasText(properties.getAnthropicModel())
-            ? properties.getAnthropicModel().trim()
-            : "";
+        var configuredModel =
+                hasText(properties.getAnthropicModel())
+                        ? properties.getAnthropicModel().trim()
+                        : "";
         var models = normalizeModels(properties.getAnthropicModels(), configuredModel);
         var model = configuredModel;
         if (!hasText(model) || !AiProviderResponse.parseModels(models).contains(model)) {
@@ -256,22 +332,30 @@ public class AiProviderService {
         var entity = repository.findByNameIgnoreCase(ANTHROPIC_ENV_PROVIDER_NAME).orElse(null);
         var shouldMakeDefault = !hadActiveDefault || (entity != null && entity.isDefault());
         if (entity == null) {
-            entity = AiProviderEntity.create(
-                ANTHROPIC_ENV_PROVIDER_NAME,
-                baseUrl,
-                encryptedKey,
-                models,
-                model,
-                true,
-                200,
-                200_000,
-                AiProviderType.ANTHROPIC);
+            entity =
+                    AiProviderEntity.create(
+                            ANTHROPIC_ENV_PROVIDER_NAME,
+                            baseUrl,
+                            encryptedKey,
+                            models,
+                            model,
+                            true,
+                            200,
+                            200_000,
+                            AiProviderType.ANTHROPIC);
             entity.markDefault(false);
             repository.save(entity);
             repository.flush();
         } else {
-            entity.update(ANTHROPIC_ENV_PROVIDER_NAME, baseUrl, models, model,
-                true, 200, 200_000, AiProviderType.ANTHROPIC);
+            entity.update(
+                    ANTHROPIC_ENV_PROVIDER_NAME,
+                    baseUrl,
+                    models,
+                    model,
+                    true,
+                    200,
+                    200_000,
+                    AiProviderType.ANTHROPIC);
             entity.replaceApiKey(encryptedKey);
             repository.save(entity);
         }
@@ -291,28 +375,33 @@ public class AiProviderService {
             repository.save(entity);
         }
         repository.flush();
-        log.info("Anthropic provider materialized from environment configuration at {} (default={})", baseUrl, entity.isDefault());
+        log.info(
+                "Anthropic provider materialized from environment configuration at {} (default={})",
+                baseUrl,
+                entity.isDefault());
     }
 
     /**
-     * Materialize the environment-backed OpenAI Responses relay as a normal
-     * provider row while preserving an existing active default such as OpenCode.
+     * Materialize the environment-backed OpenAI Responses relay as a normal provider row while
+     * preserving an existing active default such as OpenCode.
      */
     @Transactional
     public void seedFromResponsesEnv() {
         if (!properties.isResponsesEnabled()
-            || !hasText(properties.getResponsesBaseUrl())
-            || !hasText(properties.getResponsesApiKey())) {
+                || !hasText(properties.getResponsesBaseUrl())
+                || !hasText(properties.getResponsesApiKey())) {
             return;
         }
         if (!crypto.isReady()) {
-            log.warn("APP_AI_RESPONSES_API_KEY is configured but APP_AI_MASTER_KEY is unavailable; provider was not materialized");
+            log.warn(
+                    "APP_AI_RESPONSES_API_KEY is configured but APP_AI_MASTER_KEY is unavailable; provider was not materialized");
             return;
         }
         var baseUrl = baseUrlValidator.validate(properties.getResponsesBaseUrl());
-        var configuredModel = hasText(properties.getResponsesModel())
-            ? properties.getResponsesModel().trim()
-            : "";
+        var configuredModel =
+                hasText(properties.getResponsesModel())
+                        ? properties.getResponsesModel().trim()
+                        : "";
         var models = normalizeModels(properties.getResponsesModels(), configuredModel);
         var model = configuredModel;
         if (!hasText(model) || !AiProviderResponse.parseModels(models).contains(model)) {
@@ -323,22 +412,30 @@ public class AiProviderService {
         var entity = repository.findByNameIgnoreCase(RESPONSES_ENV_PROVIDER_NAME).orElse(null);
         var shouldMakeDefault = !hadActiveDefault || (entity != null && entity.isDefault());
         if (entity == null) {
-            entity = AiProviderEntity.create(
-                RESPONSES_ENV_PROVIDER_NAME,
-                baseUrl,
-                encryptedKey,
-                models,
-                model,
-                true,
-                200,
-                200_000,
-                AiProviderType.OPENAI_RESPONSES);
+            entity =
+                    AiProviderEntity.create(
+                            RESPONSES_ENV_PROVIDER_NAME,
+                            baseUrl,
+                            encryptedKey,
+                            models,
+                            model,
+                            true,
+                            200,
+                            200_000,
+                            AiProviderType.OPENAI_RESPONSES);
             entity.markDefault(false);
             repository.save(entity);
             repository.flush();
         } else {
-            entity.update(RESPONSES_ENV_PROVIDER_NAME, baseUrl, models, model,
-                true, 200, 200_000, AiProviderType.OPENAI_RESPONSES);
+            entity.update(
+                    RESPONSES_ENV_PROVIDER_NAME,
+                    baseUrl,
+                    models,
+                    model,
+                    true,
+                    200,
+                    200_000,
+                    AiProviderType.OPENAI_RESPONSES);
             entity.replaceApiKey(encryptedKey);
             repository.save(entity);
         }
@@ -355,8 +452,10 @@ public class AiProviderService {
             repository.save(entity);
         }
         repository.flush();
-        log.info("OpenAI Responses provider materialized from environment configuration at {} (default={})",
-            baseUrl, entity.isDefault());
+        log.info(
+                "OpenAI Responses provider materialized from environment configuration at {} (default={})",
+                baseUrl,
+                entity.isDefault());
     }
 
     private String resolveModel(AiProviderEntity entity, String requestedModel) {
@@ -373,15 +472,25 @@ public class AiProviderService {
     private AiEndpoint toEndpoint(AiProviderEntity entity, String model) {
         String apiKey = null;
         if (entity.getProviderType() != AiProviderType.OPENCODE_SERVER
-            && entity.getApiKeyEncrypted() != null && !entity.getApiKeyEncrypted().isBlank()) {
+                && entity.getApiKeyEncrypted() != null
+                && !entity.getApiKeyEncrypted().isBlank()) {
             apiKey = crypto.decrypt(entity.getApiKeyEncrypted());
         }
         // 4A-6：providerId 与日限额随端点携带，供用量审计与预算检查
-        return new AiEndpoint(entity.getId(), entity.getProviderType(), entity.getBaseUrl(), apiKey, model,
-            properties.getRequestTimeout(), properties.getMaxOutputTokens(),
-            entity.getDailyRequestLimit(), entity.getDailyTokenLimit(),
-            properties.getOpencodeUsername(), properties.getOpencodePassword(),
-            properties.getOpencodeAgent(), properties.getOpencodeProviderId());
+        return new AiEndpoint(
+                entity.getId(),
+                entity.getProviderType(),
+                entity.getBaseUrl(),
+                apiKey,
+                model,
+                properties.getRequestTimeout(),
+                properties.getMaxOutputTokens(),
+                entity.getDailyRequestLimit(),
+                entity.getDailyTokenLimit(),
+                properties.getOpencodeUsername(),
+                properties.getOpencodePassword(),
+                properties.getOpencodeAgent(),
+                properties.getOpencodeProviderId());
     }
 
     private AiClient clientFor(AiProviderType providerType) {
@@ -397,8 +506,95 @@ public class AiProviderService {
         return openaiClient;
     }
 
+    private List<AiProviderModelResponse> modelCapabilities(AiProviderEntity entity) {
+        if (modelRepository == null || entity.getId() == null) return List.of();
+        return modelRepository.findByProviderIdOrderByModelAsc(entity.getId()).stream()
+                .map(AiProviderModelResponse::from)
+                .toList();
+    }
+
+    private void syncModelCapabilities(
+            AiProviderEntity provider, List<AiProviderModelRequest> declared) {
+        if (modelRepository == null || provider.getId() == null) return;
+        var models = new java.util.LinkedHashSet<String>();
+        models.add(provider.getDefaultModel());
+        models.addAll(AiProviderResponse.parseModels(provider.getModels()));
+        if (declared != null) {
+            declared.stream()
+                    .map(AiProviderModelRequest::model)
+                    .filter(AiProviderService::hasText)
+                    .forEach(models::add);
+        }
+        var declarations =
+                (declared == null ? List.<AiProviderModelRequest>of() : declared)
+                        .stream()
+                                .filter(value -> hasText(value.model()))
+                                .collect(
+                                        java.util.stream.Collectors.toMap(
+                                                value -> value.model().trim(),
+                                                value -> value,
+                                                (first, ignored) -> first,
+                                                LinkedHashMap::new));
+        for (var model : models) {
+            var request = declarations.get(model);
+            var existing =
+                    modelRepository.findByProviderIdAndModel(provider.getId(), model).orElse(null);
+            if (request == null && declared == null && existing != null) {
+                // A legacy provider update does not carry capability metadata. Preserve the
+                // operator's explicit declaration instead of silently replacing it with defaults.
+                continue;
+            }
+            var capabilities =
+                    request == null
+                            ? defaultCapabilities(provider.getProviderType())
+                            : request.capabilities();
+            var reasoning =
+                    request == null
+                            ? defaultReasoningEfforts(provider.getProviderType())
+                            : request.reasoningEfforts();
+            if (existing == null) {
+                modelRepository.save(
+                        AiProviderModelEntity.create(
+                                provider.getId(),
+                                model,
+                                capabilities,
+                                reasoning,
+                                request == null || request.enabledOrDefault()));
+            } else {
+                existing.updateCapabilities(
+                        capabilities, reasoning, request == null || request.enabledOrDefault());
+                modelRepository.save(existing);
+            }
+        }
+        modelRepository.deleteByProviderIdAndModelNotIn(provider.getId(), List.copyOf(models));
+    }
+
+    private static Collection<AiProviderCapability> defaultCapabilities(AiProviderType type) {
+        if (type == AiProviderType.OPENAI_RESPONSES || type == AiProviderType.ANTHROPIC) {
+            return EnumSet.of(
+                    AiProviderCapability.TEXT,
+                    AiProviderCapability.VISION,
+                    AiProviderCapability.FILE_INPUT,
+                    AiProviderCapability.REASONING,
+                    AiProviderCapability.TOOL_CALLING,
+                    AiProviderCapability.STRUCTURED_OUTPUT,
+                    AiProviderCapability.IMAGE_GENERATION);
+        }
+        return EnumSet.of(AiProviderCapability.TEXT);
+    }
+
+    private static Collection<String> defaultReasoningEfforts(AiProviderType type) {
+        return switch (type) {
+            case OPENAI_RESPONSES -> List.of("none", "low", "medium", "high", "xhigh", "max");
+            case ANTHROPIC -> List.of("none", "low", "medium", "high");
+            default -> List.of("none");
+        };
+    }
+
     private String keyTail(AiProviderEntity entity) {
-        if (entity.getApiKeyEncrypted() == null || entity.getApiKeyEncrypted().isBlank() || !crypto.isReady()) {
+        if (entity.getApiKeyEncrypted() == null
+                || entity.getApiKeyEncrypted().isBlank()
+                || !crypto.isReady()) {
             return null;
         }
         try {
@@ -413,15 +609,19 @@ public class AiProviderService {
         if (models == null || models.isEmpty()) {
             return "";
         }
-        return String.join(",", models.stream().map(String::trim).filter(m -> !m.isEmpty()).toList());
+        return String.join(
+                ",", models.stream().map(String::trim).filter(m -> !m.isEmpty()).toList());
     }
 
     private static String normalizeModels(String raw, String fallback) {
-        var values = raw == null ? List.<String>of() : Arrays.stream(raw.split(","))
-            .map(String::trim)
-            .filter(value -> !value.isEmpty())
-            .distinct()
-            .toList();
+        var values =
+                raw == null
+                        ? List.<String>of()
+                        : Arrays.stream(raw.split(","))
+                                .map(String::trim)
+                                .filter(value -> !value.isEmpty())
+                                .distinct()
+                                .toList();
         if (!values.isEmpty()) {
             return String.join(",", values);
         }
@@ -430,10 +630,10 @@ public class AiProviderService {
 
     private static String firstModel(String models) {
         return Arrays.stream(models.split(","))
-            .map(String::trim)
-            .filter(value -> !value.isEmpty())
-            .findFirst()
-            .orElse("claude-sonnet-5");
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .findFirst()
+                .orElse("claude-sonnet-5");
     }
 
     private static boolean hasText(String value) {

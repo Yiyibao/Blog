@@ -33,6 +33,30 @@ public class AiTaskEntity {
     @Column(name = "provider_id")
     private Long providerId;
 
+    @Column(name = "requested_provider_id")
+    private Long requestedProviderId;
+
+    @Column(name = "requested_model", length = 160)
+    private String requestedModel;
+
+    @Column(name = "requested_reasoning_effort", length = 16)
+    private String requestedReasoningEffort;
+
+    @Column(name = "resolved_provider_id")
+    private Long resolvedProviderId;
+
+    @Column(name = "resolved_model", length = 160)
+    private String resolvedModel;
+
+    @Column(name = "resolved_reasoning_effort", length = 16)
+    private String resolvedReasoningEffort;
+
+    @Column(name = "required_capabilities", length = 500)
+    private String requiredCapabilities;
+
+    @Column(name = "route_reason", length = 500)
+    private String routeReason;
+
     @Column(name = "provider_type", length = 32)
     private String providerType;
 
@@ -71,6 +95,17 @@ public class AiTaskEntity {
             Long providerId,
             String model,
             String idempotencyKey) {
+        return create(owner, sessionId, taskType, providerId, model, null, idempotencyKey);
+    }
+
+    public static AiTaskEntity create(
+            String owner,
+            Long sessionId,
+            String taskType,
+            Long providerId,
+            String model,
+            String reasoningEffort,
+            String idempotencyKey) {
         var entity = new AiTaskEntity();
         entity.id = UUID.randomUUID();
         entity.owner = owner;
@@ -79,16 +114,35 @@ public class AiTaskEntity {
         entity.status = AiTaskStatus.QUEUED;
         entity.providerId = providerId;
         entity.model = model;
+        entity.requestedProviderId = providerId;
+        entity.requestedModel = model;
+        entity.requestedReasoningEffort = reasoningEffort;
         entity.idempotencyKey = idempotencyKey;
         return entity;
     }
 
     public void start(String providerType, String resolvedModel) {
+        start(providerType, providerId, resolvedModel, requestedReasoningEffort, null, null);
+    }
+
+    public void start(
+            String providerType,
+            Long resolvedProviderId,
+            String resolvedModel,
+            String resolvedReasoningEffort,
+            String requiredCapabilities,
+            String routeReason) {
         requireStatus(AiTaskStatus.QUEUED);
         status = AiTaskStatus.RUNNING;
         startedAt = Instant.now();
         this.providerType = providerType;
+        this.providerId = resolvedProviderId;
         this.model = resolvedModel;
+        this.resolvedProviderId = resolvedProviderId;
+        this.resolvedModel = resolvedModel;
+        this.resolvedReasoningEffort = resolvedReasoningEffort;
+        this.requiredCapabilities = requiredCapabilities;
+        this.routeReason = routeReason;
         clearError();
     }
 
@@ -164,6 +218,38 @@ public class AiTaskEntity {
 
     public Long getProviderId() {
         return providerId;
+    }
+
+    public Long getRequestedProviderId() {
+        return requestedProviderId;
+    }
+
+    public String getRequestedModel() {
+        return requestedModel;
+    }
+
+    public String getRequestedReasoningEffort() {
+        return requestedReasoningEffort;
+    }
+
+    public Long getResolvedProviderId() {
+        return resolvedProviderId;
+    }
+
+    public String getResolvedModel() {
+        return resolvedModel;
+    }
+
+    public String getResolvedReasoningEffort() {
+        return resolvedReasoningEffort;
+    }
+
+    public String getRequiredCapabilities() {
+        return requiredCapabilities;
+    }
+
+    public String getRouteReason() {
+        return routeReason;
     }
 
     public String getProviderType() {

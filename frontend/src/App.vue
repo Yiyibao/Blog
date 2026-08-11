@@ -29,9 +29,10 @@ let scrollFrame: number | undefined;
 const isAdminRoute = computed(() => String(route.path).startsWith('/admin'));
 const isGuest = computed(() => !auth.isAuthenticated);
 const isLoginRoute = computed(() => route.name === 'login' || route.name === 'admin-login');
+const isAiWorkspaceRoute = computed(() => route.name === 'admin-ai' || route.name === 'ai-workspace-preview');
 // FD-29：管理角色总开关——ADMIN 与 PARTNER 同权；isAdmin 仅表示严格角色
 const isRestrictedMember = computed(() => auth.isAuthenticated && !auth.isStaff);
-const hasPetAssistant = computed(() => auth.isStaff && !isLoginRoute.value);
+const hasPetAssistant = computed(() => auth.isStaff && !isLoginRoute.value && !isAiWorkspaceRoute.value);
 
 function onKeydown(event: KeyboardEvent) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -281,7 +282,7 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <AmbientSound v-if="isAdminRoute" class="admin-ambient-sound" />
+    <AmbientSound v-if="isAdminRoute && !isAiWorkspaceRoute" class="admin-ambient-sound" />
 
     <nav v-if="menuOpen" class="mobile-nav" aria-label="移动端导航">
       <RouterLink to="/">首页 <span>01</span></RouterLink>

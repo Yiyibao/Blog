@@ -125,3 +125,21 @@ validated JSON, formula-safe CSV and copies of owner-authorized generated images
   tokens and 16 recent text messages. Each layer is independently bounded.
 - Cleanup runs hourly by default. It marks metadata expired in a transaction, then purges controlled
   bytes after commit; deletion failures remain retryable.
+
+## V54 workspace extension
+
+`V54__extend_ai_workspace_projects_and_provider_capabilities.sql` adds the project and explicit
+routing contract without changing V53:
+
+- `ai_projects`: owner-private title, `ACTIVE`/`ARCHIVED` status, archive timestamp, sort order and
+  optimistic-lock version. Archiving does not cascade to sessions.
+- `ai_sessions.project_id`, `status` and `archived_at`: a session can be moved out of a project,
+  archived, or soft-deleted while its task history remains queryable by the owner.
+- `ai_tasks.requested_*`, `resolved_*`, `required_capabilities` and `route_reason`: requested and
+  resolved provider/model/reasoning are both retained for auditability and failed routing is
+  visible instead of silently falling back.
+- `ai_provider_models`: one row per provider/model with explicit capability and reasoning-effort
+  sets. Capability routing reads this row; it does not infer support from model names.
+
+Project memory uses the existing `ai_memories.scope` field as `PROJECT:{ownedProjectId}` and is
+included only when the active session belongs to that same project.

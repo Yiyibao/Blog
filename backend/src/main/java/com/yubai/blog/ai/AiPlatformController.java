@@ -172,6 +172,23 @@ public class AiPlatformController {
         return ApiResponse.ok(fileService.get(fileId, principal.getName()));
     }
 
+    @GetMapping("/files/{fileId}/content")
+    public ResponseEntity<byte[]> fileContent(@PathVariable UUID fileId, Principal principal) {
+        requireMultimodal();
+        var content = fileService.readReady(fileId, principal.getName());
+        var metadata = content.metadata();
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(metadata.getMediaType()))
+                .contentLength(metadata.getSizeBytes())
+                .eTag("\"" + metadata.getSha256() + "\"")
+                .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+                .header("X-Content-Type-Options", "nosniff")
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename*=UTF-8''" + encodeFilename(metadata.getOriginalName()))
+                .body(content.bytes());
+    }
+
     @DeleteMapping("/files/{fileId}")
     public ApiResponse<Void> deleteFile(@PathVariable UUID fileId, Principal principal) {
         requireMultimodal();

@@ -42,7 +42,7 @@ class AiPlatformMigrationTest {
     }
 
     @Test
-    void freshAndV52UpgradeBothCreateTheCompleteM1Schema() {
+    void freshAndV52UpgradeBothCreateTheCompleteM2Schema() {
         migrate(FRESH_SCHEMA, null);
         migrate(UPGRADE_SCHEMA, "52");
         migrate(UPGRADE_SCHEMA, null);
@@ -61,7 +61,9 @@ class AiPlatformMigrationTest {
                             "ai_task_events",
                             "ai_files",
                             "ai_memories",
-                            "ai_artifacts");
+                            "ai_artifacts",
+                            "ai_projects",
+                            "ai_provider_models");
             var version =
                     jdbc.queryForObject(
                             "select version from "
@@ -69,8 +71,22 @@ class AiPlatformMigrationTest {
                                     + ".flyway_schema_history where success "
                                     + "order by installed_rank desc limit 1",
                             String.class);
-            assertThat(version).isEqualTo("53");
+            assertThat(version).isEqualTo("54");
+            assertThat(columnExists(schema, "ai_sessions", "project_id")).isTrue();
+            assertThat(columnExists(schema, "ai_tasks", "resolved_provider_id")).isTrue();
+            assertThat(columnExists(schema, "ai_tasks", "required_capabilities")).isTrue();
         }
+    }
+
+    private static boolean columnExists(String schema, String table, String column) {
+        return Boolean.TRUE.equals(
+                jdbc.queryForObject(
+                        "select exists (select 1 from information_schema.columns "
+                                + "where table_schema = ? and table_name = ? and column_name = ?)",
+                        Boolean.class,
+                        schema,
+                        table,
+                        column));
     }
 
     private static void migrate(String schema, String target) {

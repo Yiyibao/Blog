@@ -122,4 +122,65 @@ class OpenAiResponsesMultimodalClientTest {
         assertThat(input.findValuesAsText("role")).containsExactly("user", "assistant", "user");
         assertThat(input.at("/1/content/0/text").asText()).isEqualTo("first answer");
     }
+
+    @Test
+    void exposesAllowlistedToolsAndParsesStructuredFunctionCalls() throws Exception {
+        var captured = new AtomicReference<JsonNode>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext(
+                "/responses",
+                exchange -> {
+                    captured.set(objectMapper.readTree(exchange.getRequestBody()));
+                    var response =
+                            "{\"model\":\"fake-tools\",\"output\":[{"
+                                    + "\"type\":\"function_call\",\"call_id\":\"call-1\","
+                                    + "\"name\":\"generate_document\","
+                                    + "\"arguments\":\"{\\\"format\\\":\\\"PDF\\\"}\"}]}";
+                    var responseBytes = response.getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, responseBytes.length);
+                    exchange.getResponseBody().write(responseBytes);
+                    exchange.close();
+                });
+        server.start();
+        var endpoint =
+                new AiEndpoint(
+                        1L,
+                        AiProviderType.OPENAI_RESPONSES,
+                        "http://127.0.0.1:" + server.getAddress().getPort(),
+                        "test-key",
+                        "fake-tools",
+                        5,
+                        128,
+                        100,
+                        1_000,
+                        null,
+                        null,
+                        null,
+                        null);
+        var request =
+                new AiModelPreparedRequest(
+                        endpoint,
+                        1L,
+                        List.of(AiModelInputPart.text("生成报告")),
+                        Set.of(
+                                AiProviderCapability.TEXT,
+                                AiProviderCapability.TOOL_CALLING,
+                                AiProviderCapability.STRUCTURED_OUTPUT));
+
+        var result = new OpenAiResponsesMultimodalClient(new AiProperties()).execute(request);
+
+        assertThat(result.text()).isBlank();
+        assertThat(result.toolCalls())
+                .singleElement()
+                .satisfies(
+                        call -> {
+                            assertThat(call.name()).isEqualTo("generate_document");
+                            assertThat(call.id()).isEqualTo("call-1");
+                            assertThat(call.arguments()).contains("PDF");
+                        });
+        assertThat(captured.get().get("tools").toString())
+                .contains("generate_document", "generate_image");
+        assertThat(captured.get().get("store").asBoolean()).isFalse();
+    }
 }

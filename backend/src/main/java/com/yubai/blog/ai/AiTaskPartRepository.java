@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 public interface AiTaskPartRepository extends JpaRepository<AiTaskPartEntity, Long> {
     List<AiTaskPartEntity> findByTaskIdOrderBySequenceAsc(UUID taskId);
 
+    List<AiTaskPartEntity> findByTaskIdInOrderByCreatedAtAsc(List<UUID> taskIds);
+
     long countByTaskId(UUID taskId);
 
     @Query(

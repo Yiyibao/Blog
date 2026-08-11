@@ -9,6 +9,7 @@ public class AiPlatformProperties {
     private boolean memoryEnabled;
     private boolean artifactsEnabled;
     private int maxFileBytes = 15_000_000;
+    private int maxArtifactBytes = 15_000_000;
     private long maxOwnerFileBytes = 100_000_000L;
     private int maxOwnerFiles = 100;
     private int maxExtractedChars = 120_000;
@@ -68,6 +69,14 @@ public class AiPlatformProperties {
 
     public void setMaxFileBytes(int maxFileBytes) {
         this.maxFileBytes = maxFileBytes;
+    }
+
+    public int getMaxArtifactBytes() {
+        return maxArtifactBytes;
+    }
+
+    public void setMaxArtifactBytes(int maxArtifactBytes) {
+        this.maxArtifactBytes = maxArtifactBytes;
     }
 
     public long getMaxOwnerFileBytes() {

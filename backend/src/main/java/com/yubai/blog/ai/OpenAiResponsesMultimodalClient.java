@@ -42,7 +42,7 @@ public class OpenAiResponsesMultimodalClient {
     public AiModelResult execute(AiModelPreparedRequest request) {
         var endpoint = request.endpoint();
         try {
-            var body = buildBody(endpoint, request.parts());
+            var body = buildBodyForRequest(request);
             var response =
                     buildClient(endpoint)
                             .post()
@@ -52,7 +52,8 @@ public class OpenAiResponsesMultimodalClient {
                             .toEntity(JsonNode.class)
                             .getBody();
             var text = extractText(response);
-            if (text.isBlank()) {
+            var toolCalls = extractToolCalls(response);
+            if (text.isBlank() && toolCalls.isEmpty()) {
                 throw new AiServiceException(
                         HttpStatus.BAD_GATEWAY, "AI provider returned no output text");
             }
@@ -60,7 +61,8 @@ public class OpenAiResponsesMultimodalClient {
             return new AiModelResult(
                     text,
                     endpoint.providerType().name(),
-                    model == null || model.isBlank() ? endpoint.model() : model);
+                    model == null || model.isBlank() ? endpoint.model() : model,
+                    toolCalls);
         } catch (AiServiceException exception) {
             throw exception;
         } catch (HttpClientErrorException exception) {
@@ -83,6 +85,11 @@ public class OpenAiResponsesMultimodalClient {
     }
 
     Map<String, Object> buildBody(AiEndpoint endpoint, List<AiModelInputPart> parts) {
+        return buildBody(endpoint, parts, null);
+    }
+
+    private Map<String, Object> buildBody(
+            AiEndpoint endpoint, List<AiModelInputPart> parts, String requestedReasoning) {
         var input = new ArrayList<Map<String, Object>>();
         var content = new ArrayList<Map<String, Object>>();
         String role = null;
@@ -121,7 +128,88 @@ public class OpenAiResponsesMultimodalClient {
         body.put("stream", false);
         body.put("max_output_tokens", endpoint.maxOutputTokens());
         body.put("store", false);
+        if (requestedReasoning != null && !requestedReasoning.isBlank()) {
+            body.put("reasoning", Map.of("effort", requestedReasoning));
+        }
         return body;
+    }
+
+    private Map<String, Object> buildBodyForRequest(AiModelPreparedRequest request) {
+        var body =
+                buildBody(request.endpoint(), request.parts(), request.resolvedReasoningEffort());
+        var toolRequired =
+                request.requiredCapabilities() != null
+                        && request.requiredCapabilities()
+                                .contains(AiProviderCapability.TOOL_CALLING.name());
+        if (request.requiredCapabilities() == null || request.requiredCapabilities().isBlank()) {
+            toolRequired = request.capabilities().contains(AiProviderCapability.TOOL_CALLING);
+        }
+        if (toolRequired) {
+            body.put("tools", toolDefinitions());
+            body.put("parallel_tool_calls", true);
+        }
+        return body;
+    }
+
+    private static List<Map<String, Object>> toolDefinitions() {
+        return List.of(
+                Map.of(
+                        "type",
+                        "function",
+                        "name",
+                        "generate_image",
+                        "description",
+                        "Generate an image and return a private application artifact.",
+                        "parameters",
+                        Map.of(
+                                "type",
+                                "object",
+                                "additionalProperties",
+                                false,
+                                "required",
+                                List.of("prompt", "name"),
+                                "properties",
+                                Map.of(
+                                        "prompt", Map.of("type", "string", "maxLength", 32000),
+                                        "name", Map.of("type", "string", "maxLength", 255),
+                                        "provider", Map.of("type", "string"),
+                                        "model", Map.of("type", "string")))),
+                Map.of(
+                        "type",
+                        "function",
+                        "name",
+                        "generate_document",
+                        "description",
+                        "Create a private PDF, DOCX, XLSX, Markdown, text, JSON, or CSV artifact using the controlled renderer.",
+                        "parameters",
+                        Map.of(
+                                "type",
+                                "object",
+                                "additionalProperties",
+                                false,
+                                "required",
+                                List.of("format", "name", "content"),
+                                "properties",
+                                Map.of(
+                                        "format",
+                                        Map.of(
+                                                "type",
+                                                "string",
+                                                "enum",
+                                                List.of(
+                                                        "PDF",
+                                                        "DOCX",
+                                                        "XLSX",
+                                                        "MARKDOWN",
+                                                        "TEXT",
+                                                        "JSON",
+                                                        "CSV")),
+                                        "name",
+                                        Map.of("type", "string", "maxLength", 255),
+                                        "title",
+                                        Map.of("type", "string", "maxLength", 160),
+                                        "content",
+                                        Map.of("type", "string", "maxLength", 120000)))));
     }
 
     private static String apiRole(AiPartRole role) {
@@ -181,6 +269,22 @@ public class OpenAiResponsesMultimodalClient {
             }
         }
         return result.toString();
+    }
+
+    static List<AiToolCall> extractToolCalls(JsonNode body) {
+        if (body == null || !body.has("output") || !body.get("output").isArray()) return List.of();
+        var calls = new ArrayList<AiToolCall>();
+        for (var item : body.get("output")) {
+            if (!"function_call".equals(textValue(item.get("type")))) continue;
+            var id = textValue(item.get("call_id"));
+            if (id == null || id.isBlank()) id = textValue(item.get("id"));
+            var name = textValue(item.get("name"));
+            var arguments = textValue(item.get("arguments"));
+            if (name != null && !name.isBlank()) {
+                calls.add(new AiToolCall(id, name, arguments == null ? "{}" : arguments));
+            }
+        }
+        return List.copyOf(calls);
     }
 
     private static String textValue(JsonNode node) {

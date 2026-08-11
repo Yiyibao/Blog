@@ -19,6 +19,9 @@ import java.util.Set;
 import java.util.zip.ZipInputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -27,6 +30,9 @@ import org.springframework.stereotype.Component;
 public class AiFileParserRegistry {
     private static final String DOCX =
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final String XLSX =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    private static final String XLS = "application/vnd.ms-excel";
     private static final Map<String, String> MEDIA_TYPES =
             Map.ofEntries(
                     Map.entry("png", "image/png"),
@@ -35,6 +41,8 @@ public class AiFileParserRegistry {
                     Map.entry("webp", "image/webp"),
                     Map.entry("pdf", "application/pdf"),
                     Map.entry("docx", DOCX),
+                    Map.entry("xlsx", XLSX),
+                    Map.entry("xls", XLS),
                     Map.entry("txt", "text/plain"),
                     Map.entry("md", "text/markdown"),
                     Map.entry("markdown", "text/markdown"),
@@ -72,6 +80,7 @@ public class AiFileParserRegistry {
         return switch (mediaType) {
             case "application/pdf" -> new AiParsedFile(mediaType, parsePdf(bytes), false);
             case DOCX -> new AiParsedFile(mediaType, parseDocx(bytes), false);
+            case XLSX, XLS -> new AiParsedFile(mediaType, parseSpreadsheet(bytes), false);
             case "text/csv" -> new AiParsedFile(mediaType, parseCsv(bytes), false);
             case "application/json" -> new AiParsedFile(mediaType, parseJson(bytes), false);
             default -> new AiParsedFile(mediaType, parseText(bytes), false);
@@ -140,6 +149,44 @@ public class AiFileParserRegistry {
             return limit(text.toString());
         } catch (IOException | RuntimeException exception) {
             throw badRequest("DOCX is damaged or unsupported");
+        }
+    }
+
+    private String parseSpreadsheet(byte[] bytes) {
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var formatter = new DataFormatter();
+            var output = new StringBuilder();
+            var rowLimit = Math.max(1, properties.getMaxCsvRows());
+            var columnLimit = Math.max(1, properties.getMaxCsvColumns());
+            var rows = 0;
+            for (var sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
+                var sheet = workbook.getSheetAt(sheetIndex);
+                appendLine(output, "Sheet: " + sheet.getSheetName());
+                var lastRow = sheet.getLastRowNum();
+                if (lastRow >= rowLimit) throw badRequest("Spreadsheet row limit exceeded");
+                for (var rowIndex = sheet.getFirstRowNum(); rowIndex <= lastRow; rowIndex++) {
+                    var row = sheet.getRow(rowIndex);
+                    if (row == null) continue;
+                    var lastCell = row.getLastCellNum();
+                    if (lastCell > columnLimit) {
+                        throw badRequest("Spreadsheet column limit exceeded");
+                    }
+                    var line = new StringBuilder();
+                    for (var columnIndex = 0; columnIndex < Math.max(0, lastCell); columnIndex++) {
+                        if (!line.isEmpty()) line.append('\t');
+                        var cell = row.getCell(columnIndex);
+                        line.append(cell == null ? "" : formatter.formatCellValue(cell));
+                    }
+                    appendLine(output, line.toString());
+                    rows++;
+                    if (rows > rowLimit) throw badRequest("Spreadsheet row limit exceeded");
+                }
+            }
+            return limit(output.toString());
+        } catch (AiServiceException exception) {
+            throw exception;
+        } catch (IOException | RuntimeException exception) {
+            throw badRequest("Spreadsheet is damaged or unsupported");
         }
     }
 

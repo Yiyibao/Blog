@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,14 +21,25 @@ public class AiMemoryService {
     private final AiMemoryRepository repository;
     private final AiTaskRepository taskRepository;
     private final AiSessionRepository sessionRepository;
+    private final AiProjectService projectService;
 
     public AiMemoryService(
             AiMemoryRepository repository,
             AiTaskRepository taskRepository,
             AiSessionRepository sessionRepository) {
+        this(repository, taskRepository, sessionRepository, null);
+    }
+
+    @Autowired
+    public AiMemoryService(
+            AiMemoryRepository repository,
+            AiTaskRepository taskRepository,
+            AiSessionRepository sessionRepository,
+            AiProjectService projectService) {
         this.repository = repository;
         this.taskRepository = taskRepository;
         this.sessionRepository = sessionRepository;
+        this.projectService = projectService;
     }
 
     @Transactional
@@ -144,13 +156,26 @@ public class AiMemoryService {
 
     @Transactional(readOnly = true)
     public List<AiMemoryEntity> activeForContext(String owner, Long sessionId) {
+        // Context loading normally supplies an owned session. Keeping the scope fallback here
+        // also preserves the service's focused unit-test contract when only memory fixtures are
+        // present; project scope is intentionally unavailable without a session row.
+        var session = sessionRepository.findByIdAndOwner(sessionId, owner).orElse(null);
         var sessionScope = "SESSION:" + sessionId;
+        var projectScope =
+                session == null || session.getProjectId() == null
+                        ? null
+                        : "PROJECT:" + session.getProjectId();
         return activeForContext(owner).stream()
                 .filter(
                         memory ->
                                 switch (memory.getScope()) {
                                     case "USER", "GLOBAL", "SITE" -> true;
-                                    default -> sessionScope.equals(memory.getScope());
+                                    default ->
+                                            memory.getScope().startsWith("SESSION:")
+                                                    ? sessionScope.equals(memory.getScope())
+                                                    : projectScope != null
+                                                            && projectScope.equals(
+                                                                    memory.getScope());
                                 })
                 .toList();
     }
@@ -175,6 +200,20 @@ public class AiMemoryService {
                 var sessionId = Long.parseLong(normalized.substring("SESSION:".length()));
                 if (sessionRepository.findByIdAndOwner(sessionId, owner).isPresent()) {
                     return "SESSION:" + sessionId;
+                }
+            } catch (NumberFormatException ignored) {
+                // Report one stable validation error below.
+            }
+        }
+        if (normalized.startsWith("PROJECT:")) {
+            if (projectService == null) {
+                throw new AiServiceException(HttpStatus.BAD_REQUEST, "Unsupported AI memory scope");
+            }
+            try {
+                var projectId = Long.parseLong(normalized.substring("PROJECT:".length()));
+                var project = projectService.requireOwned(projectId, owner);
+                if (project.getStatus() == AiProjectStatus.ACTIVE) {
+                    return "PROJECT:" + projectId;
                 }
             } catch (NumberFormatException ignored) {
                 // Report one stable validation error below.

@@ -49,7 +49,8 @@ public class AiTaskService {
         }
         var session =
                 request.sessionId() == null
-                        ? sessionService.createForTask(owner, request.sessionTitle())
+                        ? sessionService.createForTask(
+                                owner, request.sessionTitle(), request.projectId())
                         : sessionService.requireOwned(request.sessionId(), owner);
         var task =
                 taskRepository.save(
@@ -59,6 +60,7 @@ public class AiTaskService {
                                 request.taskType() == null ? "CHAT" : request.taskType(),
                                 request.providerId(),
                                 request.model(),
+                                request.reasoningEffort(),
                                 idempotencyKey));
         var sequence = 1;
         for (var requested : request.parts()) {
@@ -104,9 +106,28 @@ public class AiTaskService {
 
     @Transactional
     public void start(UUID id, String owner, String providerType, String resolvedModel) {
+        start(id, owner, providerType, null, resolvedModel, null, null, null);
+    }
+
+    @Transactional
+    public void start(
+            UUID id,
+            String owner,
+            String providerType,
+            Long resolvedProviderId,
+            String resolvedModel,
+            String resolvedReasoningEffort,
+            String requiredCapabilities,
+            String routeReason) {
         var task = requireOwned(id, owner);
         if (task.getStatus() == AiTaskStatus.CANCELLED) return;
-        task.start(providerType, resolvedModel);
+        task.start(
+                providerType,
+                resolvedProviderId == null ? task.getProviderId() : resolvedProviderId,
+                resolvedModel,
+                resolvedReasoningEffort,
+                requiredCapabilities,
+                routeReason);
         taskRepository.save(task);
         eventService.append(
                 id, "task.started", Map.of("providerType", providerType, "model", resolvedModel));
@@ -129,6 +150,24 @@ public class AiTaskService {
                         null,
                         null));
         eventService.append(id, "message.completed", Map.of("content", text));
+    }
+
+    @Transactional
+    public void appendToolPart(
+            UUID id,
+            String owner,
+            AiPartRole role,
+            AiPartKind kind,
+            String text,
+            String payload,
+            UUID artifactId,
+            String sourceRef) {
+        var task = requireOwned(id, owner);
+        if (task.getStatus() != AiTaskStatus.RUNNING) return;
+        var sequence = Math.toIntExact(partRepository.countByTaskId(id) + 1);
+        partRepository.save(
+                AiTaskPartEntity.create(
+                        id, sequence, role, kind, text, payload, null, artifactId, sourceRef));
     }
 
     @Transactional

@@ -4,12 +4,30 @@ export type AiPartKind =
   'TEXT' | 'IMAGE_REF' | 'FILE_REF' | 'ARTIFACT_REF' | 'TOOL_CALL' | 'TOOL_RESULT' | 'SOURCE_REF';
 export type AiTaskStatus = 'QUEUED' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type AiMemoryStatus = 'PROPOSED' | 'ACTIVE' | 'REJECTED' | 'DISABLED' | 'DELETED';
-export type AiArtifactFormat = 'MARKDOWN' | 'TEXT' | 'JSON' | 'CSV' | 'IMAGE';
+export type AiArtifactFormat = 'MARKDOWN' | 'TEXT' | 'JSON' | 'CSV' | 'PDF' | 'DOCX' | 'XLSX' | 'IMAGE';
+export type AiProjectStatus = 'ACTIVE' | 'ARCHIVED';
+export type AiSessionStatus = 'ACTIVE' | 'ARCHIVED' | 'DELETED';
+export type AiReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export interface AiProject {
+  id: number;
+  title: string;
+  status: AiProjectStatus;
+  archivedAt: string | null;
+  sortOrder: number;
+  sessionCount: number;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface AiSession {
   id: number;
   title: string | null;
   mode: 'WORKSPACE' | 'COMPACT' | 'PET';
+  projectId?: number | null;
+  status?: AiSessionStatus;
+  archivedAt?: string | null;
   summary: string | null;
   version: number;
   createdAt: string;
@@ -49,6 +67,14 @@ export interface AiTask {
   providerId: number | null;
   providerType: string | null;
   model: string | null;
+  requestedProviderId?: number | null;
+  requestedModel?: string | null;
+  requestedReasoningEffort?: AiReasoningEffort | null;
+  resolvedProviderId?: number | null;
+  resolvedModel?: string | null;
+  resolvedReasoningEffort?: AiReasoningEffort | null;
+  requiredCapabilities?: string | null;
+  routeReason?: string | null;
   errorCode: string | null;
   errorMessage: string | null;
   version: number;
@@ -57,6 +83,26 @@ export interface AiTask {
   createdAt: string;
   updatedAt: string;
   parts: AiTaskPart[];
+}
+
+export interface AiConversationMessage {
+  taskId: string;
+  sequence: number;
+  role: AiTaskPart['role'];
+  kind: AiPartKind;
+  text: string | null;
+  fileId: string | null;
+  artifactId: string | null;
+  sourceRef: string | null;
+  createdAt: string;
+}
+
+export interface AiSessionConversation {
+  session: AiSession;
+  messages: AiConversationMessage[];
+  hasMore: boolean;
+  page: number;
+  size: number;
 }
 
 export interface AiTaskEvent {
@@ -97,10 +143,12 @@ export interface AiArtifact {
 
 export interface AiTaskCreateInput {
   sessionId?: number | null;
+  projectId?: number | null;
   sessionTitle?: string;
   taskType?: 'CHAT' | 'ANALYZE' | 'GENERATE';
   providerId?: number | null;
   model?: string | null;
+  reasoningEffort?: AiReasoningEffort | null;
   idempotencyKey: string;
   parts: Array<{
     kind: 'TEXT' | 'IMAGE_REF' | 'FILE_REF';
@@ -109,12 +157,54 @@ export interface AiTaskCreateInput {
   }>;
 }
 
-export function createAiSession(title?: string) {
-  return unwrap<AiSession>(api.post('/ai/sessions', { title, mode: 'WORKSPACE' }));
+export function createAiSession(title?: string, projectId?: number | null) {
+  return unwrap<AiSession>(api.post('/ai/sessions', { title, projectId, mode: 'WORKSPACE' }));
 }
 
 export function fetchAiSessions() {
   return unwrap<AiSession[]>(api.get('/ai/sessions'));
+}
+
+export function fetchAiProjects() {
+  return unwrap<AiProject[]>(api.get('/ai/projects'));
+}
+
+export function createAiProject(title: string) {
+  return unwrap<AiProject>(api.post('/ai/projects', { title }));
+}
+
+export function updateAiProject(projectId: number, title: string, version?: number) {
+  return unwrap<AiProject>(api.patch(`/ai/projects/${projectId}`, { title, version }));
+}
+
+export function archiveAiProject(projectId: number) {
+  return unwrap<AiProject>(api.post(`/ai/projects/${projectId}/archive`));
+}
+
+export function restoreAiProject(projectId: number) {
+  return unwrap<AiProject>(api.post(`/ai/projects/${projectId}/restore`));
+}
+
+export function updateAiSession(sessionId: number, title: string, version?: number) {
+  return unwrap<AiSession>(api.patch(`/ai/sessions/${sessionId}`, { title, version }));
+}
+
+export function moveAiSession(sessionId: number, projectId: number | null) {
+  return unwrap<AiSession>(api.post(`/ai/sessions/${sessionId}/move`, { projectId }));
+}
+
+export function archiveAiSession(sessionId: number) {
+  return unwrap<AiSession>(api.post(`/ai/sessions/${sessionId}/archive`));
+}
+
+export function deleteAiSession(sessionId: number) {
+  return unwrap<AiSession>(api.delete(`/ai/sessions/${sessionId}`));
+}
+
+export function fetchAiSessionConversation(sessionId: number, page = 0, size = 80) {
+  return unwrap<AiSessionConversation>(
+    api.get(`/ai/sessions/${sessionId}/conversation`, { params: { page, size } }),
+  );
 }
 
 export function createAiTask(input: AiTaskCreateInput) {
@@ -198,6 +288,27 @@ export function fetchAiFiles() {
 
 export function deleteAiFile(fileId: string) {
   return unwrap<void>(api.delete(`/ai/files/${encodeURIComponent(fileId)}`));
+}
+
+export async function fetchAiFileContent(fileId: string) {
+  const response = await api.get<Blob>(`/ai/files/${encodeURIComponent(fileId)}/content`, {
+    responseType: 'blob',
+    timeout: 30_000,
+  });
+  return response.data;
+}
+
+export async function downloadAiFile(file: AiFile) {
+  const blob = await fetchAiFileContent(file.id);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = file.name;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function fetchAiMemories() {

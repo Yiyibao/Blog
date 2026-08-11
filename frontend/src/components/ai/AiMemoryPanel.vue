@@ -6,6 +6,7 @@ const props = defineProps<{
   memories: AiMemory[];
   disabled?: boolean;
   currentSessionId?: number | null;
+  currentProjectId?: number | null;
   currentTaskId?: string | null;
   sessionSummary?: string | null;
 }>();
@@ -19,7 +20,7 @@ const emit = defineEmits<{
   clearSummary: [];
 }>();
 const content = ref('');
-const scope = ref<'USER' | 'SESSION'>('USER');
+const scope = ref<'USER' | 'SESSION' | 'PROJECT'>('USER');
 const editingId = ref<string | null>(null);
 const editingContent = ref('');
 
@@ -27,7 +28,11 @@ function create(sourceTaskId: string | null = null) {
   const value = content.value.trim();
   if (!value) return;
   const selectedScope =
-    scope.value === 'SESSION' && props.currentSessionId ? `SESSION:${props.currentSessionId}` : 'USER';
+    scope.value === 'SESSION' && props.currentSessionId
+      ? `SESSION:${props.currentSessionId}`
+      : scope.value === 'PROJECT' && props.currentProjectId
+        ? `PROJECT:${props.currentProjectId}`
+        : 'USER';
   emit('create', value, selectedScope, sourceTaskId);
   content.value = '';
 }
@@ -75,6 +80,7 @@ function save(memory: AiMemory) {
         <select v-model="scope" :disabled="disabled">
           <option value="USER">所有会话</option>
           <option value="SESSION" :disabled="!currentSessionId">当前会话</option>
+          <option value="PROJECT" :disabled="!currentProjectId">当前项目</option>
         </select>
       </label>
       <div class="ai-memory-form__actions">

@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +17,11 @@ public interface AiTaskRepository extends JpaRepository<AiTaskEntity, UUID> {
     Optional<AiTaskEntity> findByOwnerAndIdempotencyKey(String owner, String idempotencyKey);
 
     List<AiTaskEntity> findByOwnerOrderByCreatedAtDesc(String owner);
+
+    List<AiTaskEntity> findByOwnerAndSessionIdOrderByCreatedAtDesc(
+            String owner, Long sessionId, Pageable pageable);
+
+    List<AiTaskEntity> findByOwnerAndSessionIdOrderByCreatedAtAsc(String owner, Long sessionId);
 
     List<AiTaskEntity> findByStatusInAndUpdatedAtBefore(
             List<AiTaskStatus> statuses, Instant cutoff);

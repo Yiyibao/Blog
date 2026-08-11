@@ -4,6 +4,8 @@ public enum AiProviderCapability {
     TEXT,
     VISION,
     FILE_INPUT,
+    REASONING,
+    TOOL_CALLING,
     FUNCTION_CALLING,
     STRUCTURED_OUTPUT,
     CODE_INTERPRETER,

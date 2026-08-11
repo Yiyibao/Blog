@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class AiPlatformControllerTest {
     private AiTaskService taskService;
     private AiTaskEventService eventService;
+    private AiFileService fileService;
     private AiArtifactService artifactService;
     private MockMvc mockMvc;
 
@@ -32,9 +33,11 @@ class AiPlatformControllerTest {
     void setup() {
         var properties = new AiPlatformProperties();
         properties.setTasksEnabled(true);
+        properties.setMultimodalEnabled(true);
         properties.setArtifactsEnabled(true);
         taskService = mock(AiTaskService.class);
         eventService = mock(AiTaskEventService.class);
+        fileService = mock(AiFileService.class);
         artifactService = mock(AiArtifactService.class);
         var controller =
                 new AiPlatformController(
@@ -43,7 +46,7 @@ class AiPlatformControllerTest {
                         taskService,
                         mock(AiTaskOrchestrator.class),
                         eventService,
-                        mock(AiFileService.class),
+                        fileService,
                         mock(AiMemoryService.class),
                         artifactService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
@@ -79,6 +82,37 @@ class AiPlatformControllerTest {
                                         HttpHeaders.CONTENT_DISPOSITION,
                                         "attachment; filename*=UTF-8''result.md"));
         verify(artifactService).read(artifactId, "alice");
+    }
+
+    @Test
+    void fileContentIsAControlledPrivateInlineResource() throws Exception {
+        var fileId = UUID.randomUUID();
+        var bytes = "private note".getBytes(StandardCharsets.UTF_8);
+        var entity =
+                AiFileEntity.ready(
+                        fileId,
+                        "alice",
+                        "ai-files/private.txt",
+                        "私人资料.txt",
+                        "text/plain",
+                        bytes.length,
+                        AiFileService.sha256(bytes),
+                        AiFileRetention.THIRTY_DAYS,
+                        Instant.now().plusSeconds(60),
+                        "private note");
+        when(fileService.readReady(fileId, "alice"))
+                .thenReturn(new AiFileService.AiFileContent(entity, bytes));
+
+        mockMvc.perform(get("/api/v1/ai/files/{fileId}/content", fileId).principal(() -> "alice"))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(bytes))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "private, no-store"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(
+                        header().string(
+                                        HttpHeaders.CONTENT_DISPOSITION,
+                                        "inline; filename*=UTF-8''%E7%A7%81%E4%BA%BA%E8%B5%84%E6%96%99.txt"));
+        verify(fileService).readReady(fileId, "alice");
     }
 
     @Test

@@ -74,16 +74,48 @@ class AiMultimodalPlatformIntegrationTest {
         provider.createContext(
                 "/responses",
                 exchange -> {
-                    REQUESTS.add(MAPPER.readTree(exchange.getRequestBody()));
-                    var response =
-                            "{\"model\":\"fake-multimodal\",\"output_text\":\"fake answer\"}"
-                                    .getBytes(StandardCharsets.UTF_8);
+                    var request = MAPPER.readTree(exchange.getRequestBody());
+                    REQUESTS.add(request);
+                    var responseBody =
+                            request.has("tools")
+                                    ? toolResponse()
+                                    : "{\"model\":\"fake-multimodal\",\"output_text\":\"fake answer\"}";
+                    var response = responseBody.getBytes(StandardCharsets.UTF_8);
                     exchange.getResponseHeaders().add("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, response.length);
                     exchange.getResponseBody().write(response);
                     exchange.close();
                 });
         provider.start();
+    }
+
+    private static String toolResponse() {
+        try {
+            var output = MAPPER.createArrayNode();
+            for (var spec :
+                    List.of(
+                            List.of("call-pdf", "PDF", "report.pdf", "# 中文报告\n\nPDF 关键事实"),
+                            List.of("call-docx", "DOCX", "report.docx", "## Word 结论\n\nDOCX 关键事实"),
+                            List.of("call-xlsx", "XLSX", "report.xlsx", "名称,值\n关键事实,100"))) {
+                var arguments =
+                        MAPPER.writeValueAsString(
+                                java.util.Map.of(
+                                        "format", spec.get(1),
+                                        "name", spec.get(2),
+                                        "content", spec.get(3)));
+                var call = output.addObject();
+                call.put("type", "function_call");
+                call.put("call_id", spec.get(0));
+                call.put("name", "generate_document");
+                call.put("arguments", arguments);
+            }
+            var body = MAPPER.createObjectNode();
+            body.put("model", "fake-tools");
+            body.set("output", output);
+            return MAPPER.writeValueAsString(body);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to build fake tool response", exception);
+        }
     }
 
     @AfterAll
@@ -135,11 +167,15 @@ class AiMultimodalPlatformIntegrationTest {
                         .getContentAsString(StandardCharsets.UTF_8);
         var paths = MAPPER.readTree(body).path("paths");
         assertThat(paths.has("/api/v1/ai/sessions")).isTrue();
+        assertThat(paths.has("/api/v1/ai/projects")).isTrue();
+        assertThat(paths.has("/api/v1/ai/projects/{projectId}/sessions")).isTrue();
+        assertThat(paths.has("/api/v1/ai/sessions/{sessionId}/conversation")).isTrue();
         assertThat(paths.has("/api/v1/ai/sessions/{sessionId}/summary")).isTrue();
         assertThat(paths.has("/api/v1/ai/tasks")).isTrue();
         assertThat(paths.has("/api/v1/ai/tasks/{taskId}/run")).isTrue();
         assertThat(paths.has("/api/v1/ai/tasks/{taskId}/stream")).isTrue();
         assertThat(paths.has("/api/v1/ai/files")).isTrue();
+        assertThat(paths.has("/api/v1/ai/files/{fileId}/content")).isTrue();
         assertThat(paths.has("/api/v1/ai/memories/{memoryId}/confirm")).isTrue();
         assertThat(paths.has("/api/v1/ai/tasks/{taskId}/artifacts")).isTrue();
         assertThat(paths.has("/api/v1/ai/artifacts/{artifactId}/download")).isTrue();
@@ -291,7 +327,7 @@ class AiMultimodalPlatformIntegrationTest {
         assertThat(followUpInput.toString()).contains("理解附件", "fake answer", "继续解释上一轮");
         assertThat(eventService.replay(first.id(), 2).getFirst().sequence()).isGreaterThan(2);
 
-        var requestCountBeforeCapabilityFailure = REQUESTS.size();
+        var requestCountBeforeCapabilityRouting = REQUESTS.size();
         var textOnlyProvider =
                 providerService.create(
                         new AiProviderRequest(
@@ -323,11 +359,12 @@ class AiMultimodalPlatformIntegrationTest {
                                                         null,
                                                         null))))
                         .task();
-        var capabilityFailure = orchestrator.run(unsupported.id(), OWNER);
-        assertThat(capabilityFailure.status()).isEqualTo(AiTaskStatus.FAILED);
-        assertThat(capabilityFailure.errorCode()).isEqualTo("AI_PROVIDER_ERROR_400");
-        assertThat(capabilityFailure.errorMessage()).contains("VISION");
-        assertThat(REQUESTS).hasSize(requestCountBeforeCapabilityFailure);
+        var capabilityRouting = orchestrator.run(unsupported.id(), OWNER);
+        assertThat(capabilityRouting.status()).isEqualTo(AiTaskStatus.COMPLETED);
+        assertThat(capabilityRouting.requestedProviderId()).isEqualTo(textOnlyProvider.id());
+        assertThat(capabilityRouting.resolvedProviderId()).isNotEqualTo(textOnlyProvider.id());
+        assertThat(capabilityRouting.routeReason()).contains("VISION");
+        assertThat(REQUESTS).hasSize(requestCountBeforeCapabilityRouting + 1);
 
         var proposed =
                 memoryService.create(
@@ -408,6 +445,64 @@ class AiMultimodalPlatformIntegrationTest {
                 .isInstanceOf(NotFoundException.class);
         assertThatThrownBy(() -> artifactService.read(markdown.id(), OTHER))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void structuredDocumentToolCallsCreateThreeValidatedArtifactsInTheConversation()
+            throws Exception {
+        var registered =
+                providerService.create(
+                        new AiProviderRequest(
+                                "M2 fake tools",
+                                "http://127.0.0.1:" + provider.getAddress().getPort(),
+                                "fake-key",
+                                List.of("fake-tools"),
+                                "fake-tools",
+                                true,
+                                100,
+                                100_000,
+                                AiProviderType.OPENAI_RESPONSES));
+        var creation =
+                taskService.create(
+                        OWNER,
+                        new AiTaskCreateRequest(
+                                null,
+                                null,
+                                "生成三种文件",
+                                "GENERATE",
+                                registered.id(),
+                                "fake-tools",
+                                null,
+                                "m2-tools-" + UUID.randomUUID(),
+                                List.of(
+                                        new AiTaskPartRequest(
+                                                AiPartKind.TEXT,
+                                                "请生成中文 PDF、DOCX 和 XLSX",
+                                                null,
+                                                null,
+                                                null))));
+
+        var response = orchestrator.run(creation.task().id(), OWNER);
+        var artifacts = artifactService.listForTask(creation.task().id(), OWNER);
+
+        assertThat(response.status())
+                .as(
+                        "tool task error=%s message=%s parts=%s",
+                        response.errorCode(), response.errorMessage(), response.parts())
+                .isEqualTo(AiTaskStatus.COMPLETED);
+        assertThat(artifacts).hasSize(3);
+        assertThat(artifacts)
+                .extracting(AiArtifactResponse::mediaType)
+                .containsExactlyInAnyOrder(
+                        "application/pdf",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertThat(response.parts())
+                .extracting(AiTaskPartResponse::kind)
+                .contains(AiPartKind.TOOL_CALL, AiPartKind.TOOL_RESULT, AiPartKind.ARTIFACT_REF);
+        for (var artifact : artifacts) {
+            assertThat(artifactService.read(artifact.id(), OWNER).bytes()).isNotEmpty();
+        }
     }
 
     private void runTextTask(Long providerId, String idempotencyKey) {

@@ -532,6 +532,86 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/ai/sessions/{sessionId}/move': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['moveSession'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/sessions/{sessionId}/archive': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['archiveSession'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/projects': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['projects'];
+    put?: never;
+    post: operations['createProject'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/projects/{projectId}/restore': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['restoreProject'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/projects/{projectId}/archive': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['archiveProject'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ai/memories': {
     parameters: {
       query?: never;
@@ -1092,6 +1172,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/ai/sessions/{sessionId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations['deleteSession'];
+    options?: never;
+    head?: never;
+    patch: operations['updateSession'];
+    trace?: never;
+  };
+  '/api/v1/ai/projects/{projectId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations['renameProject'];
+    trace?: never;
+  };
   '/api/v1/ai/memories/{memoryId}': {
     parameters: {
       query?: never;
@@ -1620,6 +1732,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/ai/sessions/{sessionId}/conversation': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['conversation'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/projects/{projectId}/sessions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['projectSessions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ai/files/{fileId}': {
     parameters: {
       query?: never;
@@ -1631,6 +1775,22 @@ export interface paths {
     put?: never;
     post?: never;
     delete: operations['deleteFile'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/files/{fileId}/content': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['fileContent'];
+    put?: never;
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -2062,7 +2222,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete: operations['deleteSession'];
+    delete: operations['deleteSession_1'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2509,6 +2669,24 @@ export interface components {
       /** Format: date-time */
       timestamp?: string;
     };
+    AiProviderModelRequest: {
+      model: string;
+      capabilities?: (
+        | 'TEXT'
+        | 'VISION'
+        | 'FILE_INPUT'
+        | 'REASONING'
+        | 'TOOL_CALLING'
+        | 'FUNCTION_CALLING'
+        | 'STRUCTURED_OUTPUT'
+        | 'CODE_INTERPRETER'
+        | 'FILE_SEARCH'
+        | 'IMAGE_GENERATION'
+        | 'STATEFUL_CONVERSATION'
+      )[];
+      reasoningEfforts?: string[];
+      enabled?: boolean;
+    };
     AiProviderRequest: {
       name: string;
       baseUrl: string;
@@ -2522,6 +2700,29 @@ export interface components {
       dailyTokenLimit?: number;
       /** @enum {string} */
       providerType?: 'OPENAI_COMPATIBLE' | 'OPENAI_RESPONSES' | 'ANTHROPIC' | 'OPENCODE_SERVER';
+      modelCapabilities?: components['schemas']['AiProviderModelRequest'][];
+    };
+    AiProviderModelResponse: {
+      model?: string;
+      capabilities?: (
+        | 'TEXT'
+        | 'VISION'
+        | 'FILE_INPUT'
+        | 'REASONING'
+        | 'TOOL_CALLING'
+        | 'FUNCTION_CALLING'
+        | 'STRUCTURED_OUTPUT'
+        | 'CODE_INTERPRETER'
+        | 'FILE_SEARCH'
+        | 'IMAGE_GENERATION'
+        | 'STATEFUL_CONVERSATION'
+      )[];
+      reasoningEfforts?: string[];
+      enabled?: boolean;
+      /** Format: int64 */
+      version?: number;
+      /** Format: date-time */
+      updatedAt?: string;
     };
     AiProviderResponse: {
       /** Format: int64 */
@@ -2529,6 +2730,7 @@ export interface components {
       name?: string;
       baseUrl?: string;
       models?: string[];
+      modelCapabilities?: components['schemas']['AiProviderModelResponse'][];
       defaultModel?: string;
       enabled?: boolean;
       isDefault?: boolean;
@@ -2718,11 +2920,14 @@ export interface components {
     AiTaskCreateRequest: {
       /** Format: int64 */
       sessionId?: number;
+      /** Format: int64 */
+      projectId?: number;
       sessionTitle?: string;
       taskType?: string;
       /** Format: int64 */
       providerId?: number;
       model?: string;
+      reasoningEffort?: string;
       idempotencyKey?: string;
       parts: components['schemas']['AiTaskPartRequest'][];
     };
@@ -2764,6 +2969,16 @@ export interface components {
       providerId?: number;
       providerType?: string;
       model?: string;
+      /** Format: int64 */
+      requestedProviderId?: number;
+      requestedModel?: string;
+      requestedReasoningEffort?: string;
+      /** Format: int64 */
+      resolvedProviderId?: number;
+      resolvedModel?: string;
+      resolvedReasoningEffort?: string;
+      requiredCapabilities?: string;
+      routeReason?: string;
       errorCode?: string;
       errorMessage?: string;
       /** Format: int64 */
@@ -2789,7 +3004,7 @@ export interface components {
     AiArtifactCreateRequest: {
       name: string;
       /** @enum {string} */
-      format: 'MARKDOWN' | 'TEXT' | 'JSON' | 'CSV' | 'IMAGE';
+      format: 'MARKDOWN' | 'TEXT' | 'JSON' | 'CSV' | 'PDF' | 'DOCX' | 'XLSX' | 'IMAGE';
       content?: string;
       /** Format: uuid */
       sourceImageId?: string;
@@ -2824,12 +3039,20 @@ export interface components {
     AiSessionCreateRequest: {
       title?: string;
       mode?: string;
+      /** Format: int64 */
+      projectId?: number;
     };
     AiSessionResponse: {
       /** Format: int64 */
       id?: number;
       title?: string;
       mode?: string;
+      /** Format: int64 */
+      projectId?: number;
+      /** @enum {string} */
+      status?: 'ACTIVE' | 'ARCHIVED' | 'DELETED';
+      /** Format: date-time */
+      archivedAt?: string;
       summary?: string;
       /** Format: int64 */
       version?: number;
@@ -2843,6 +3066,40 @@ export interface components {
       code?: number;
       message?: string;
       data?: components['schemas']['AiSessionResponse'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    AiSessionMoveRequest: {
+      /** Format: int64 */
+      projectId?: number;
+    };
+    AiProjectCreateRequest: {
+      title: string;
+    };
+    AiProjectResponse: {
+      /** Format: int64 */
+      id?: number;
+      title?: string;
+      /** @enum {string} */
+      status?: 'ACTIVE' | 'ARCHIVED';
+      /** Format: date-time */
+      archivedAt?: string;
+      /** Format: int32 */
+      sortOrder?: number;
+      /** Format: int64 */
+      version?: number;
+      /** Format: int32 */
+      sessionCount?: number;
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: date-time */
+      updatedAt?: string;
+    };
+    ApiResponseAiProjectResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['AiProjectResponse'];
       /** Format: date-time */
       timestamp?: string;
     };
@@ -3239,6 +3496,18 @@ export interface components {
     };
     ChatAppendRequest: {
       messages: components['schemas']['ChatMessage'][];
+    };
+    AiSessionUpdateRequest: {
+      title?: string;
+      /** Format: int64 */
+      projectId?: number;
+      /** Format: int64 */
+      version?: number;
+    };
+    AiProjectUpdateRequest: {
+      title: string;
+      /** Format: int64 */
+      version?: number;
     };
     AiMemoryUpdateRequest: {
       scope: string;
@@ -3726,6 +3995,49 @@ export interface components {
       code?: number;
       message?: string;
       data?: components['schemas']['AiSessionResponse'][];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    AiConversationMessageResponse: {
+      /** Format: uuid */
+      taskId?: string;
+      /** Format: int32 */
+      sequence?: number;
+      /** @enum {string} */
+      role?: 'SYSTEM' | 'USER' | 'ASSISTANT' | 'TOOL';
+      /** @enum {string} */
+      kind?: 'TEXT' | 'IMAGE_REF' | 'FILE_REF' | 'ARTIFACT_REF' | 'TOOL_CALL' | 'TOOL_RESULT' | 'SOURCE_REF';
+      text?: string;
+      /** Format: uuid */
+      fileId?: string;
+      /** Format: uuid */
+      artifactId?: string;
+      sourceRef?: string;
+      /** Format: date-time */
+      createdAt?: string;
+    };
+    AiSessionConversationResponse: {
+      session?: components['schemas']['AiSessionResponse'];
+      messages?: components['schemas']['AiConversationMessageResponse'][];
+      hasMore?: boolean;
+      /** Format: int32 */
+      page?: number;
+      /** Format: int32 */
+      size?: number;
+    };
+    ApiResponseAiSessionConversationResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['AiSessionConversationResponse'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    ApiResponseListAiProjectResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['AiProjectResponse'][];
       /** Format: date-time */
       timestamp?: string;
     };
@@ -6346,6 +6658,274 @@ export interface operations {
       };
     };
   };
+  moveSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AiSessionMoveRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiSessionResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  archiveSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiSessionResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  projects: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListAiProjectResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  createProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiProjectCreateRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiProjectResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  restoreProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiProjectResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  archiveProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiProjectResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   memories: {
     parameters: {
       query?: never;
@@ -8606,6 +9186,146 @@ export interface operations {
       };
     };
   };
+  deleteSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiSessionResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  updateSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sessionId: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiSessionUpdateRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiSessionResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  renameProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AiProjectUpdateRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiProjectResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   memory: {
     parameters: {
       query?: never;
@@ -10196,6 +10916,97 @@ export interface operations {
       };
     };
   };
+  conversation: {
+    parameters: {
+      query?: {
+        page?: number;
+        size?: number;
+      };
+      header?: never;
+      path: {
+        sessionId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAiSessionConversationResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  projectSessions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListAiSessionResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   file: {
     parameters: {
       query?: never;
@@ -10258,6 +11069,50 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseVoid'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  fileContent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        fileId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': string;
         };
       };
       /** @description Bad Request */
@@ -11411,7 +12266,7 @@ export interface operations {
       };
     };
   };
-  deleteSession: {
+  deleteSession_1: {
     parameters: {
       query?: never;
       header?: never;

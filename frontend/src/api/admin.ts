@@ -743,8 +743,20 @@ export type AiChatRole = 'user' | 'assistant';
  * frontend-only value: omitting the field lets the configured provider default
  * decide the effort.
  */
-export type AiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type AiReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type AiReasoningSelection = 'auto' | AiReasoningEffort;
+
+export type AiProviderCapability =
+  'TEXT' | 'VISION' | 'FILE_INPUT' | 'IMAGE_GENERATION' | 'STRUCTURED_OUTPUT' | 'REASONING' | 'TOOL_CALLING';
+
+export interface AiProviderModelCapability {
+  model: string;
+  capabilities: AiProviderCapability[];
+  reasoningEfforts: AiReasoningEffort[];
+  enabled: boolean;
+  version: number;
+  updatedAt: string;
+}
 
 export interface AiChatMessage {
   role: AiChatRole;
@@ -943,6 +955,7 @@ export interface AiProvider {
   baseUrl: string;
   providerType: AiProviderType;
   models: string[];
+  modelCapabilities?: AiProviderModelCapability[];
   defaultModel: string;
   enabled: boolean;
   isDefault: boolean;
@@ -961,6 +974,12 @@ export interface AiProviderPayload {
   /** 新建可留空（无鉴权端点）；编辑时省略或留空表示保留原密钥。 */
   apiKey?: string;
   models: string[];
+  modelCapabilities?: Array<{
+    model: string;
+    capabilities: AiProviderCapability[];
+    reasoningEfforts: AiReasoningEffort[];
+    enabled: boolean;
+  }>;
   defaultModel: string;
   enabled: boolean;
   dailyRequestLimit: number;

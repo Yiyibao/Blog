@@ -9,6 +9,8 @@ vi.mock('../api/ai', () => ({
   fetchAiFiles: vi.fn(),
   fetchAiMemories: vi.fn(),
   fetchAiArtifacts: vi.fn(),
+  fetchAiProjects: vi.fn(),
+  fetchAiSessionConversation: vi.fn(),
   fetchAiTaskEvents: vi.fn(),
   replayAiTaskStream: vi.fn(),
   createAiSession: vi.fn(),
@@ -17,6 +19,7 @@ vi.mock('../api/ai', () => ({
   cancelAiTask: vi.fn(),
   uploadAiFile: vi.fn(),
   deleteAiFile: vi.fn(),
+  fetchAiFileContent: vi.fn(),
   createAiMemory: vi.fn(),
   confirmAiMemory: vi.fn(),
   setAiMemoryEnabled: vi.fn(),
@@ -72,6 +75,8 @@ describe('aiTaskStore', () => {
     mocked.fetchAiFiles.mockResolvedValue([]);
     mocked.fetchAiMemories.mockResolvedValue([]);
     mocked.fetchAiArtifacts.mockResolvedValue([]);
+    mocked.fetchAiProjects.mockResolvedValue([]);
+    mocked.fetchAiSessionConversation.mockRejectedValue(new Error('conversation mock not configured'));
     mocked.fetchAiTaskEvents.mockResolvedValue([]);
     mocked.replayAiTaskStream.mockResolvedValue(undefined);
   });

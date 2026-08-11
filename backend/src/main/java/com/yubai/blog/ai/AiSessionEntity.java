@@ -2,6 +2,8 @@ package com.yubai.blog.ai;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -27,6 +29,16 @@ public class AiSessionEntity {
     @Column(nullable = false, length = 32)
     private String mode = "WORKSPACE";
 
+    @Column(name = "project_id")
+    private Long projectId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private AiSessionStatus status = AiSessionStatus.ACTIVE;
+
+    @Column(name = "archived_at")
+    private Instant archivedAt;
+
     @Column(columnDefinition = "text")
     private String summary;
 
@@ -41,15 +53,43 @@ public class AiSessionEntity {
     protected AiSessionEntity() {}
 
     public static AiSessionEntity create(String owner, String title, String mode) {
+        return create(owner, title, mode, null);
+    }
+
+    public static AiSessionEntity create(String owner, String title, String mode, Long projectId) {
         var entity = new AiSessionEntity();
         entity.owner = owner;
         entity.title = normalizeTitle(title);
         entity.mode = mode == null || mode.isBlank() ? "WORKSPACE" : mode.trim();
+        entity.projectId = projectId;
         return entity;
     }
 
     public void updateTitle(String title) {
+        if (status == AiSessionStatus.DELETED) {
+            throw new IllegalStateException("Deleted AI session cannot be renamed");
+        }
         this.title = normalizeTitle(title);
+    }
+
+    public void moveToProject(Long projectId) {
+        if (status == AiSessionStatus.DELETED) {
+            throw new IllegalStateException("Deleted AI session cannot be moved");
+        }
+        this.projectId = projectId;
+        this.status = AiSessionStatus.ACTIVE;
+        this.archivedAt = null;
+    }
+
+    public void archive() {
+        if (status == AiSessionStatus.DELETED) return;
+        status = AiSessionStatus.ARCHIVED;
+        archivedAt = Instant.now();
+    }
+
+    public void delete() {
+        status = AiSessionStatus.DELETED;
+        archivedAt = Instant.now();
     }
 
     public void updateSummary(String summary) {
@@ -87,6 +127,18 @@ public class AiSessionEntity {
 
     public String getMode() {
         return mode;
+    }
+
+    public Long getProjectId() {
+        return projectId;
+    }
+
+    public AiSessionStatus getStatus() {
+        return status;
+    }
+
+    public Instant getArchivedAt() {
+        return archivedAt;
     }
 
     public String getSummary() {

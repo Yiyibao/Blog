@@ -4,6 +4,8 @@ import {
   AI_PROVIDERS_CHANGED_EVENT,
   fetchAiProviders,
   type AiProvider,
+  type AiProviderCapability,
+  type AiProviderModelCapability,
   type AiReasoningSelection,
 } from '../api/admin';
 
@@ -33,6 +35,7 @@ const REASONING_EFFORTS = new Set<AiReasoningSelection>([
   'medium',
   'high',
   'xhigh',
+  'max',
 ]);
 
 function normalizeReasoningEffort(value: unknown): AiReasoningSelection {
@@ -107,18 +110,22 @@ export const useAiStore = defineStore('ai', () => {
     return models;
   });
 
-  const reasoningSupported = computed(() => {
+  const selectedModelCapability = computed<AiProviderModelCapability | null>(() => {
     const provider = selectedProvider.value;
-    if (!provider || !provider.providerType) return true;
-    if (provider.providerType === 'OPENCODE_SERVER') return false;
-    if (provider.providerType === 'OPENAI_COMPATIBLE' && provider.baseUrl.toLowerCase().includes('deepseek'))
-      return false;
+    if (!provider || !selectedModel.value) return null;
     return (
-      provider.providerType === 'OPENAI_RESPONSES' ||
-      provider.providerType === 'OPENAI_COMPATIBLE' ||
-      provider.providerType === 'ANTHROPIC'
+      provider.modelCapabilities?.find((item) => item.model === selectedModel.value && item.enabled) ?? null
     );
   });
+
+  const selectedCapabilities = computed<AiProviderCapability[]>(
+    () => selectedModelCapability.value?.capabilities ?? [],
+  );
+
+  // Capability metadata is authoritative. An absent row is treated as unknown,
+  // so the UI never infers reasoning/tool support from a model name or URL.
+  const reasoningSupported = computed(() => selectedCapabilities.value.includes('REASONING'));
+  const reasoningOptions = computed(() => selectedModelCapability.value?.reasoningEfforts ?? []);
 
   function fallbackSelection(): StoredSelection {
     const preferred = providers.value.find((provider) => provider.isDefault) ?? providers.value[0] ?? null;
@@ -186,6 +193,7 @@ export const useAiStore = defineStore('ai', () => {
     if (!provider) return;
     selectedProviderId.value = provider.id;
     selectedModel.value = provider.defaultModel || provider.models?.[0] || null;
+    if (!reasoningSupported.value) selectedReasoningEffort.value = 'none';
     writeStoredSelection({
       providerId: provider.id,
       model: selectedModel.value,
@@ -196,6 +204,7 @@ export const useAiStore = defineStore('ai', () => {
   function selectModel(model: string) {
     if (!modelOptions.value.includes(model)) return;
     selectedModel.value = model;
+    if (!reasoningSupported.value) selectedReasoningEffort.value = 'none';
     writeStoredSelection({
       providerId: selectedProviderId.value,
       model,
@@ -247,7 +256,10 @@ export const useAiStore = defineStore('ai', () => {
     selectedReasoningEffort,
     selectedProvider,
     modelOptions,
+    selectedModelCapability,
+    selectedCapabilities,
     reasoningSupported,
+    reasoningOptions,
     ensureProviders,
     selectProvider,
     selectModel,

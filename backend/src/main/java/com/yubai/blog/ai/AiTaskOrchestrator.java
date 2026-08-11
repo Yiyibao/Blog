@@ -14,6 +14,7 @@ public class AiTaskOrchestrator {
     private final AiTaskEventService eventService;
     private final AiTaskConcurrencyGuard concurrencyGuard;
     private final AiTaskCancellationRegistry cancellationRegistry;
+    private final AiToolOrchestrator toolOrchestrator;
 
     public AiTaskOrchestrator(
             AiTaskService taskService,
@@ -21,13 +22,15 @@ public class AiTaskOrchestrator {
             AiModelGateway modelGateway,
             AiTaskEventService eventService,
             AiTaskConcurrencyGuard concurrencyGuard,
-            AiTaskCancellationRegistry cancellationRegistry) {
+            AiTaskCancellationRegistry cancellationRegistry,
+            AiToolOrchestrator toolOrchestrator) {
         this.taskService = taskService;
         this.contextWindowService = contextWindowService;
         this.modelGateway = modelGateway;
         this.eventService = eventService;
         this.concurrencyGuard = concurrencyGuard;
         this.cancellationRegistry = cancellationRegistry;
+        this.toolOrchestrator = toolOrchestrator;
     }
 
     public AiTaskResponse run(UUID taskId, String owner) {
@@ -56,18 +59,37 @@ public class AiTaskOrchestrator {
                             task.getProviderId(),
                             task.getModel(),
                             context,
-                            taskService.parts(taskId, owner));
+                            taskService.parts(taskId, owner),
+                            task.getTaskType(),
+                            task.getRequestedReasoningEffort());
             taskService.start(
                     taskId,
                     owner,
                     prepared.endpoint().providerType().name(),
-                    prepared.endpoint().model());
+                    prepared.endpoint().providerId(),
+                    prepared.endpoint().model(),
+                    prepared.resolvedReasoningEffort(),
+                    prepared.requiredCapabilities(),
+                    prepared.routeReason());
             var result = modelGateway.execute(prepared);
             if (Thread.currentThread().isInterrupted() || taskService.isCancelled(taskId, owner)) {
                 return taskService.get(taskId, owner);
             }
-            eventService.append(taskId, "message.delta", Map.of("content", result.text()));
-            taskService.appendAssistantText(taskId, owner, result.text());
+            var toolBatch = toolOrchestrator.execute(taskId, owner, result.toolCalls());
+            if (toolBatch.hasFailures()) {
+                throw new AiServiceException(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "Tool execution failed: " + String.join("; ", toolBatch.failures()));
+            }
+            var responseText = result.text();
+            if ((responseText == null || responseText.isBlank())
+                    && !toolBatch.results().isEmpty()) {
+                responseText = toolBatch.summary();
+            }
+            if (responseText != null && !responseText.isBlank()) {
+                eventService.append(taskId, "message.delta", Map.of("content", responseText));
+                taskService.appendAssistantText(taskId, owner, responseText);
+            }
             taskService.complete(taskId, owner);
             contextWindowService.refreshSummary(owner, task.getSessionId());
         } catch (TooManyRequestsException exception) {

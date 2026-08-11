@@ -14,6 +14,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,10 @@ class AiFileParserRegistryTest {
                 .extracting(AiParsedFile::extractedText)
                 .asString()
                 .contains("hello docx");
+        assertThat(registry.parse("table.xlsx", null, xlsx("hello sheet")))
+                .extracting(AiParsedFile::extractedText)
+                .asString()
+                .contains("hello sheet");
     }
 
     @Test
@@ -93,6 +98,16 @@ class AiFileParserRegistryTest {
             document.createParagraph().createRun().setText(value);
             var output = new ByteArrayOutputStream();
             document.write(output);
+            return output.toByteArray();
+        }
+    }
+
+    private static byte[] xlsx(String value) throws Exception {
+        try (var workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet("Data");
+            sheet.createRow(0).createCell(0).setCellValue(value);
+            var output = new ByteArrayOutputStream();
+            workbook.write(output);
             return output.toByteArray();
         }
     }

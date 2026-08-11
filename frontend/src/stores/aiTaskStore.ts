@@ -1,10 +1,14 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import {
+  archiveAiProject,
+  archiveAiSession,
   cancelAiTask,
   clearAiSessionSummary,
+  confirmAiMemory,
   createAiArtifact,
   createAiMemory,
+  createAiProject,
   createAiSession,
   createAiTask,
   deleteAiArtifact,
@@ -13,32 +17,42 @@ import {
   fetchAiArtifacts,
   fetchAiFiles,
   fetchAiMemories,
+  fetchAiProjects,
+  fetchAiSessionConversation,
   fetchAiSessions,
   fetchAiTaskEvents,
   fetchAiTasks,
+  moveAiSession,
   replayAiTaskStream,
-  runAiTask,
   rejectAiMemory,
+  restoreAiProject,
+  runAiTask,
   setAiMemoryEnabled,
   updateAiMemory,
+  updateAiProject,
   uploadAiFile,
-  confirmAiMemory,
   type AiArtifact,
   type AiArtifactFormat,
+  type AiConversationMessage,
   type AiFile,
   type AiMemory,
+  type AiProject,
+  type AiReasoningEffort,
   type AiSession,
   type AiTask,
+  type AiTaskCreateInput,
   type AiTaskEvent,
 } from '../api/ai';
 
 export const useAiTaskStore = defineStore('ai-tasks', () => {
+  const projects = ref<AiProject[]>([]);
   const sessions = ref<AiSession[]>([]);
   const tasks = ref<AiTask[]>([]);
   const files = ref<AiFile[]>([]);
   const memories = ref<AiMemory[]>([]);
   const artifacts = ref<AiArtifact[]>([]);
   const events = ref<AiTaskEvent[]>([]);
+  const conversationMessages = ref<AiConversationMessage[]>([]);
   const currentSessionId = ref<number | null>(null);
   const currentTask = ref<AiTask | null>(null);
   const selectedFileIds = ref<string[]>([]);
@@ -50,9 +64,13 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
   const currentSession = computed(
     () => sessions.value.find((session) => session.id === currentSessionId.value) ?? null,
   );
-  const currentArtifacts = computed(() =>
-    currentTask.value ? artifacts.value.filter((artifact) => artifact.taskId === currentTask.value!.id) : [],
-  );
+  const currentArtifacts = computed(() => {
+    const taskIds = new Set(
+      tasks.value.filter((task) => task.sessionId === currentSessionId.value).map((task) => task.id),
+    );
+    if (currentTask.value) taskIds.add(currentTask.value.id);
+    return artifacts.value.filter((artifact) => taskIds.has(artifact.taskId));
+  });
 
   async function initialize() {
     loading.value = true;
@@ -66,9 +84,17 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
         fetchAiArtifacts(),
       ]);
       [sessions.value, tasks.value, files.value, memories.value, artifacts.value] = loaded;
+      if (typeof fetchAiProjects === 'function') {
+        try {
+          projects.value = await fetchAiProjects();
+        } catch {
+          projects.value = [];
+        }
+      }
       currentTask.value = tasks.value[0] ?? null;
       currentSessionId.value = currentTask.value?.sessionId ?? sessions.value[0]?.id ?? null;
       if (currentTask.value) await replayEvents(currentTask.value.id);
+      if (currentSessionId.value != null) await loadConversation(currentSessionId.value);
     } catch (cause) {
       error.value = errorMessage(cause);
     } finally {
@@ -102,21 +128,30 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     selectedFileIds.value = selectedFileIds.value.filter((id) => id !== fileId);
   }
 
-  async function submit(prompt: string, providerId: number | null, model: string | null) {
+  async function submit(
+    prompt: string,
+    providerId: number | null,
+    model: string | null,
+    taskType: AiTaskCreateInput['taskType'] = 'CHAT',
+    reasoningEffort: AiReasoningEffort | null = null,
+    projectId: number | null = currentSession.value?.projectId ?? null,
+  ) {
     if (!prompt.trim() && selectedFiles.value.length === 0) return;
     error.value = '';
     running.value = true;
     try {
       if (currentSessionId.value == null) {
-        const session = await createAiSession(prompt.trim().slice(0, 40) || '多模态任务');
+        const session = await createAiSession(prompt.trim().slice(0, 40) || 'New multimodal task', projectId);
         sessions.value.unshift(session);
         currentSessionId.value = session.id;
       }
       const task = await createAiTask({
         sessionId: currentSessionId.value,
-        taskType: 'CHAT',
+        projectId,
+        taskType,
         providerId,
         model,
+        reasoningEffort,
         idempotencyKey: crypto.randomUUID(),
         parts: [
           ...(prompt.trim() ? [{ kind: 'TEXT' as const, text: prompt.trim() }] : []),
@@ -135,6 +170,7 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
       tasks.value = tasks.value.map((item) => (item.id === completed.id ? completed : item));
       sessions.value = await fetchAiSessions();
       await replayEvents(completed.id);
+      await loadConversation(completed.sessionId);
     } catch (cause) {
       error.value = errorMessage(cause);
     } finally {
@@ -154,6 +190,48 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     currentTask.value = task;
     currentSessionId.value = task.sessionId;
     await replayEvents(task.id);
+    await loadConversation(task.sessionId);
+  }
+
+  async function selectSession(sessionId: number) {
+    currentSessionId.value = sessionId;
+    currentTask.value = tasks.value.find((task) => task.sessionId === sessionId) ?? null;
+    if (currentTask.value) await replayEvents(currentTask.value.id);
+    await loadConversation(sessionId);
+  }
+
+  async function loadConversation(sessionId: number) {
+    if (typeof fetchAiSessionConversation !== 'function') {
+      conversationMessages.value = taskMessages(sessionId);
+      return;
+    }
+    try {
+      const conversation = await fetchAiSessionConversation(sessionId);
+      conversationMessages.value = conversation.messages;
+      sessions.value = sessions.value.map((session) =>
+        session.id === conversation.session.id ? conversation.session : session,
+      );
+    } catch {
+      conversationMessages.value = taskMessages(sessionId);
+    }
+  }
+
+  function taskMessages(sessionId: number): AiConversationMessage[] {
+    return tasks.value
+      .filter((task) => task.sessionId === sessionId)
+      .flatMap((task) =>
+        task.parts.map((part) => ({
+          taskId: task.id,
+          sequence: part.sequence,
+          role: part.role,
+          kind: part.kind,
+          text: part.text,
+          fileId: part.fileId,
+          artifactId: part.artifactId,
+          sourceRef: part.sourceRef,
+          createdAt: part.createdAt,
+        })),
+      );
   }
 
   async function replayEvents(taskId: string) {
@@ -163,6 +241,39 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     await replayAiTaskStream(taskId, cursor, (event) => {
       if (!events.value.some((item) => item.sequence === event.sequence)) events.value.push(event);
     }).catch(() => {});
+  }
+
+  async function addProject(title: string) {
+    const project = await createAiProject(title);
+    projects.value = [project, ...projects.value];
+    return project;
+  }
+
+  async function renameProject(project: AiProject, title: string) {
+    const updated = await updateAiProject(project.id, title, project.version);
+    projects.value = projects.value.map((item) => (item.id === updated.id ? updated : item));
+    return updated;
+  }
+
+  async function toggleProject(project: AiProject) {
+    const updated =
+      project.status === 'ACTIVE' ? await archiveAiProject(project.id) : await restoreAiProject(project.id);
+    projects.value = projects.value.map((item) => (item.id === updated.id ? updated : item));
+    return updated;
+  }
+
+  async function moveSession(session: AiSession, projectId: number | null) {
+    const updated = await moveAiSession(session.id, projectId);
+    sessions.value = sessions.value.map((item) => (item.id === updated.id ? updated : item));
+    if (currentSessionId.value === updated.id) await loadConversation(updated.id);
+    return updated;
+  }
+
+  async function archiveSession(session: AiSession) {
+    const updated = await archiveAiSession(session.id);
+    sessions.value = sessions.value.map((item) => (item.id === updated.id ? updated : item));
+    if (currentSessionId.value === updated.id) currentSessionId.value = null;
+    return updated;
   }
 
   async function addMemory(content: string, scope = 'USER', sourceTaskId: string | null = null) {
@@ -223,12 +334,14 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
   }
 
   return {
+    projects,
     sessions,
     tasks,
     files,
     memories,
     artifacts,
     events,
+    conversationMessages,
     currentSessionId,
     currentTask,
     selectedFileIds,
@@ -245,6 +358,12 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     submit,
     cancelCurrent,
     selectTask,
+    selectSession,
+    addProject,
+    renameProject,
+    toggleProject,
+    moveSession,
+    archiveSession,
     addMemory,
     confirmMemory,
     toggleMemory,
@@ -262,5 +381,5 @@ function errorMessage(cause: unknown) {
     const response = (cause as { response?: { data?: { message?: string } } }).response;
     if (response?.data?.message) return response.data.message;
   }
-  return cause instanceof Error ? cause.message : 'AI 请求失败，请稍后重试';
+  return cause instanceof Error ? cause.message : 'AI request failed; please try again later';
 }

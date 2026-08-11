@@ -95,6 +95,10 @@ function handleReferenceImageChange(event: Event) {
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
+  setReferenceImage(file);
+}
+
+function setReferenceImage(file: File) {
   const acceptedTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
   if (!acceptedTypes.has(file.type.toLowerCase())) {
     error.value = '参考图只支持 PNG、JPG/JPEG、WebP 或 GIF 格式';
@@ -108,6 +112,20 @@ function handleReferenceImageChange(event: Event) {
   referenceImage.value = file;
   referenceImageUrl.value = createObjectUrl(file);
   error.value = '';
+}
+
+function handleReferenceDrop(event: DragEvent) {
+  if (loading.value) return;
+  const file = event.dataTransfer?.files?.[0];
+  if (file) setReferenceImage(file);
+}
+
+function handleReferencePaste(event: ClipboardEvent) {
+  if (loading.value) return;
+  const file = Array.from(event.clipboardData?.files ?? []).find((item) => item.type.startsWith('image/'));
+  if (!file) return;
+  event.preventDefault();
+  setReferenceImage(file);
 }
 
 function formatBytes(bytes: number) {
@@ -418,6 +436,12 @@ onBeforeUnmount(() => {
                         删除
                       </button>
                     </div>
+                    <div class="image-meta">
+                      <span>{{
+                        image.width && image.height ? `${image.width} × ${image.height}` : '尺寸未知'
+                      }}</span>
+                      <span>{{ formatBytes(image.byteSize) }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -463,7 +487,12 @@ onBeforeUnmount(() => {
               移除
             </button>
           </div>
-          <div class="reference-image-toolbar">
+          <div
+            class="reference-image-toolbar"
+            @dragenter.prevent
+            @dragover.prevent
+            @drop.prevent="handleReferenceDrop"
+          >
             <button
               type="button"
               class="reference-upload-btn"
@@ -474,6 +503,27 @@ onBeforeUnmount(() => {
             </button>
             <span>支持 PNG、JPG/JPEG、WebP、GIF，单张不超过 15 MB</span>
           </div>
+          <div class="prompt-presets" aria-label="常用提示词">
+            <span>快捷开始</span>
+            <button
+              type="button"
+              @click="prompt = '把这张图改成适合社交媒体发布的高级海报，保留主体和核心信息。'"
+            >
+              改成海报
+            </button>
+            <button
+              type="button"
+              @click="prompt = '保持主体不变，优化光线、构图和细节，生成更自然的高清版本。'"
+            >
+              高清优化
+            </button>
+            <button
+              type="button"
+              @click="prompt = '提取这张图的视觉风格，并生成一张同风格但内容全新的图片。'"
+            >
+              延展风格
+            </button>
+          </div>
           <textarea
             v-model="prompt"
             class="chat-textarea"
@@ -481,6 +531,7 @@ onBeforeUnmount(() => {
             :maxlength="AI_IMAGE_MAX_PROMPT_CHARS"
             rows="3"
             :disabled="loading"
+            @paste="handleReferencePaste"
             @keydown="
               (event: KeyboardEvent) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -529,6 +580,15 @@ onBeforeUnmount(() => {
                 <option value="9:16">9:16</option>
                 <option value="4:3">4:3</option>
                 <option value="3:4">3:4</option>
+              </select>
+            </label>
+            <label
+              >清晰度
+              <select v-model="resolution" :disabled="loading">
+                <option value="auto">自动</option>
+                <option value="1k">1K</option>
+                <option value="2k">2K</option>
+                <option value="4k">4K</option>
               </select>
             </label>
           </div>
@@ -909,6 +969,12 @@ h1 {
   align-items: center;
   gap: 8px;
 }
+.image-meta {
+  display: flex;
+  gap: 7px;
+  color: #9a8f84;
+  font-size: 10px;
+}
 .image-actions {
   display: flex;
   gap: 8px;
@@ -1039,6 +1105,9 @@ h1 {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(139, 107, 67, 0.26);
+  border-radius: 10px;
   color: #81766d;
   font-size: 11px;
 }
@@ -1047,6 +1116,27 @@ h1 {
   font-weight: 700;
 }
 .reference-upload-btn:hover:not(:disabled) {
+  border-color: #8b6b43;
+  color: #8b6b43;
+}
+.prompt-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #81766d;
+  font-size: 11px;
+}
+.prompt-presets button {
+  border: 1px solid #e0d8cf;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #fffdf9;
+  color: #665443;
+  font: inherit;
+  cursor: pointer;
+}
+.prompt-presets button:hover {
   border-color: #8b6b43;
   color: #8b6b43;
 }
