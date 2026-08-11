@@ -76,6 +76,17 @@ public class AiMemoryService {
     }
 
     @Transactional(readOnly = true)
+    public List<AiMemoryResponse> listByProject(String owner, Long projectId) {
+        var project = projectService.requireOwned(projectId, owner);
+        return repository
+                .findByOwnerAndScopeAndStatusNotOrderByUpdatedAtDesc(
+                        owner, "PROJECT:" + project.getId(), AiMemoryStatus.DELETED)
+                .stream()
+                .map(AiMemoryResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public AiMemoryResponse get(UUID id, String owner) {
         return AiMemoryResponse.from(requireOwned(id, owner));
     }

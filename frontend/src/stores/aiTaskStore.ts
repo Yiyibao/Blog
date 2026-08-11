@@ -17,6 +17,8 @@ import {
   fetchAiArtifacts,
   fetchAiFiles,
   fetchAiMemories,
+  fetchAiProjectMemories,
+  fetchAiProjectTasks,
   fetchAiProjects,
   fetchAiSessionConversation,
   fetchAiSessions,
@@ -54,6 +56,7 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
   const events = ref<AiTaskEvent[]>([]);
   const conversationMessages = ref<AiConversationMessage[]>([]);
   const currentSessionId = ref<number | null>(null);
+  const currentProjectId = ref<number | null>(null);
   const currentTask = ref<AiTask | null>(null);
   const selectedFileIds = ref<string[]>([]);
   const loading = ref(false);
@@ -63,6 +66,9 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
   const selectedFiles = computed(() => files.value.filter((file) => selectedFileIds.value.includes(file.id)));
   const currentSession = computed(
     () => sessions.value.find((session) => session.id === currentSessionId.value) ?? null,
+  );
+  const selectedProject = computed(
+    () => projects.value.find((project) => project.id === currentProjectId.value) ?? null,
   );
   const currentArtifacts = computed(() => {
     const taskIds = new Set(
@@ -93,6 +99,8 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
       }
       currentTask.value = tasks.value[0] ?? null;
       currentSessionId.value = currentTask.value?.sessionId ?? sessions.value[0]?.id ?? null;
+      currentProjectId.value =
+        sessions.value.find((session) => session.id === currentSessionId.value)?.projectId ?? null;
       if (currentTask.value) await replayEvents(currentTask.value.id);
       if (currentSessionId.value != null) await loadConversation(currentSessionId.value);
     } catch (cause) {
@@ -134,7 +142,7 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     model: string | null,
     taskType: AiTaskCreateInput['taskType'] = 'CHAT',
     reasoningEffort: AiReasoningEffort | null = null,
-    projectId: number | null = currentSession.value?.projectId ?? null,
+    projectId: number | null = currentProjectId.value,
   ) {
     if (!prompt.trim() && selectedFiles.value.length === 0) return;
     error.value = '';
@@ -144,6 +152,7 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
         const session = await createAiSession(prompt.trim().slice(0, 40) || 'New multimodal task', projectId);
         sessions.value.unshift(session);
         currentSessionId.value = session.id;
+        currentProjectId.value = session.projectId ?? projectId;
       }
       const task = await createAiTask({
         sessionId: currentSessionId.value,
@@ -171,6 +180,11 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
       sessions.value = await fetchAiSessions();
       await replayEvents(completed.id);
       await loadConversation(completed.sessionId);
+      try {
+        projects.value = await fetchAiProjects();
+      } catch {
+        // The task is already persisted; keep the current project list if refresh fails.
+      }
     } catch (cause) {
       error.value = errorMessage(cause);
     } finally {
@@ -189,15 +203,55 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
   async function selectTask(task: AiTask) {
     currentTask.value = task;
     currentSessionId.value = task.sessionId;
+    currentProjectId.value =
+      sessions.value.find((session) => session.id === task.sessionId)?.projectId ?? null;
     await replayEvents(task.id);
     await loadConversation(task.sessionId);
   }
 
   async function selectSession(sessionId: number) {
     currentSessionId.value = sessionId;
+    currentProjectId.value = sessions.value.find((session) => session.id === sessionId)?.projectId ?? null;
     currentTask.value = tasks.value.find((task) => task.sessionId === sessionId) ?? null;
     if (currentTask.value) await replayEvents(currentTask.value.id);
     await loadConversation(sessionId);
+  }
+
+  async function selectProject(projectId: number) {
+    currentProjectId.value = projectId;
+    await loadProjectDetails(projectId);
+    const session = sessions.value.find((item) => item.projectId === projectId && item.status !== 'DELETED');
+    if (session) {
+      await selectSession(session.id);
+      return;
+    }
+    startNewTask(projectId);
+  }
+
+  function startNewTask(projectId: number | null = currentProjectId.value) {
+    currentProjectId.value = projectId;
+    currentSessionId.value = null;
+    currentTask.value = null;
+    conversationMessages.value = [];
+    events.value = [];
+  }
+
+  async function loadProjectDetails(projectId: number) {
+    try {
+      const [projectTasks, projectMemories] = await Promise.all([
+        fetchAiProjectTasks(projectId),
+        fetchAiProjectMemories(projectId),
+      ]);
+      const projectTaskIds = new Set(projectTasks.map((task) => task.id));
+      tasks.value = [...projectTasks, ...tasks.value.filter((task) => !projectTaskIds.has(task.id))];
+      const projectMemoryIds = new Set(projectMemories.map((memory) => memory.id));
+      memories.value = [
+        ...projectMemories,
+        ...memories.value.filter((memory) => !projectMemoryIds.has(memory.id)),
+      ];
+    } catch {
+      // Older deployments may not expose project detail endpoints yet; full lists remain usable.
+    }
   }
 
   async function loadConversation(sessionId: number) {
@@ -265,6 +319,7 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
   async function moveSession(session: AiSession, projectId: number | null) {
     const updated = await moveAiSession(session.id, projectId);
     sessions.value = sessions.value.map((item) => (item.id === updated.id ? updated : item));
+    if (currentSessionId.value === updated.id) currentProjectId.value = updated.projectId ?? null;
     if (currentSessionId.value === updated.id) await loadConversation(updated.id);
     return updated;
   }
@@ -343,10 +398,12 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     events,
     conversationMessages,
     currentSessionId,
+    currentProjectId,
     currentTask,
     selectedFileIds,
     selectedFiles,
     currentSession,
+    selectedProject,
     currentArtifacts,
     loading,
     running,
@@ -359,6 +416,8 @@ export const useAiTaskStore = defineStore('ai-tasks', () => {
     cancelCurrent,
     selectTask,
     selectSession,
+    selectProject,
+    startNewTask,
     addProject,
     renameProject,
     toggleProject,

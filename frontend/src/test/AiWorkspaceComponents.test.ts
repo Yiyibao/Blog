@@ -70,4 +70,21 @@ describe('AI Workspace components', () => {
     expect(wrapper.emitted('create')?.[0]).toEqual(['默认先给结论', 'SESSION:7', 'task-7']);
     expect(wrapper.emitted('clearSummary')).toHaveLength(1);
   });
+
+  it('defaults new memory to the selected project scope', async () => {
+    const wrapper = mount(AiMemoryPanel, {
+      props: {
+        memories: [],
+        currentProjectId: 42,
+        currentProjectTitle: '内容升级',
+      },
+    });
+
+    await wrapper.get('#ai-memory-content').setValue('项目专属输出格式');
+    expect(wrapper.get('select').element.value).toBe('PROJECT');
+    await wrapper.get('form.ai-memory-form').trigger('submit');
+
+    expect(wrapper.emitted('create')?.[0]).toEqual(['项目专属输出格式', 'PROJECT:42', null]);
+    expect(wrapper.text()).toContain('内容升级');
+  });
 });

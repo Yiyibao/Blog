@@ -277,7 +277,7 @@ function formatBytes(value: number) {
 .ai-attach-menu {
   position: absolute;
   z-index: 8;
-  bottom: 100px;
+  bottom: 130px;
   left: 0;
   display: grid;
   min-width: 205px;

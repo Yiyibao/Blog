@@ -1748,6 +1748,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/ai/projects/{projectId}/tasks': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['projectTasks'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ai/projects/{projectId}/sessions': {
     parameters: {
       query?: never;
@@ -1756,6 +1772,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations['projectSessions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/projects/{projectId}/memories': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['projectMemories'];
     put?: never;
     post?: never;
     delete?: never;
@@ -10963,6 +10995,50 @@ export interface operations {
       };
     };
   };
+  projectTasks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListAiTaskResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   projectSessions: {
     parameters: {
       query?: never;
@@ -10981,6 +11057,50 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseListAiSessionResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  projectMemories: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        projectId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListAiMemoryResponse'];
         };
       };
       /** @description Bad Request */

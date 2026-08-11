@@ -22,16 +22,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiProjectController {
     private final AiProjectService projectService;
     private final AiSessionService sessionService;
+    private final AiTaskService taskService;
+    private final AiMemoryService memoryService;
     private final AiSessionConversationService conversationService;
     private final AiPlatformProperties properties;
 
     public AiProjectController(
             AiProjectService projectService,
             AiSessionService sessionService,
+            AiTaskService taskService,
+            AiMemoryService memoryService,
             AiSessionConversationService conversationService,
             AiPlatformProperties properties) {
         this.projectService = projectService;
         this.sessionService = sessionService;
+        this.taskService = taskService;
+        this.memoryService = memoryService;
         this.conversationService = conversationService;
         this.properties = properties;
     }
@@ -77,6 +83,21 @@ public class AiProjectController {
             @PathVariable Long projectId, Principal principal) {
         requireTasks();
         return ApiResponse.ok(sessionService.listByProject(principal.getName(), projectId));
+    }
+
+    @GetMapping("/projects/{projectId}/tasks")
+    public ApiResponse<List<AiTaskResponse>> projectTasks(
+            @PathVariable Long projectId, Principal principal) {
+        requireTasks();
+        projectService.requireOwned(projectId, principal.getName());
+        return ApiResponse.ok(taskService.listByProject(principal.getName(), projectId));
+    }
+
+    @GetMapping("/projects/{projectId}/memories")
+    public ApiResponse<List<AiMemoryResponse>> projectMemories(
+            @PathVariable Long projectId, Principal principal) {
+        requireMemory();
+        return ApiResponse.ok(memoryService.listByProject(principal.getName(), projectId));
     }
 
     @PatchMapping("/sessions/{sessionId}")
@@ -131,6 +152,12 @@ public class AiProjectController {
         if (!properties.isTasksEnabled()) {
             throw new AiServiceException(
                     HttpStatus.NOT_FOUND, "AI platform capability is disabled");
+        }
+    }
+
+    private void requireMemory() {
+        if (!properties.isTasksEnabled() || !properties.isMemoryEnabled()) {
+            throw new AiServiceException(HttpStatus.NOT_FOUND, "AI memory capability is disabled");
         }
     }
 }

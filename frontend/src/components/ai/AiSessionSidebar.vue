@@ -6,6 +6,7 @@ const props = defineProps<{
   sessions: AiSession[];
   tasks?: AiTask[];
   currentSessionId?: number | null;
+  currentProjectId?: number | null;
   currentTaskId?: string | null;
   memoryCount?: number;
   preview?: boolean;
@@ -15,6 +16,8 @@ const emit = defineEmits<{
   newSession: [];
   selectSession: [session: AiSession];
   selectTask: [task: AiTask];
+  selectProject: [project: AiProject];
+  newProjectTask: [project: AiProject];
   createProject: [];
   renameProject: [project: AiProject];
   toggleProject: [project: AiProject];
@@ -29,13 +32,18 @@ function taskFor(sessionId: number) {
   return props.tasks?.find((task) => task.sessionId === sessionId) ?? null;
 }
 
-function sessionLabel(session: AiSession) {
-  return session.title?.trim() || '新对话';
+function tasksFor(sessionId: number) {
+  return props.tasks?.filter((task) => task.sessionId === sessionId) ?? [];
 }
 
-function selectFirst(projectId: number) {
-  const session = sessionsFor(projectId)[0];
-  if (session) emit('selectSession', session);
+function taskLabel(task: AiTask) {
+  const text = task.parts.find((part) => part.role === 'USER' && part.text?.trim())?.text?.trim();
+  if (!text) return task.taskType;
+  return text.length > 28 ? `${text.slice(0, 28)}…` : text;
+}
+
+function sessionLabel(session: AiSession) {
+  return session.title?.trim() || '新对话';
 }
 </script>
 
@@ -74,12 +82,22 @@ function selectFirst(projectId: number) {
             <button
               type="button"
               class="ai-project-title__button"
-              :disabled="!sessionsFor(project.id).length"
-              @click="selectFirst(project.id)"
+              :class="{ active: project.id === currentProjectId }"
+              @click="emit('selectProject', project)"
             >
               <span class="ai-project-chevron" aria-hidden="true">⌄</span>
               <span class="ai-folder-icon" aria-hidden="true">▱</span>
               <strong>{{ project.title }}</strong>
+              <small>{{ tasksFor(project.id).length }}</small>
+            </button>
+            <button
+              type="button"
+              class="ai-project-new-task"
+              title="在此项目中新建任务"
+              :disabled="project.status !== 'ACTIVE'"
+              @click.stop="emit('newProjectTask', project)"
+            >
+              ＋
             </button>
             <div class="ai-project-actions">
               <button type="button" title="重命名项目" @click="emit('renameProject', project)">···</button>
@@ -104,8 +122,25 @@ function selectFirst(projectId: number) {
                 <span>{{ sessionLabel(session) }}</span>
                 <small v-if="taskFor(session.id)?.status === 'RUNNING'">运行中</small>
               </button>
+              <ul v-if="tasksFor(session.id).length" class="ai-task-list">
+                <li v-for="task in tasksFor(session.id)" :key="task.id">
+                  <button
+                    type="button"
+                    class="ai-task-link"
+                    :class="{ active: task.id === currentTaskId }"
+                    @click="emit('selectTask', task)"
+                  >
+                    <span class="ai-task-link__dot" aria-hidden="true"></span>
+                    <span>{{ taskLabel(task) }}</span>
+                    <small>{{ task.status }}</small>
+                  </button>
+                </li>
+              </ul>
             </li>
           </ul>
+          <p v-if="!sessionsFor(project.id).length" class="ai-project-empty">
+            暂无任务，点击项目名称或 ＋ 创建
+          </p>
         </section>
 
         <section class="ai-project-group ai-project-group--recent">
@@ -342,8 +377,42 @@ function selectFirst(projectId: number) {
   cursor: pointer;
 }
 
-.ai-project-title__button:disabled {
-  cursor: default;
+.ai-project-title__button.active {
+  color: #1d5be7;
+}
+
+.ai-project-title__button > small {
+  margin-left: 2px;
+  color: #9aa5b5;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-project-new-task {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border: 1px solid #d6e1f4;
+  border-radius: 6px;
+  color: #2d67df;
+  background: #f8faff;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ai-project-new-task:hover,
+.ai-project-new-task:focus-visible {
+  border-color: #a9c0ee;
+  background: #edf3ff;
+}
+
+.ai-project-new-task:disabled {
+  color: #c1c9d5;
+  background: #fafbfc;
+  cursor: not-allowed;
 }
 
 .ai-project-title strong {
@@ -388,12 +457,23 @@ function selectFirst(projectId: number) {
   cursor: pointer;
 }
 
+.ai-project-actions button:disabled {
+  color: #c1c9d5;
+  cursor: not-allowed;
+}
+
 .ai-project-group ul {
   display: grid;
   gap: 3px;
   margin: 6px 0 0 14px;
   padding: 0;
   list-style: none;
+}
+
+.ai-project-empty {
+  margin: 8px 14px 0;
+  color: #98a3b3;
+  font-size: 12px;
 }
 
 .ai-session-link {
@@ -432,6 +512,59 @@ function selectFirst(projectId: number) {
 
 .ai-session-link.active .ai-session-link__icon {
   color: #1e5ce8;
+}
+
+.ai-task-list {
+  gap: 0 !important;
+  margin: 2px 0 4px 30px !important;
+  border-left: 1px solid #e7edf7;
+  padding-left: 7px !important;
+}
+
+.ai-task-link {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 29px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 0 6px;
+  color: #7b879b;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-task-link:hover,
+.ai-task-link.active {
+  color: #1d5be7;
+  background: #f4f7ff;
+}
+
+.ai-task-link span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-task-link small {
+  color: #a1abba;
+  font-size: 10px;
+}
+
+.ai-task-link__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b6c0cf;
+}
+
+.ai-task-link.active .ai-task-link__dot {
+  background: #2f70ee;
 }
 
 .ai-session-link span:nth-child(2) {
@@ -490,6 +623,7 @@ function selectFirst(projectId: number) {
   grid-template-columns: 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
+  margin-top: 24px;
 }
 
 .ai-account__avatar {

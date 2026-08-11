@@ -8,6 +8,8 @@ vi.mock('../api/ai', () => ({
   fetchAiTasks: vi.fn(),
   fetchAiFiles: vi.fn(),
   fetchAiMemories: vi.fn(),
+  fetchAiProjectMemories: vi.fn(),
+  fetchAiProjectTasks: vi.fn(),
   fetchAiArtifacts: vi.fn(),
   fetchAiProjects: vi.fn(),
   fetchAiSessionConversation: vi.fn(),
@@ -74,6 +76,8 @@ describe('aiTaskStore', () => {
     mocked.fetchAiTasks.mockResolvedValue([]);
     mocked.fetchAiFiles.mockResolvedValue([]);
     mocked.fetchAiMemories.mockResolvedValue([]);
+    mocked.fetchAiProjectMemories.mockResolvedValue([]);
+    mocked.fetchAiProjectTasks.mockResolvedValue([]);
     mocked.fetchAiArtifacts.mockResolvedValue([]);
     mocked.fetchAiProjects.mockResolvedValue([]);
     mocked.fetchAiSessionConversation.mockRejectedValue(new Error('conversation mock not configured'));
@@ -134,5 +138,37 @@ describe('aiTaskStore', () => {
     expect(store.currentTask?.id).toBe(task('COMPLETED').id);
     expect(mocked.fetchAiTaskEvents).toHaveBeenCalledWith(task('COMPLETED').id, 0);
     expect(Object.keys(window.sessionStorage).filter((key) => key.includes('ai-task'))).toEqual([]);
+  });
+
+  it('creates a new session and task inside the selected project', async () => {
+    const project = {
+      id: 42,
+      title: '内容升级',
+      status: 'ACTIVE' as const,
+      archivedAt: null,
+      sortOrder: 0,
+      sessionCount: 0,
+      version: 0,
+      createdAt: '2026-08-10T00:00:00Z',
+      updatedAt: '2026-08-10T00:00:00Z',
+    };
+    const projectSession = { ...session(), id: 9, projectId: project.id };
+    const queued = { ...task('QUEUED'), sessionId: projectSession.id };
+    const completed = { ...task('COMPLETED'), sessionId: projectSession.id };
+    mocked.fetchAiSessions.mockResolvedValue([]);
+    mocked.fetchAiProjects.mockResolvedValue([project]);
+    mocked.createAiSession.mockResolvedValue(projectSession);
+    mocked.createAiTask.mockResolvedValue(queued);
+    mocked.runAiTask.mockResolvedValue(completed);
+
+    const store = useAiTaskStore();
+    await store.initialize();
+    store.startNewTask(project.id);
+    await store.submit('整理项目资料', null, null);
+
+    expect(mocked.createAiSession).toHaveBeenCalledWith('整理项目资料', project.id);
+    expect(mocked.createAiTask).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: projectSession.id, projectId: project.id }),
+    );
   });
 });

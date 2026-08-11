@@ -36,6 +36,8 @@ const {
   conversationMessages,
   currentTask,
   currentSession,
+  currentProjectId,
+  selectedProject,
   selectedFileIds,
   selectedFiles,
   currentArtifacts,
@@ -229,10 +231,33 @@ const displayedMessages = computed(() => (previewMode ? previewMessages : conver
 const displayedArtifacts = computed(() => (previewMode ? previewArtifacts : currentArtifacts.value));
 const displayedCurrentSession = computed(() => (previewMode ? previewSession : currentSession.value));
 const displayedCurrentTask = computed(() => (previewMode ? previewTask : currentTask.value));
+const displayedCurrentProjectId = computed(() => (previewMode ? previewProject.id : currentProjectId.value));
+const displayedCurrentProject = computed(() => (previewMode ? previewProject : selectedProject.value));
 const displayedSelectedFiles = computed(() => (previewMode ? [] : selectedFiles.value));
-const activeMemoryCount = computed(
-  () => memories.value.filter((memory) => memory.status === 'ACTIVE').length,
-);
+const displayedMemories = computed(() => {
+  if (previewMode || displayedCurrentProjectId.value == null) return memories.value;
+  const projectScope = `PROJECT:${displayedCurrentProjectId.value}`;
+  const sessionScope = displayedCurrentSession.value?.id
+    ? `SESSION:${displayedCurrentSession.value.id}`
+    : null;
+  return memories.value.filter(
+    (memory) =>
+      memory.scope === projectScope ||
+      memory.scope === 'USER' ||
+      memory.scope === 'GLOBAL' ||
+      memory.scope === 'SITE' ||
+      (sessionScope != null && memory.scope === sessionScope),
+  );
+});
+const activeMemoryCount = computed(() => {
+  if (previewMode) return 3;
+  if (displayedCurrentProjectId.value == null) {
+    return memories.value.filter((memory) => memory.status === 'ACTIVE').length;
+  }
+  const projectScope = `PROJECT:${displayedCurrentProjectId.value}`;
+  return memories.value.filter((memory) => memory.status === 'ACTIVE' && memory.scope === projectScope)
+    .length;
+});
 
 const providerOptions = computed(() =>
   previewMode
@@ -296,21 +321,28 @@ function submit(prompt: string, taskType: AiTaskCreateInput['taskType']) {
     provider.selectedModel,
     taskType,
     reasoning,
-    currentSession.value?.projectId ?? null,
+    currentProjectId.value,
   );
 }
 
 function newSession() {
   if (previewMode) return;
-  platform.currentSessionId = null;
-  platform.currentTask = null;
-  platform.conversationMessages = [];
-  platform.events = [];
+  platform.startNewTask();
 }
 
 function selectSession(session: AiSession) {
   if (previewMode) return;
   return platform.selectSession(session.id);
+}
+
+function selectProject(project: AiProject) {
+  if (previewMode) return;
+  return platform.selectProject(project.id);
+}
+
+function newProjectTask(project: AiProject) {
+  if (previewMode) return;
+  platform.startNewTask(project.id);
 }
 
 function selectTask(task: AiTask) {
@@ -321,7 +353,9 @@ function selectTask(task: AiTask) {
 function createProject() {
   if (previewMode) return;
   const title = window.prompt('项目名称', '新项目')?.trim();
-  if (title) void platform.addProject(title);
+  if (title) {
+    void platform.addProject(title).then((project) => platform.startNewTask(project.id));
+  }
 }
 
 function renameProject(project: AiProject) {
@@ -363,12 +397,15 @@ onMounted(async () => {
       :sessions="displayedSessions"
       :tasks="displayedTasks"
       :current-session-id="displayedCurrentSession?.id"
+      :current-project-id="displayedCurrentProjectId"
       :current-task-id="displayedCurrentTask?.id"
       :memory-count="activeMemoryCount"
       :preview="previewMode"
       @new-session="newSession"
       @select-session="selectSession"
       @select-task="selectTask"
+      @select-project="selectProject"
+      @new-project-task="newProjectTask"
       @create-project="createProject"
       @rename-project="renameProject"
       @toggle-project="toggleProject"
@@ -380,11 +417,12 @@ onMounted(async () => {
         <div class="ai-topbar__title">
           <h1 id="ai-workspace-title">{{ displayedCurrentSession?.title || '新对话' }}</h1>
           <div class="ai-context-chips">
-            <span v-if="displayedCurrentSession?.projectId" class="ai-context-chip ai-context-chip--project">
-              <span aria-hidden="true">▱</span> 博客内容升级
+            <span v-if="displayedCurrentProject" class="ai-context-chip ai-context-chip--project">
+              <span aria-hidden="true">▱</span> {{ displayedCurrentProject.title }}
             </span>
             <span class="ai-context-chip ai-context-chip--memory">
-              <span aria-hidden="true">▣</span> 项目记忆 {{ previewMode ? 3 : activeMemoryCount }} 条
+              <span aria-hidden="true">▣</span>
+              {{ displayedCurrentProject ? '项目记忆' : '可用记忆' }} {{ activeMemoryCount }} 条
             </span>
           </div>
         </div>
@@ -498,10 +536,11 @@ onMounted(async () => {
         />
         <AiMemoryPanel
           v-else-if="utilityPanel === 'memory'"
-          :memories="memories"
+          :memories="displayedMemories"
           :disabled="running || previewMode"
           :current-session-id="displayedCurrentSession?.id"
-          :current-project-id="displayedCurrentSession?.projectId"
+          :current-project-id="displayedCurrentProjectId"
+          :current-project-title="displayedCurrentProject?.title"
           :current-task-id="displayedCurrentTask?.id"
           :session-summary="displayedCurrentSession?.summary"
           @create="platform.addMemory"

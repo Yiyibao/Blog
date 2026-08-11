@@ -57,6 +57,7 @@ class AiMultimodalPlatformIntegrationTest {
     private static HttpServer provider;
 
     @Autowired AiProviderService providerService;
+    @Autowired AiProjectService projectService;
     @Autowired AiFileService fileService;
     @Autowired AiTaskService taskService;
     @Autowired AiTaskOrchestrator orchestrator;
@@ -169,6 +170,8 @@ class AiMultimodalPlatformIntegrationTest {
         assertThat(paths.has("/api/v1/ai/sessions")).isTrue();
         assertThat(paths.has("/api/v1/ai/projects")).isTrue();
         assertThat(paths.has("/api/v1/ai/projects/{projectId}/sessions")).isTrue();
+        assertThat(paths.has("/api/v1/ai/projects/{projectId}/tasks")).isTrue();
+        assertThat(paths.has("/api/v1/ai/projects/{projectId}/memories")).isTrue();
         assertThat(paths.has("/api/v1/ai/sessions/{sessionId}/conversation")).isTrue();
         assertThat(paths.has("/api/v1/ai/sessions/{sessionId}/summary")).isTrue();
         assertThat(paths.has("/api/v1/ai/tasks")).isTrue();
@@ -184,6 +187,51 @@ class AiMultimodalPlatformIntegrationTest {
         if (!output.isEmpty()) {
             Files.writeString(Path.of(output), body, StandardCharsets.UTF_8);
         }
+    }
+
+    @Test
+    void projectDetailsReturnOnlyTheProjectTasksAndMemories() {
+        var project = projectService.create(OWNER, new AiProjectCreateRequest("项目分组")).id();
+        var task =
+                taskService
+                        .create(
+                                OWNER,
+                                new AiTaskCreateRequest(
+                                        null,
+                                        project,
+                                        "项目任务",
+                                        "CHAT",
+                                        null,
+                                        null,
+                                        null,
+                                        "project-grouping-task",
+                                        List.of(
+                                                new AiTaskPartRequest(
+                                                        AiPartKind.TEXT,
+                                                        "项目专属任务",
+                                                        null,
+                                                        null,
+                                                        null))))
+                        .task();
+        var memory =
+                memoryService.create(
+                        OWNER,
+                        new AiMemoryCreateRequest(
+                                "PROJECT:" + project,
+                                "PROJECT_RULE",
+                                "项目专属记忆",
+                                null,
+                                null,
+                                null,
+                                null));
+
+        assertThat(taskService.listByProject(OWNER, project))
+                .extracting(AiTaskResponse::id)
+                .containsExactly(task.id());
+        assertThat(memoryService.listByProject(OWNER, project))
+                .extracting(AiMemoryResponse::id)
+                .containsExactly(memory.id());
+        memoryService.forget(memory.id(), OWNER);
     }
 
     @Test

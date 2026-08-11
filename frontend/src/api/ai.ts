@@ -9,6 +9,10 @@ export type AiProjectStatus = 'ACTIVE' | 'ARCHIVED';
 export type AiSessionStatus = 'ACTIVE' | 'ARCHIVED' | 'DELETED';
 export type AiReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
+// Creating/listing resources should keep the short global API timeout, but a
+// task run includes queue wait plus the provider request itself.
+export const AI_TASK_RUN_TIMEOUT_MS = 90_000;
+
 export interface AiProject {
   id: number;
   title: string;
@@ -169,6 +173,14 @@ export function fetchAiProjects() {
   return unwrap<AiProject[]>(api.get('/ai/projects'));
 }
 
+export function fetchAiProjectTasks(projectId: number) {
+  return unwrap<AiTask[]>(api.get(`/ai/projects/${projectId}/tasks`));
+}
+
+export function fetchAiProjectMemories(projectId: number) {
+  return unwrap<AiMemory[]>(api.get(`/ai/projects/${projectId}/memories`));
+}
+
 export function createAiProject(title: string) {
   return unwrap<AiProject>(api.post('/ai/projects', { title }));
 }
@@ -212,7 +224,11 @@ export function createAiTask(input: AiTaskCreateInput) {
 }
 
 export function runAiTask(taskId: string) {
-  return unwrap<AiTask>(api.post(`/ai/tasks/${encodeURIComponent(taskId)}/run`));
+  return unwrap<AiTask>(
+    api.post(`/ai/tasks/${encodeURIComponent(taskId)}/run`, undefined, {
+      timeout: AI_TASK_RUN_TIMEOUT_MS,
+    }),
+  );
 }
 
 export function fetchAiTasks() {

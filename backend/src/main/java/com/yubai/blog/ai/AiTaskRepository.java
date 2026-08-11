@@ -23,6 +23,21 @@ public interface AiTaskRepository extends JpaRepository<AiTaskEntity, UUID> {
 
     List<AiTaskEntity> findByOwnerAndSessionIdOrderByCreatedAtAsc(String owner, Long sessionId);
 
+    @Query(
+            """
+            select task from AiTaskEntity task
+            where task.owner = :owner
+              and task.sessionId in (
+                  select session.id from AiSessionEntity session
+                  where session.owner = :owner
+                    and session.projectId = :projectId
+                    and session.status <> com.yubai.blog.ai.AiSessionStatus.DELETED
+              )
+            order by task.createdAt desc
+            """)
+    List<AiTaskEntity> findByOwnerAndProjectIdOrderByCreatedAtDesc(
+            @Param("owner") String owner, @Param("projectId") Long projectId);
+
     List<AiTaskEntity> findByStatusInAndUpdatedAtBefore(
             List<AiTaskStatus> statuses, Instant cutoff);
 

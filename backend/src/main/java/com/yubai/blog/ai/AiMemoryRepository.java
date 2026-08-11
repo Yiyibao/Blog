@@ -15,6 +15,9 @@ public interface AiMemoryRepository extends JpaRepository<AiMemoryEntity, UUID> 
     List<AiMemoryEntity> findByOwnerAndStatusNotOrderByUpdatedAtDesc(
             String owner, AiMemoryStatus status);
 
+    List<AiMemoryEntity> findByOwnerAndScopeAndStatusNotOrderByUpdatedAtDesc(
+            String owner, String scope, AiMemoryStatus status);
+
     List<AiMemoryEntity> findByOwnerAndStatusAndExpiresAtIsNullOrderByUpdatedAtDesc(
             String owner, AiMemoryStatus status);
 

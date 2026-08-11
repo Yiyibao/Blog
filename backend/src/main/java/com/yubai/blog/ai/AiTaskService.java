@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -52,6 +53,11 @@ public class AiTaskService {
                         ? sessionService.createForTask(
                                 owner, request.sessionTitle(), request.projectId())
                         : sessionService.requireOwned(request.sessionId(), owner);
+        if (request.projectId() != null
+                && !Objects.equals(request.projectId(), session.getProjectId())) {
+            throw new AiServiceException(
+                    HttpStatus.CONFLICT, "AI task project does not match its session");
+        }
         var task =
                 taskRepository.save(
                         AiTaskEntity.create(
@@ -94,6 +100,13 @@ public class AiTaskService {
     @Transactional(readOnly = true)
     public List<AiTaskResponse> list(String owner) {
         return taskRepository.findByOwnerOrderByCreatedAtDesc(owner).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<AiTaskResponse> listByProject(String owner, Long projectId) {
+        return taskRepository.findByOwnerAndProjectIdOrderByCreatedAtDesc(owner, projectId).stream()
                 .map(this::toResponse)
                 .toList();
     }

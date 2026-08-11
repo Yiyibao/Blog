@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { AiMemory } from '../../api/ai';
 
 const props = defineProps<{
@@ -7,6 +7,7 @@ const props = defineProps<{
   disabled?: boolean;
   currentSessionId?: number | null;
   currentProjectId?: number | null;
+  currentProjectTitle?: string | null;
   currentTaskId?: string | null;
   sessionSummary?: string | null;
 }>();
@@ -23,6 +24,15 @@ const content = ref('');
 const scope = ref<'USER' | 'SESSION' | 'PROJECT'>('USER');
 const editingId = ref<string | null>(null);
 const editingContent = ref('');
+
+watch(
+  () => props.currentProjectId,
+  (projectId) => {
+    if (projectId != null) scope.value = 'PROJECT';
+    else if (scope.value === 'PROJECT') scope.value = 'USER';
+  },
+  { immediate: true },
+);
 
 function create(sourceTaskId: string | null = null) {
   const value = content.value.trim();
@@ -59,6 +69,11 @@ function save(memory: AiMemory) {
         <h2 id="ai-memory-title">真实记忆</h2>
       </div>
     </div>
+    <p v-if="currentProjectId" class="ai-memory-context">
+      当前项目：{{
+        currentProjectTitle || `项目 #${currentProjectId}`
+      }}。选择“当前项目”后，仅该项目内的任务会读取这条记忆。
+    </p>
     <div v-if="sessionSummary" class="ai-memory-summary">
       <strong>较早会话摘要</strong>
       <p>{{ sessionSummary }}</p>
@@ -150,6 +165,17 @@ function save(memory: AiMemory) {
 </template>
 
 <style scoped>
+.ai-memory-context {
+  margin: 0.7rem 0 0;
+  border: 1px solid #d9e9df;
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.7rem;
+  color: #4d735b;
+  background: #f6fcf7;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
 .ai-memory-summary {
   margin-top: 0.75rem;
   border: 1px solid var(--ai-line);
