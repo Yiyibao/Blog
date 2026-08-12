@@ -3233,22 +3233,29 @@ export interface components {
     RecipeExtractionResponse: {
       /** Format: int64 */
       id?: number;
+      /** Format: uuid */
+      idempotencyKey?: string;
       sourceType?: string;
       status?: string;
       stage?: string;
       /** Format: int32 */
       progress?: number;
+      /** Format: int32 */
+      attempts?: number;
       /** Format: int64 */
       providerId?: number;
       model?: string;
       /** Format: uuid */
       resultImportToken?: string;
+      errorCode?: string;
       safeErrorMessage?: string;
       preview?: components['schemas']['ImportPreview'];
       /** Format: date-time */
       createdAt?: string;
       /** Format: date-time */
       startedAt?: string;
+      /** Format: date-time */
+      heartbeatAt?: string;
       /** Format: date-time */
       finishedAt?: string;
     };
@@ -7406,7 +7413,9 @@ export interface operations {
   create_1: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        'Idempotency-Key'?: string;
+      };
       path?: never;
       cookie?: never;
     };

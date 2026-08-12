@@ -21,6 +21,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -31,6 +32,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -39,6 +41,7 @@ import org.jsoup.nodes.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -53,6 +56,7 @@ public class RecipeExtractionService {
     private static final int HTTP_TIMEOUT_SECONDS = 15;
     private static final int MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
     private static final int MAX_URL_LENGTH = 2048;
+    private static final int LEASE_SECONDS = 60;
     private static final byte[] ONE_PX_JPEG =
             Base64.getDecoder()
                     .decode(
@@ -90,13 +94,26 @@ public class RecipeExtractionService {
 
     @Transactional
     public RecipeExtractionResponse create(RecipeExtractionRequest request) {
+        return create(request, null);
+    }
+
+    @Transactional
+    public RecipeExtractionResponse create(RecipeExtractionRequest request, String idempotencyKey) {
+        var key = parseIdempotencyKey(idempotencyKey);
+        jobRepository.lockIdempotencyKey(key);
+        var existing = jobRepository.findByIdempotencyKey(key);
+        if (existing.isPresent()) {
+            submit(existing.get().getId());
+            return RecipeExtractionResponse.from(existing.get(), null);
+        }
         var entity =
                 new RecipeExtractionJobEntity(
                         RecipeExtractionJobEntity.SourceType.valueOf(request.sourceType()),
                         request.sourceContent(),
                         request.providerId(),
-                        request.model());
-        entity = jobRepository.save(entity);
+                        request.model(),
+                        key);
+        entity = jobRepository.saveAndFlush(entity);
         var jobId = entity.getId();
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
@@ -113,15 +130,15 @@ public class RecipeExtractionService {
     }
 
     void execute(long jobId) {
+        var worker = UUID.randomUUID().toString();
+        var now = Instant.now();
+        if (jobRepository.claim(jobId, worker, now, leaseUntil(now)) != 1) return;
         var entity = jobRepository.findById(jobId).orElse(null);
-        if (entity == null
-                || !entity.getStatus().equals(RecipeExtractionJobEntity.Status.QUEUED.name()))
-            return;
+        if (entity == null) return;
+        ScheduledFuture<?> leaseHeartbeat =
+                timeoutScheduler.scheduleAtFixedRate(
+                        () -> renewLease(jobId, worker), 20, 20, TimeUnit.SECONDS);
         try {
-            entity.start();
-            entity.updateStage("正在获取内容…", 10);
-            entity = jobRepository.save(entity);
-
             var source =
                     switch (entity.getSourceType()) {
                         case "WEB_URL" ->
@@ -148,40 +165,34 @@ public class RecipeExtractionService {
                     };
             ensureActive(jobId);
 
-            entity.updateStage("正在调用 AI 提取菜谱…", 30);
-            entity = jobRepository.save(entity);
+            heartbeat(jobId, worker, "正在调用 AI 提取菜谱…", 30);
 
             var aiResult = callAiForRecipe(entity, source.text());
             ensureActive(jobId);
 
-            entity.updateStage("正在验证结果…", 70);
-            entity = jobRepository.save(entity);
+            heartbeat(jobId, worker, "正在验证结果…", 70);
 
             var yrecipe = parseAndValidate(aiResult, entity, source);
 
-            entity.updateStage("正在生成导入包…", 85);
-            entity = jobRepository.save(entity);
+            heartbeat(jobId, worker, "正在生成导入包…", 85);
 
             var importPreview =
                     storeAsYrecipe(yrecipe, source.coverBytes(), source.coverMediaType());
             ensureActive(jobId);
 
-            entity.succeed(importPreview.token());
-            jobRepository.save(entity);
+            if (jobRepository.succeed(jobId, worker, importPreview.token(), Instant.now()) != 1) {
+                dishImportService.cancel(importPreview.token());
+            }
         } catch (Exception e) {
             log.error("Recipe extraction failed for job {}: {}", jobId, e.toString());
             String safeMessage =
                     e instanceof InvalidRecipeException
                             ? e.getMessage()
                             : (e instanceof AiServiceException ? e.getMessage() : "提取菜谱失败，请稍后重试");
-            var current = jobRepository.findById(jobId).orElse(null);
-            if (current != null
-                    && !current.getStatus()
-                            .equals(RecipeExtractionJobEntity.Status.CANCELLED.name())) {
-                current.fail(safeMessage);
-                jobRepository.save(current);
-            }
+            jobRepository.failActive(
+                    jobId, worker, errorCode(e), truncate(safeMessage), Instant.now());
         } finally {
+            leaseHeartbeat.cancel(false);
             runningTasks.remove(jobId);
         }
     }
@@ -198,11 +209,8 @@ public class RecipeExtractionService {
 
     @Transactional
     public void cancelJob(Long id) {
-        var entity = jobRepository.findById(id).orElseThrow(() -> new NotFoundException("提取任务不存在"));
-        if (entity.getStatus().equals(RecipeExtractionJobEntity.Status.QUEUED.name())
-                || entity.getStatus().equals(RecipeExtractionJobEntity.Status.RUNNING.name())) {
-            entity.cancel();
-            jobRepository.save(entity);
+        if (!jobRepository.existsById(id)) throw new NotFoundException("提取任务不存在");
+        if (jobRepository.cancelActive(id, Instant.now()) == 1) {
             var task = runningTasks.remove(id);
             if (task != null) task.cancel(true);
         }
@@ -234,7 +242,7 @@ public class RecipeExtractionService {
                             execute(jobId);
                             return null;
                         });
-        runningTasks.put(jobId, task);
+        if (runningTasks.putIfAbsent(jobId, task) != null) return;
         try {
             executor.execute(task);
             timeoutScheduler.schedule(
@@ -248,8 +256,8 @@ public class RecipeExtractionService {
                                             .equals(
                                                     RecipeExtractionJobEntity.Status.RUNNING
                                                             .name())) {
-                                current.fail("提取任务超时，请重试");
-                                jobRepository.save(current);
+                                jobRepository.failAnyActive(
+                                        jobId, "TIMEOUT", "提取任务超时，请重试", Instant.now());
                             }
                         }
                     },
@@ -257,12 +265,57 @@ public class RecipeExtractionService {
                     TimeUnit.MINUTES);
         } catch (RejectedExecutionException exception) {
             runningTasks.remove(jobId, task);
-            var entity = jobRepository.findById(jobId).orElse(null);
-            if (entity != null) {
-                entity.fail("当前提取任务过多，请稍后重试");
-                jobRepository.save(entity);
-            }
+            jobRepository.failAnyActive(jobId, "QUEUE_FULL", "当前提取任务过多，请稍后重试", Instant.now());
         }
+    }
+
+    @Scheduled(
+            fixedDelayString = "${app.recipe.extraction.recovery-interval-ms:30000}",
+            initialDelayString = "${app.recipe.extraction.recovery-initial-delay-ms:5000}")
+    void recoverQueuedAndExpiredLeases() {
+        var now = Instant.now();
+        jobRepository.failExhausted(now);
+        jobRepository.findRecoverableIds(now).forEach(this::submit);
+    }
+
+    private void heartbeat(long jobId, String worker, String stage, int progress) {
+        var now = Instant.now();
+        if (jobRepository.heartbeat(jobId, worker, stage, progress, now, leaseUntil(now)) != 1) {
+            throw new InvalidRecipeException("提取任务已取消");
+        }
+    }
+
+    private void renewLease(long jobId, String worker) {
+        try {
+            var now = Instant.now();
+            jobRepository.renewLease(jobId, worker, now, leaseUntil(now));
+        } catch (RuntimeException exception) {
+            log.warn("Recipe extraction lease heartbeat failed for job {}", jobId);
+        }
+    }
+
+    private static Instant leaseUntil(Instant now) {
+        return now.plus(LEASE_SECONDS, ChronoUnit.SECONDS);
+    }
+
+    private static UUID parseIdempotencyKey(String raw) {
+        if (raw == null || raw.isBlank()) return UUID.randomUUID();
+        try {
+            return UUID.fromString(raw.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidRecipeException("Idempotency-Key 必须是 UUID");
+        }
+    }
+
+    private static String errorCode(Exception exception) {
+        if (exception instanceof InvalidRecipeException) return "INVALID_RECIPE";
+        if (exception instanceof AiServiceException) return "AI_UPSTREAM";
+        return "EXTRACTION_FAILED";
+    }
+
+    private static String truncate(String message) {
+        if (message == null) return "提取菜谱失败，请稍后重试";
+        return message.length() > 1000 ? message.substring(0, 1000) : message;
     }
 
     private void ensureActive(long jobId) {

@@ -61,7 +61,7 @@ class FreshInstallBaselineTest {
             assertThat(count(jdbc, "dishes")).isZero();
             assertThat(count(jdbc, "music_tracks")).isZero();
             assertThat(count(jdbc, "sys_quote")).isZero();
-            assertThat(latestVersion(jdbc)).isEqualTo("55");
+            assertThat(latestVersion(jdbc)).isEqualTo("56");
         }
     }
 
@@ -79,7 +79,7 @@ class FreshInstallBaselineTest {
 
             assertThat(count(jdbc, "posts")).isEqualTo(postsBefore);
             assertThat(count(jdbc, "dishes")).isEqualTo(dishesBefore);
-            assertThat(latestVersion(jdbc)).isEqualTo("55");
+            assertThat(latestVersion(jdbc)).isEqualTo("56");
         }
     }
 
@@ -98,7 +98,7 @@ class FreshInstallBaselineTest {
     @Test
     void releasePreflightValidatesAndReportsPendingWithoutMigrating() {
         try (var schemaDataSource = schemaDataSource(PREFLIGHT_SCHEMA)) {
-            migrate(schemaDataSource, "54");
+            migrate(schemaDataSource, "55");
             var flyway =
                     Flyway.configure()
                             .dataSource(schemaDataSource)
@@ -106,12 +106,12 @@ class FreshInstallBaselineTest {
                             .ignoreMigrationPatterns("*:pending")
                             .load();
 
-            var report = FlywayReleasePreflight.inspect(flyway, 55);
+            var report = FlywayReleasePreflight.inspect(flyway, 56);
 
-            assertThat(report.currentVersion()).isEqualTo(54);
-            assertThat(report.targetVersion()).isEqualTo(55);
+            assertThat(report.currentVersion()).isEqualTo(55);
+            assertThat(report.targetVersion()).isEqualTo(56);
             assertThat(report.pendingMigrations()).isEqualTo(1);
-            assertThat(latestVersion(new JdbcTemplate(schemaDataSource))).isEqualTo("54");
+            assertThat(latestVersion(new JdbcTemplate(schemaDataSource))).isEqualTo("55");
         }
     }
 

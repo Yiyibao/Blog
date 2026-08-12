@@ -2,7 +2,11 @@ package com.yubai.blog.admin.recipe;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -28,6 +33,7 @@ class RecipeExtractionServiceTest {
     private final AiChatService chatService = mock(AiChatService.class);
     private final DishImportService importService = mock(DishImportService.class);
     private final ExecutorService executor = mock(ExecutorService.class);
+    private final ScheduledExecutorService timeoutScheduler = mock(ScheduledExecutorService.class);
     private final RecipeExtractionService service =
             new RecipeExtractionService(
                     repository,
@@ -37,7 +43,7 @@ class RecipeExtractionServiceTest {
                     mock(VideoRecipeSourceExtractor.class),
                     new AiProperties(),
                     executor,
-                    mock(ScheduledExecutorService.class));
+                    timeoutScheduler);
     private RecipeExtractionJobEntity job;
 
     @BeforeEach
@@ -47,7 +53,7 @@ class RecipeExtractionServiceTest {
                         RecipeExtractionJobEntity.SourceType.TEXT, "番茄 鸡蛋", null, "model");
         ReflectionTestUtils.setField(job, "id", 1L);
         when(repository.findById(1L)).thenAnswer(ignored -> Optional.of(job));
-        when(repository.save(any()))
+        when(repository.saveAndFlush(any()))
                 .thenAnswer(
                         invocation -> {
                             var saved = (RecipeExtractionJobEntity) invocation.getArgument(0);
@@ -55,6 +61,11 @@ class RecipeExtractionServiceTest {
                                 ReflectionTestUtils.setField(saved, "id", 2L);
                             return saved;
                         });
+        when(repository.claim(anyLong(), any(), any(), any())).thenReturn(1);
+        when(repository.heartbeat(anyLong(), any(), any(), anyInt(), any(), any())).thenReturn(1);
+        when(repository.succeed(anyLong(), any(), any(), any())).thenReturn(1);
+        when(timeoutScheduler.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), any()))
+                .thenReturn(mock(ScheduledFuture.class));
     }
 
     @Test
@@ -92,9 +103,8 @@ class RecipeExtractionServiceTest {
 
         service.execute(1L);
 
-        assertThat(job.getStatus()).isEqualTo("SUCCEEDED");
-        assertThat(job.getResultImportToken()).isEqualTo(token);
-        assertThat(job.getProgress()).isEqualTo(100);
+        verify(repository).succeed(eq(1L), any(), eq(token), any());
+        verify(importService, never()).cancel(token);
     }
 
     @Test
@@ -103,8 +113,13 @@ class RecipeExtractionServiceTest {
 
         service.execute(1L);
 
-        assertThat(job.getStatus()).isEqualTo("FAILED");
-        assertThat(job.getSafeErrorMessage()).contains("AI 未返回有效内容");
+        verify(repository)
+                .failActive(
+                        eq(1L),
+                        any(),
+                        eq("INVALID_RECIPE"),
+                        org.mockito.ArgumentMatchers.contains("AI 未返回有效内容"),
+                        any());
     }
 
     @Test
@@ -118,5 +133,19 @@ class RecipeExtractionServiceTest {
         assertThat(job.getStatus()).isEqualTo("CANCELLED");
         assertThat(job.getAttempts()).isEqualTo(2);
         assertThat(job.getFinishedAt()).isNotNull();
+    }
+
+    @Test
+    void repeatedIdempotencyKeyReturnsExistingJobWithoutDuplicateSubmission() {
+        var key = UUID.randomUUID();
+        when(repository.findByIdempotencyKey(key)).thenReturn(Optional.of(job));
+
+        var response =
+                service.create(
+                        new RecipeExtractionRequest("TEXT", "番茄 鸡蛋", null, "model"),
+                        key.toString());
+
+        assertThat(response.id()).isEqualTo(1L);
+        verify(repository, never()).saveAndFlush(any());
     }
 }

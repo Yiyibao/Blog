@@ -59,6 +59,21 @@ public class RecipeExtractionJobEntity {
     @Column(name = "safe_error_message", length = 1000)
     private String safeErrorMessage;
 
+    @Column(name = "idempotency_key", nullable = false, updatable = false)
+    private UUID idempotencyKey;
+
+    @Column(name = "error_code", length = 64)
+    private String errorCode;
+
+    @Column(name = "lease_owner", length = 128)
+    private String leaseOwner;
+
+    @Column(name = "lease_until")
+    private Instant leaseUntil;
+
+    @Column(name = "heartbeat_at")
+    private Instant heartbeatAt;
+
     @Column(nullable = false)
     private int attempts;
 
@@ -79,10 +94,20 @@ public class RecipeExtractionJobEntity {
 
     public RecipeExtractionJobEntity(
             SourceType sourceType, String sourceContent, Long providerId, String model) {
+        this(sourceType, sourceContent, providerId, model, UUID.randomUUID());
+    }
+
+    public RecipeExtractionJobEntity(
+            SourceType sourceType,
+            String sourceContent,
+            Long providerId,
+            String model,
+            UUID idempotencyKey) {
         this.sourceType = sourceType.name();
         this.sourceContent = sourceContent;
         this.providerId = providerId;
         this.model = model;
+        this.idempotencyKey = idempotencyKey;
         this.status = Status.QUEUED.name();
         this.progress = 0;
         this.attempts = 0;
@@ -189,5 +214,25 @@ public class RecipeExtractionJobEntity {
 
     public Instant getFinishedAt() {
         return finishedAt;
+    }
+
+    public UUID getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    public String getLeaseOwner() {
+        return leaseOwner;
+    }
+
+    public Instant getLeaseUntil() {
+        return leaseUntil;
+    }
+
+    public Instant getHeartbeatAt() {
+        return heartbeatAt;
     }
 }

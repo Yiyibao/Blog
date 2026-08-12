@@ -10,13 +10,16 @@ export interface RecipeExtractionRequest {
 
 export interface RecipeExtractionJob {
   id: number;
+  idempotencyKey: string;
   sourceType: string;
   status: string;
   stage: string | null;
   progress: number;
+  attempts: number;
   providerId: number | null;
   model: string | null;
   resultImportToken: string | null;
+  errorCode: string | null;
   safeErrorMessage: string | null;
   preview: {
     token: string;
@@ -29,12 +32,16 @@ export interface RecipeExtractionJob {
   } | null;
   createdAt: string;
   startedAt: string | null;
+  heartbeatAt: string | null;
   finishedAt: string | null;
 }
 
 export function createRecipeExtraction(payload: RecipeExtractionRequest) {
   return unwrap<RecipeExtractionJob>(
-    api.post('/admin/recipe-extractions', payload, { headers: tokenHeader(), timeout: 15_000 }),
+    api.post('/admin/recipe-extractions', payload, {
+      headers: { ...tokenHeader(), 'Idempotency-Key': crypto.randomUUID() },
+      timeout: 15_000,
+    }),
   );
 }
 
