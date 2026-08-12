@@ -52,8 +52,8 @@ import {
 import type { PostStatus } from '../data';
 
 import AdminSidebar from './AdminSidebar.vue';
-import TyporaEditor from './TyporaEditor.vue';
-import AiActionChips, { type AiActionKind } from './AiActionChips.vue';
+import AdminEditorModal from './AdminEditorModal.vue';
+import type { AiActionKind } from './AiActionChips.vue';
 import PostRevisionDrawer from './PostRevisionDrawer.vue';
 import DashboardTrends from './DashboardTrends.vue';
 import PaginationNav from './PaginationNav.vue';
@@ -258,7 +258,6 @@ const dishForm = reactive({
   ingredients: '',
   steps: '',
 });
-const dishImageInput = ref<HTMLInputElement | null>(null);
 const dishImagePreviewUrl = ref('');
 const dishImageUpload = ref<DishImageUpload | null>(null);
 const dishImageOriginalUrl = ref('');
@@ -308,10 +307,6 @@ function resetDishImageState(originalUrl = '') {
   dishImageOriginalUrl.value = originalUrl;
   dishImageUploading.value = false;
   dishImageError.value = '';
-}
-
-function chooseDishImage() {
-  dishImageInput.value?.click();
 }
 
 async function handleDishImageChange(event: Event) {
@@ -1117,260 +1112,34 @@ onMounted(load);
       </section>
     </main>
 
-    <div v-if="editorOpen" class="admin-editor-backdrop" @click.self="closeEditor">
-      <form class="admin-editor" @submit.prevent="save">
-        <header>
-          <div>
-            <small>{{ editingId ? 'EDIT RECORD' : 'NEW RECORD' }}</small>
-            <h2>{{ editingId ? '编辑' : '新建' }}{{ editorNoun }}</h2>
-          </div>
-          <div class="editor-head-actions">
-            <button
-              v-if="editorKind === 'post' && editingId"
-              type="button"
-              class="revision-trigger"
-              @click="revisionDrawerOpen = true"
-            >
-              ↺ 历史版本
-            </button>
-            <button type="button" aria-label="关闭编辑器" @click="closeEditor">×</button>
-          </div>
-        </header>
-
-        <template v-if="editorKind === 'post'">
-          <!-- 卡片 1：属性与元数据 -->
-          <div class="editor-card">
-            <div class="card-title"><span class="badge-dot" />基本属性与分类</div>
-            <label class="full-width-label">
-              <span>文章标题</span>
-              <input
-                v-model="postForm.title"
-                type="text"
-                required
-                maxlength="200"
-                placeholder="请输入清晰、具有概括性的文章标题…"
-              />
-            </label>
-            <div class="admin-form-grid">
-              <label
-                ><span>Slug（路由别名，可选）</span
-                ><input
-                  v-model="postForm.slug"
-                  type="text"
-                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                  placeholder="留空将根据标题自动生成"
-              /></label>
-              <label
-                ><span>文章类别</span
-                ><span class="category-select-row"
-                  ><select v-model="postForm.category" required>
-                    <option value="" disabled>请先创建并选择类别</option>
-                    <option v-for="category in categories" :key="category.id" :value="category.name">
-                      {{ category.name }}
-                    </option></select
-                  ><button type="button" @click="newCategory">＋ 新建</button></span
-                ></label
-              >
-              <label><span>发布日期</span><input v-model="postForm.date" type="date" required /></label>
-              <label
-                ><span>预计阅读时间 (分钟)</span
-                ><input v-model.number="postForm.readTime" type="number" min="1" max="180" required
-              /></label>
-              <label
-                ><span>文章编号</span
-                ><input v-model="postForm.number" type="text" required maxlength="10" placeholder="01"
-              /></label>
-              <label
-                ><span>发布状态</span>
-                <select v-model="postForm.status" required>
-                  <option value="DRAFT">📝 草稿 (DRAFT)</option>
-                  <option value="PUBLISHED">🚀 已发布 (PUBLISHED)</option>
-                </select>
-              </label>
-              <label
-                ><span>主题色彩</span>
-                <div class="color-picker-wrap">
-                  <input v-model="postForm.color" type="color" required />
-                  <span class="color-hex-val">{{ postForm.color }}</span>
-                </div>
-              </label>
-              <label class="admin-check">
-                <input v-model="postForm.featured" type="checkbox" />
-                <span>设为首页精选文章</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- 卡片 2：标签与摘要 -->
-          <div class="editor-card">
-            <div class="card-title"><span class="badge-dot" />标签与摘要</div>
-            <label>
-              <span>文章标签（英文逗号分隔）</span>
-              <input v-model="postForm.tags" type="text" required placeholder="Vue, TypeScript, WebGL" />
-            </label>
-            <label>
-              <span>内容摘要 (Excerpt)</span>
-              <textarea
-                v-model="postForm.excerpt"
-                rows="3"
-                required
-                placeholder="简短总结本篇文章的核心洞见与主要内容…"
-              />
-            </label>
-          </div>
-
-          <!-- 卡片 3：AI 智能助手与正文编辑 -->
-          <div class="editor-card">
-            <div class="card-title"><span class="badge-dot" />AI 智能创作与正文内容</div>
-            <!-- 4A-5：场景化 AI 动作（结果只填入不保存） -->
-            <AiActionChips :get-context="currentPostContext" @apply="applyAiAction" />
-            <!-- 3A-3：Markdown 模式复用 TyporaEditor；纯 HTML 存量篇先转换 -->
-            <div v-if="postMarkdownMode" class="post-markdown-field">
-              <TyporaEditor
-                v-model="postForm.markdownContent"
-                :upload-image="rejectPostImageUpload"
-                @upload-error="error = '文章编辑器暂不支持直传图片，请使用站内路径或外链。'"
-              />
-            </div>
-            <template v-else>
-              <div class="legacy-html-notice" role="status">
-                <span>该篇为存量 HTML，尚未生成 Markdown 稿。转换后即可用 Markdown 编辑器。</span>
-                <button type="button" :disabled="converting" @click="convertLegacyPost">
-                  {{ converting ? '转换中…' : '一键转换' }}
-                </button>
-              </div>
-              <label
-                ><span>HTML 正文</span
-                ><textarea
-                  v-model="postForm.content"
-                  class="admin-code-editor"
-                  rows="14"
-                  required
-                  spellcheck="false"
-                />
-              </label>
-            </template>
-          </div>
-        </template>
-        <template v-else>
-          <div class="editor-card">
-            <div class="card-title"><span class="badge-dot" />菜品基本属性</div>
-            <div class="admin-form-grid">
-              <label><span>菜品名称</span><input v-model="dishForm.name" required maxlength="120" /></label>
-              <label
-                ><span>菜品分类</span
-                ><span class="category-select-row"
-                  ><select v-model="dishForm.category" required>
-                    <option value="" disabled>请先创建并选择分类</option>
-                    <option v-for="category in dishCategories" :key="category.id" :value="category.name">
-                      {{ category.name }}
-                    </option></select
-                  ><button type="button" @click="newDishCategory">＋ 新建</button></span
-                ></label
-              >
-              <label
-                ><span>准备时间（分钟）</span
-                ><input v-model.number="dishForm.prepMinutes" type="number" min="1" max="1440" required
-              /></label>
-              <label
-                ><span>难度</span>
-                <select v-model="dishForm.difficulty" required>
-                  <option value="简单">简单</option>
-                  <option value="家常">家常</option>
-                  <option value="进阶">进阶</option>
-                </select>
-              </label>
-              <label
-                ><span>评分</span
-                ><input v-model.number="dishForm.rating" type="number" min="0" max="5" step="0.1" required
-              /></label>
-              <label
-                ><span>展示顺序</span
-                ><input v-model.number="dishForm.displayOrder" type="number" min="0" required
-              /></label>
-              <label
-                ><span>份量基准（人份）</span
-                ><input v-model.number="dishForm.baseServings" type="number" min="1" max="20" required
-              /></label>
-              <label class="admin-check"
-                ><input v-model="dishForm.featured" type="checkbox" /><span>设为精选菜品</span></label
-              >
-              <label class="admin-check"
-                ><input v-model="dishForm.published" type="checkbox" /><span>公开发布</span></label
-              >
-            </div>
-          </div>
-          <div class="editor-card">
-            <div class="card-title"><span class="badge-dot" />简介与媒体图示</div>
-            <label
-              ><span>简介</span><textarea v-model="dishForm.summary" rows="3" required maxlength="1000" />
-            </label>
-            <label>
-              <span>菜品图片</span>
-              <div class="dish-image-upload">
-                <div v-if="dishImagePreviewUrl || dishForm.imageUrl" class="dish-image-preview">
-                  <img :src="dishImagePreviewUrl || dishForm.imageUrl" alt="菜品图片预览" />
-                </div>
-                <div class="dish-image-upload-actions">
-                  <input
-                    ref="dishImageInput"
-                    type="file"
-                    hidden
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    @change="handleDishImageChange"
-                  />
-                  <button
-                    type="button"
-                    class="button secondary"
-                    :disabled="dishImageUploading"
-                    @click="chooseDishImage"
-                  >
-                    {{ dishImageUploading ? '正在上传…' : dishForm.imageUrl ? '更换图片' : '选择图片' }}
-                  </button>
-                  <small>支持 PNG、JPG/JPEG、WebP、GIF，最大 8 MB；图片会保存到数据库。</small>
-                  <p v-if="dishImageError" class="admin-error" role="alert">{{ dishImageError }}</p>
-                </div>
-              </div>
-            </label>
-            <label
-              ><span>图片替代文本</span><input v-model="dishForm.imageAlt" required maxlength="240"
-            /></label>
-          </div>
-          <div class="editor-card">
-            <div class="card-title"><span class="badge-dot" />食材与烹饪步骤</div>
-            <label
-              ><span>食材清单（每行一项）</span
-              ><textarea
-                v-model="dishForm.ingredients"
-                rows="7"
-                required
-                placeholder="嫩豆腐 400 克&#10;牛肉末 80 克"
-              />
-            </label>
-            <label
-              ><span>制作步骤（每行一步）</span
-              ><textarea
-                v-model="dishForm.steps"
-                rows="8"
-                required
-                placeholder="豆腐切块并焯水。&#10;炒香肉末与豆瓣酱。"
-              />
-            </label>
-          </div>
-        </template>
-        <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
-        <footer>
-          <button class="button secondary" type="button" @click="closeEditor">取消</button
-          ><button
-            class="button primary"
-            type="submit"
-            :disabled="saving || (editorKind === 'dish' && dishImageUploading)"
-          >
-            {{ saving ? '正在保存…' : '保存内容 ↗' }}
-          </button>
-        </footer>
-      </form>
-    </div>
+    <AdminEditorModal
+      v-if="editorOpen"
+      :editing-id="editingId"
+      :editor-kind="editorKind"
+      :editor-noun="editorNoun"
+      :post-form="postForm"
+      :dish-form="dishForm"
+      :categories="categories"
+      :dish-categories="dishCategories"
+      :post-markdown-mode="postMarkdownMode"
+      :converting="converting"
+      :error="error"
+      :saving="saving"
+      :current-post-context="currentPostContext"
+      :apply-ai-action="applyAiAction"
+      :convert-legacy-post="convertLegacyPost"
+      :reject-post-image-upload="rejectPostImageUpload"
+      :dish-image-preview-url="dishImagePreviewUrl"
+      :dish-image-uploading="dishImageUploading"
+      :dish-image-error="dishImageError"
+      :handle-dish-image-change="handleDishImageChange"
+      @close="closeEditor"
+      @save="save"
+      @open-revision="revisionDrawerOpen = true"
+      @new-category="newCategory"
+      @new-dish-category="newDishCategory"
+      @error="error = $event"
+    />
 
     <div v-if="categoryManagerOpen" class="admin-editor-backdrop" @click.self="categoryManagerOpen = false">
       <section
