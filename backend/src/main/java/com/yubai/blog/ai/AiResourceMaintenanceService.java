@@ -2,11 +2,14 @@ package com.yubai.blog.ai;
 
 import com.yubai.blog.config.AiPlatformProperties;
 import com.yubai.blog.storage.StorageService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,16 +24,29 @@ public class AiResourceMaintenanceService {
     private final AiArtifactRepository artifactRepository;
     private final StorageService storage;
     private final AiPlatformProperties properties;
+    private final MeterRegistry meters;
 
+    @Autowired
+    public AiResourceMaintenanceService(
+            AiFileRepository fileRepository,
+            AiArtifactRepository artifactRepository,
+            StorageService storage,
+            AiPlatformProperties properties,
+            MeterRegistry meters) {
+        this.fileRepository = fileRepository;
+        this.artifactRepository = artifactRepository;
+        this.storage = storage;
+        this.properties = properties;
+        this.meters = meters;
+    }
+
+    /** Source-compatible constructor for focused lifecycle tests. */
     public AiResourceMaintenanceService(
             AiFileRepository fileRepository,
             AiArtifactRepository artifactRepository,
             StorageService storage,
             AiPlatformProperties properties) {
-        this.fileRepository = fileRepository;
-        this.artifactRepository = artifactRepository;
-        this.storage = storage;
-        this.properties = properties;
+        this(fileRepository, artifactRepository, storage, properties, new SimpleMeterRegistry());
     }
 
     @Scheduled(fixedDelayString = "${app.ai.platform.cleanup-interval-ms:3600000}")
@@ -63,6 +79,8 @@ public class AiResourceMaintenanceService {
             artifactRepository.saveAll(artifacts);
         }
         deleteAfterCommit(storageKeys);
+        meters.counter("blog.resources.cleanup", "type", "ai_file").increment(files.size());
+        meters.counter("blog.resources.cleanup", "type", "ai_artifact").increment(artifacts.size());
         return new CleanupResult(files.size(), artifacts.size());
     }
 
@@ -86,6 +104,7 @@ public class AiResourceMaintenanceService {
         try {
             storage.delete(storageKey);
         } catch (RuntimeException exception) {
+            meters.counter("blog.resources.cleanup.failures", "type", "ai").increment();
             LOGGER.warn("AI expired resource cleanup will retry after storage deletion failed");
         }
     }

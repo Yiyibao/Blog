@@ -12,6 +12,8 @@ public class AiPlatformProperties {
     private int maxArtifactBytes = 15_000_000;
     private long maxOwnerFileBytes = 100_000_000L;
     private int maxOwnerFiles = 100;
+    private long maxOwnerArtifactBytes = 100_000_000L;
+    private int maxOwnerArtifacts = 100;
     private int maxExtractedChars = 120_000;
     private int maxPdfPages = 100;
     private int maxDocxEntries = 2_000;
@@ -93,6 +95,22 @@ public class AiPlatformProperties {
 
     public void setMaxOwnerFiles(int maxOwnerFiles) {
         this.maxOwnerFiles = maxOwnerFiles;
+    }
+
+    public long getMaxOwnerArtifactBytes() {
+        return maxOwnerArtifactBytes;
+    }
+
+    public void setMaxOwnerArtifactBytes(long maxOwnerArtifactBytes) {
+        this.maxOwnerArtifactBytes = maxOwnerArtifactBytes;
+    }
+
+    public int getMaxOwnerArtifacts() {
+        return maxOwnerArtifacts;
+    }
+
+    public void setMaxOwnerArtifacts(int maxOwnerArtifacts) {
+        this.maxOwnerArtifacts = maxOwnerArtifacts;
     }
 
     public int getMaxExtractedChars() {

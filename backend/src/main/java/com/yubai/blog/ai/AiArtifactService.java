@@ -78,10 +78,22 @@ public class AiArtifactService {
     @Transactional
     public AiArtifactResponse create(UUID taskId, String owner, AiArtifactCreateRequest request) {
         taskService.requireOwned(taskId, owner);
+        repository.lockOwnerQuota(owner);
+        var excluded = List.of(AiArtifactStatus.DELETED, AiArtifactStatus.EXPIRED);
+        if (repository.countByOwnerAndStatusNotIn(owner, excluded)
+                >= Math.max(1, properties.getMaxOwnerArtifacts())) {
+            throw new AiServiceException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "AI artifact count quota exceeded");
+        }
         var name = normalizeName(request.name(), request.format());
         var materialized = materialize(taskId, owner, request);
         if (materialized.bytes().length > Math.max(1, properties.getMaxArtifactBytes())) {
             throw new AiServiceException(HttpStatus.PAYLOAD_TOO_LARGE, "AI artifact is too large");
+        }
+        if (repository.sumRetainedBytes(owner, excluded) + materialized.bytes().length
+                > Math.max(1, properties.getMaxOwnerArtifactBytes())) {
+            throw new AiServiceException(
+                    HttpStatus.PAYLOAD_TOO_LARGE, "AI artifact quota exceeded");
         }
         var hash = AiFileService.sha256(materialized.bytes());
         var existing = repository.findByTaskIdAndName(taskId, name);

@@ -96,6 +96,9 @@ class BlogApiIntegrationTest {
     static void registerProperties(DynamicPropertyRegistry registry) {
         TestDatabase.register(registry);
         registry.add("spring.flyway.clean-disabled", () -> "false");
+        // This suite treats historical migration rows as explicit fixtures. Production and the
+        // dedicated fresh-baseline test keep the default empty-content behavior.
+        registry.add("app.database.remove-historical-demo-content", () -> "false");
         registry.add("app.jwt.secret", () -> "integration-test-secret-key-32chars!");
         registry.add("app.admin.username", () -> "admin");
         registry.add("app.admin.password", () -> "admin-pass-12345");

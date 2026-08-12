@@ -1,7 +1,10 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$BackupPath,
-    [int]$Port = 55432
+    [string]$AttachmentArchivePath,
+    [string]$StorageInventoryPath,
+    [int]$Port = 55432,
+    [int]$ExpectedLatestVersion = 55
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,6 +14,24 @@ $resolvedBackup = (Resolve-Path $BackupPath).Path
 $backupInfo = Get-Item -LiteralPath $resolvedBackup
 if ($backupInfo.Length -le 0) {
     throw 'Backup file is empty.'
+}
+$resolvedAttachmentArchive = $null
+if ($AttachmentArchivePath) {
+    $resolvedAttachmentArchive = (Resolve-Path $AttachmentArchivePath).Path
+    $attachmentInfo = Get-Item -LiteralPath $resolvedAttachmentArchive
+    if ($attachmentInfo.Length -le 0) {
+        throw 'Attachment/storage archive is empty.'
+    }
+}
+if ($StorageInventoryPath -and -not $resolvedAttachmentArchive) {
+    throw 'StorageInventoryPath requires AttachmentArchivePath.'
+}
+$resolvedStorageInventory = $null
+if ($StorageInventoryPath) {
+    $resolvedStorageInventory = (Resolve-Path $StorageInventoryPath).Path
+    if ((Get-Item -LiteralPath $resolvedStorageInventory).Length -le 0) {
+        throw 'Storage inventory is empty.'
+    }
 }
 
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -64,6 +85,36 @@ try {
     & $pgRestore -h 127.0.0.1 -p $Port -U postgres -d $database --no-owner --no-acl --exit-on-error $resolvedBackup
     if ($LASTEXITCODE -ne 0) { throw "pg_restore failed with exit code $LASTEXITCODE" }
 
+    if ($resolvedAttachmentArchive) {
+        $tar = Get-Command tar -ErrorAction Stop
+        & $tar.Source -xzf $resolvedAttachmentArchive -C $storageDir
+        if ($LASTEXITCODE -ne 0) { throw "storage archive extraction failed with exit code $LASTEXITCODE" }
+    }
+    if ($resolvedStorageInventory) {
+        $verifiedStorageFiles = 0
+        foreach ($line in Get-Content -LiteralPath $resolvedStorageInventory) {
+            if (-not $line.Trim()) { continue }
+            if ($line -notmatch '^([a-fA-F0-9]{64})\s{2}(.+)$') {
+                throw "Invalid storage inventory line: $line"
+            }
+            $relativeStoragePath = $matches[2] -replace '^\.\[/\\]', ''
+            $storagePath = [System.IO.Path]::GetFullPath((Join-Path $storageDir $relativeStoragePath))
+            if (-not $storagePath.StartsWith([System.IO.Path]::GetFullPath($storageDir), [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Storage inventory path escapes restore root: $relativeStoragePath"
+            }
+            if (-not (Test-Path -LiteralPath $storagePath -PathType Leaf)) {
+                throw "Storage inventory file is missing: $relativeStoragePath"
+            }
+            $actualStorageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $storagePath).Hash
+            if ($actualStorageHash -ne $matches[1]) {
+                throw "Storage inventory hash mismatch: $relativeStoragePath"
+            }
+            $verifiedStorageFiles += 1
+        }
+    } else {
+        $verifiedStorageFiles = 0
+    }
+
     $beforeVersion = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc `
         "select coalesce((select version from flyway_schema_history where success order by installed_rank desc limit 1), '0')").Trim()
     $beforePosts = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc 'select count(*) from posts').Trim()
@@ -105,22 +156,26 @@ try {
         }
         $afterVersion = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc `
             "select coalesce((select version from flyway_schema_history where success order by installed_rank desc limit 1), '0')" 2>$null).Trim()
-        if ([int]$afterVersion -ge 49) { break }
+        if ([int]$afterVersion -ge $ExpectedLatestVersion) { break }
     }
-    if ([int]$afterVersion -lt 49) { throw "Flyway did not reach V49 before timeout (current: $afterVersion)" }
+    if ([int]$afterVersion -lt $ExpectedLatestVersion) {
+        throw "Flyway did not reach V$ExpectedLatestVersion before timeout (current: $afterVersion)"
+    }
 
     $afterPosts = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc 'select count(*) from posts').Trim()
     $afterDishes = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc 'select count(*) from dishes').Trim()
     $deletedAtExists = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc `
-        "select count(*) from information_schema.columns where table_name='note_attachments' and column_name='deleted_at'").Trim()
+        "select count(*) from information_schema.columns where table_schema='public' and table_name='note_attachments' and column_name='deleted_at'").Trim()
     $budgetTableExists = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc `
-        "select count(*) from information_schema.tables where table_name='ai_daily_budgets'").Trim()
+        "select count(*) from information_schema.tables where table_schema='public' and table_name='ai_daily_budgets'").Trim()
+    $aiTables = (& $psql -h 127.0.0.1 -p $Port -U postgres -d $database -Atc `
+        "select count(*) from information_schema.tables where table_schema='public' and table_name in ('ai_files','ai_artifacts','ai_memories','ai_task_events')").Trim()
 
     if ($beforePosts -ne $afterPosts -or $beforeDishes -ne $afterDishes) {
         throw "Content counts changed during migration: posts $beforePosts->$afterPosts, dishes $beforeDishes->$afterDishes"
     }
-    if ($deletedAtExists -ne '1' -or $budgetTableExists -ne '1') {
-        throw 'Expected V48/V49 schema objects were not found.'
+    if ($deletedAtExists -ne '1' -or $budgetTableExists -ne '1' -or $aiTables -ne '4') {
+        throw "Expected schema objects were not found: attachment=$deletedAtExists budget=$budgetTableExists ai=$aiTables"
     }
 
     & $psql -h 127.0.0.1 -p $Port -U postgres -d $database -v ON_ERROR_STOP=1 `
@@ -135,7 +190,9 @@ try {
         "posts=$beforePosts->$afterPosts",
         "dishes=$beforeDishes->$afterDishes",
         "ai_daily_budgets=$budgetTableExists",
-        "note_attachments.deleted_at=$deletedAtExists"
+        "ai_lifecycle_tables=$aiTables",
+        "storage_files_verified=$verifiedStorageFiles",
+        "note_attachments.deleted_at=$deletedAtExists",
         "query_audit=$queryAuditPath"
     ) | Set-Content -LiteralPath $resultPath -Encoding utf8
     Get-Content -LiteralPath $resultPath

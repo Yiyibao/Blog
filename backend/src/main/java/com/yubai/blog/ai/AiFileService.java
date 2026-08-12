@@ -46,6 +46,7 @@ public class AiFileService {
         if (multipart.getSize() > maxBytes) {
             throw new AiServiceException(HttpStatus.BAD_REQUEST, "AI file size limit exceeded");
         }
+        repository.lockOwnerQuota(owner);
         var excluded = List.of(AiFileStatus.DELETED, AiFileStatus.EXPIRED);
         if (repository.countByOwnerAndStatusNotIn(owner, excluded)
                 >= Math.max(1, properties.getMaxOwnerFiles())) {

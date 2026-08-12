@@ -14,6 +14,8 @@ TEMP_TARGET="${TARGET}.tmp"
 ATTACHMENT_DIR="${APP_ATTACHMENT_STORAGE_DIR:-/opt/yubai-blog/shared/attachments}"
 ATTACHMENT_TARGET="${BACKUP_DIR}/attachments-${STAMP}.tar.gz"
 TEMP_ATTACHMENT_TARGET="${ATTACHMENT_TARGET}.tmp"
+STORAGE_INVENTORY="${BACKUP_DIR}/storage-inventory-${STAMP}.sha256"
+TEMP_STORAGE_INVENTORY="${STORAGE_INVENTORY}.tmp"
 MANIFEST="${BACKUP_DIR}/SHA256SUMS-${STAMP}"
 TEMP_MANIFEST="${MANIFEST}.tmp"
 BACKUP_FILES=("${TARGET}")
@@ -34,6 +36,18 @@ chown postgres:postgres "${TEMP_ATTACHMENT_TARGET}"
 chmod 0600 "${TEMP_ATTACHMENT_TARGET}"
 mv "${TEMP_ATTACHMENT_TARGET}" "${ATTACHMENT_TARGET}"
 BACKUP_FILES+=("${ATTACHMENT_TARGET}")
+
+# The shared storage root contains note attachments, legacy dish assets, AI
+# uploads, generated images, and artifacts. Keep a per-object inventory so a
+# restore can prove both archive integrity and individual byte identity.
+(
+    cd "${ATTACHMENT_DIR}"
+    find . -type f -print0 | sort -z | xargs -0 -r sha256sum > "${TEMP_STORAGE_INVENTORY}"
+)
+chown postgres:postgres "${TEMP_STORAGE_INVENTORY}"
+chmod 0600 "${TEMP_STORAGE_INVENTORY}"
+mv "${TEMP_STORAGE_INVENTORY}" "${STORAGE_INVENTORY}"
+BACKUP_FILES+=("${STORAGE_INVENTORY}")
 
 (
     cd "${BACKUP_DIR}"
@@ -89,7 +103,7 @@ fi
 # Local retention cleanup always runs, even when COS upload fails.
 # Exclude current-batch files by STAMP; older batches are removed after 14 days.
 find "${BACKUP_DIR}" -maxdepth 1 -type f \
-    \( -name 'yubai_blog-*.dump' -o -name 'attachments-*.tar.gz' -o -name 'SHA256SUMS-*' \) \
+    \( -name 'yubai_blog-*.dump' -o -name 'attachments-*.tar.gz' -o -name 'storage-inventory-*.sha256' -o -name 'SHA256SUMS-*' \) \
     ! -name "*${STAMP}*" -mtime +14 -delete
 
 if [[ "${cos_upload_failed:-false}" == "true" ]]; then

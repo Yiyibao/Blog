@@ -19,7 +19,7 @@ SecretId/SecretKey 只由 COSCLI 配置文件管理，不得写入 Git、备份�
 cos://backup/backups/prod/<STAMP>/
 ```
 
-批次包含 PostgreSQL custom dump、附件目录归档和 `SHA256SUMS`。上传 COS 时先上传 dump 和附件归档，最后上传 `SHA256SUMS` 作为提交标记；不包含清单的 COS 目录视为不完整，恢复操作必须拒绝。缺少 `backup.env`、附件目录或启用 COS 后缺少 COSCLI 配置都会令 service 失败，避免静默退化为不完整备份。本地文件保留 14 天；COS 通过桶生命周期保留 90 天，脚本不主动删除 COS 对象。
+批次包含 PostgreSQL custom dump、shared storage 归档、逐文件 `storage-inventory-<STAMP>.sha256` 和 `SHA256SUMS`。shared storage 覆盖笔记附件、旧菜品资源、AI uploads、generated images 与 artifacts。上传 COS 时先上传 dump、归档和 inventory，最后上传 `SHA256SUMS` 作为提交标记；不包含清单的 COS 目录视为不完整，恢复操作必须拒绝。缺少 `backup.env`、附件目录或启用 COS 后缺少 COSCLI 配置都会令 service 失败，避免静默退化为不完整备份。本地文件保留 14 天；COS 通过桶生命周期保留 90 天，脚本不主动删除 COS 对象。
 
 > **快照一致性说明：** `pg_dump` 和附件 `tar` 是依次执行的，并非严格的跨资源同一时刻快照。实践上通过将 timer 调度到静默窗口（例如凌晨低峰期）来缩小不一致窗口。如需严格一致性，应先停止应用写入（`systemctl stop yubai-blog`），运行备份，再重启应用并确认健康状态，最后启用或确认 timer。
 

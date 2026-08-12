@@ -8,7 +8,9 @@ name: Deploy
 #      bootstrap-server.sh "minimum safe bootstrap" layout).
 #   3. GitHub repo Settings → Environments → "production" with Required reviewers.
 #   4. Secrets: DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY / DEPLOY_PATH.
-#   5. Repository variable (Settings → Actions → Variables): PRERENDER_API_BASE_URL.
+#   5. Secret DEPLOY_SSH_KNOWN_HOSTS must contain the reviewed, hashed host
+#      key line(s) for DEPLOY_HOST; never discover host keys during a release.
+#   6. Repository variable (Settings → Actions → Variables): PRERENDER_API_BASE_URL.
 on:
   push:
     tags: ['v*']
@@ -29,12 +31,16 @@ jobs:
       - name: Shell syntax checks
         run: |
           bash -n deploy/bootstrap-server.sh
+          bash -n deploy/yubai-blog-backup
+          bash -n deploy/release-preflight.sh
+          node scripts/verify-migration-manifest.mjs
       - name: Structural assertions
         run: |
           grep -qF 'ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseG1GC -jar /opt/yubai-blog/current/backend/blog-backend.jar' deploy/yubai-blog.service
           grep -qF 'ReadWritePaths=/opt/yubai-blog/shared/attachments' deploy/yubai-blog.service
           grep -qF 'root /opt/yubai-blog/current/frontend/client;' deploy/hxnf.top.nginx
           node -e "const c=require('./deploy/opencode.json'); const a=c.agent?.['blog-ai']; if (!a || Object.hasOwn(a, 'steps') || a.permission !== 'deny') process.exit(1)"
+          ! grep -q 'ssh-keyscan' .github/workflows/deploy.yml
 
   build:
     needs: validate
@@ -83,10 +89,21 @@ jobs:
           mkdir -p backend/target/canonical
           cp "$jar" backend/target/canonical/blog-backend.jar
 
+      - name: Stage release safety contract
+        run: |
+          mkdir -p deploy/target
+          cp deploy/release-preflight.sh deploy/release-compatibility.env deploy/target/
+
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deployment-safety
+          path: deploy/target
           retention-days: 7
 
       - uses: actions/upload-artifact@v4
@@ -111,12 +128,19 @@ jobs:
           name: backend-jar
           path: dist/backend
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: deployment-safety
+          path: dist/deploy
+
       - name: Set up SSH
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          test -n "${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}"
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Upload release (rsync over SSH)
         shell: bash
@@ -138,6 +162,11 @@ jobs:
           DEPLOY_PATH="$1"
           RELEASE_DIR="$2"
           RELEASE_PATH="${DEPLOY_PATH}/releases/${RELEASE_DIR}"
+
+          # The preflight runs before permissions, symlink, process, or database
+          # state changes. Any stale/incomplete backup or incompatible schema
+          # leaves the currently running release untouched.
+          sudo bash "${RELEASE_PATH}/deploy/release-preflight.sh" "${RELEASE_PATH}"
 
           # Ensure nginx (www-data) can traverse and read frontend files
           find "$RELEASE_PATH" -type d -exec chmod o+rx {} +

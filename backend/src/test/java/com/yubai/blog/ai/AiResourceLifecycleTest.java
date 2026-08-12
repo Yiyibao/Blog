@@ -128,7 +128,46 @@ class AiResourceLifecycleTest {
         assertThatThrownBy(() -> service.upload("alice", upload, AiFileRetention.THIRTY_DAYS))
                 .isInstanceOf(AiServiceException.class)
                 .hasMessageContaining("count quota");
+        verify(repository).lockOwnerQuota("alice");
         verify(parser, never()).parse(any(), any(), any());
+        verify(storage, never()).store(any(), any());
+    }
+
+    @Test
+    void ownerArtifactQuotaFailsUnderOwnerLockBeforeStorage() {
+        var repository = mock(AiArtifactRepository.class);
+        var taskService = mock(AiTaskService.class);
+        var storage = mock(StorageService.class);
+        var properties = new AiPlatformProperties();
+        properties.setMaxOwnerArtifacts(1);
+        var taskId = UUID.randomUUID();
+        when(taskService.requireOwned(taskId, "alice")).thenReturn(mock(AiTaskEntity.class));
+        when(repository.countByOwnerAndStatusNotIn(any(), anyList())).thenReturn(1L);
+        var service =
+                new AiArtifactService(
+                        repository,
+                        taskService,
+                        mock(AiTaskPartRepository.class),
+                        mock(AiImageService.class),
+                        mock(AiTaskEventService.class),
+                        storage,
+                        properties,
+                        new ObjectMapper());
+
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        taskId,
+                                        "alice",
+                                        new AiArtifactCreateRequest(
+                                                "answer.md",
+                                                AiArtifactFormat.MARKDOWN,
+                                                "answer",
+                                                null)))
+                .isInstanceOf(AiServiceException.class)
+                .hasMessageContaining("count quota");
+
+        verify(repository).lockOwnerQuota("alice");
         verify(storage, never()).store(any(), any());
     }
 }

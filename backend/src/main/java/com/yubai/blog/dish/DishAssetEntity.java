@@ -24,6 +24,9 @@ public class DishAssetEntity {
     @Column(name = "dish_id")
     private Long dishId;
 
+    @Column(nullable = false, length = 128)
+    private String owner;
+
     @Column(name = "storage_key", length = 512)
     private String storageKey;
 
@@ -52,6 +55,9 @@ public class DishAssetEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
     protected DishAssetEntity() {}
 
     public static DishAssetEntity create(
@@ -62,8 +68,21 @@ public class DishAssetEntity {
             String sha256,
             Integer width,
             Integer height) {
+        return create("admin", storageKey, fileName, mediaType, byteSize, sha256, width, height);
+    }
+
+    public static DishAssetEntity create(
+            String owner,
+            String storageKey,
+            String fileName,
+            String mediaType,
+            long byteSize,
+            String sha256,
+            Integer width,
+            Integer height) {
         var entity = new DishAssetEntity();
         entity.publicId = UUID.randomUUID();
+        entity.owner = owner;
         entity.storageKey = storageKey;
         entity.fileName = fileName;
         entity.mediaType = mediaType;
@@ -71,6 +90,7 @@ public class DishAssetEntity {
         entity.sha256 = sha256;
         entity.width = width;
         entity.height = height;
+        entity.expiresAt = Instant.now().plusSeconds(3600);
         return entity;
     }
 
@@ -81,8 +101,20 @@ public class DishAssetEntity {
             String sha256,
             Integer width,
             Integer height) {
+        return createWithContent("admin", fileName, mediaType, content, sha256, width, height);
+    }
+
+    public static DishAssetEntity createWithContent(
+            String owner,
+            String fileName,
+            String mediaType,
+            byte[] content,
+            String sha256,
+            Integer width,
+            Integer height) {
         var entity = new DishAssetEntity();
         entity.publicId = UUID.randomUUID();
+        entity.owner = owner;
         entity.fileName = fileName;
         entity.mediaType = mediaType;
         entity.byteSize = content.length;
@@ -90,6 +122,7 @@ public class DishAssetEntity {
         entity.sha256 = sha256;
         entity.width = width;
         entity.height = height;
+        entity.expiresAt = Instant.now().plusSeconds(3600);
         return entity;
     }
 
@@ -119,6 +152,11 @@ public class DishAssetEntity {
 
     public void setDishId(Long dishId) {
         this.dishId = dishId;
+        if (dishId != null) this.expiresAt = null;
+    }
+
+    public String getOwner() {
+        return owner;
     }
 
     public String getStorageKey() {
@@ -159,5 +197,9 @@ public class DishAssetEntity {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
     }
 }

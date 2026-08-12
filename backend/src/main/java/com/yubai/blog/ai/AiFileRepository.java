@@ -8,6 +8,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AiFileRepository extends JpaRepository<AiFileEntity, UUID> {
+    @Query(
+            value = "select pg_advisory_xact_lock(hashtextextended(:owner, 1103))",
+            nativeQuery = true)
+    void lockOwnerQuota(@Param("owner") String owner);
+
     Optional<AiFileEntity> findByIdAndOwner(UUID id, String owner);
 
     List<AiFileEntity> findByOwnerAndStatusNotOrderByCreatedAtDesc(

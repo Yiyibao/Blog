@@ -26,6 +26,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class DishAssetService {
     private static final long MAX_BYTES = 8L * 1024 * 1024;
+    static final long MAX_STAGED_BYTES_PER_OWNER = 64L * 1024 * 1024;
+    static final long MAX_STAGED_COUNT_PER_OWNER = 20;
     private static final Set<String> SAFE_IMAGE_TYPES =
             Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
     private static final Logger log = LoggerFactory.getLogger(DishAssetService.class);
@@ -58,6 +60,12 @@ public class DishAssetService {
     /** Uploads a staged image directly into PostgreSQL; it is attached after the dish is saved. */
     @Transactional
     public DishAssetResponse uploadStaged(MultipartFile file) {
+        return uploadStaged(file, "admin");
+    }
+
+    @Transactional
+    public DishAssetResponse uploadStaged(MultipartFile file, String owner) {
+        var normalizedOwner = requireOwner(owner);
         var mediaType = normalizeMediaType(file.getContentType());
         if (file.isEmpty() || file.getSize() > MAX_BYTES) {
             throw new InvalidNoteFileException("图片不能为空且不能超过 8 MB");
@@ -79,9 +87,16 @@ public class DishAssetService {
             throw new InvalidNoteFileException("图片内容与声明的类型不符");
         }
         NoteAttachmentService.assertDimensionsWithinLimit(data);
+        repository.lockOwnerQuota(normalizedOwner);
+        if (repository.countByOwnerAndDishIdIsNull(normalizedOwner) >= MAX_STAGED_COUNT_PER_OWNER
+                || repository.sumStagedBytes(normalizedOwner) + data.length
+                        > MAX_STAGED_BYTES_PER_OWNER) {
+            throw new InvalidNoteFileException("Staged dish asset quota exceeded");
+        }
         var dimensions = readDimensions(data);
         var entity =
                 DishAssetEntity.createWithContent(
+                        normalizedOwner,
                         safeFilename(file.getOriginalFilename()),
                         mediaType,
                         data,
@@ -103,7 +118,14 @@ public class DishAssetService {
         var sha256 = sha256hex(data);
         var asset =
                 DishAssetEntity.create(
-                        storageKey, fileName, mediaType, data.length, sha256, width, height);
+                        "admin",
+                        storageKey,
+                        fileName,
+                        mediaType,
+                        data.length,
+                        sha256,
+                        width,
+                        height);
         asset.setDishId(dishId);
         return repository.save(asset);
     }
@@ -118,7 +140,14 @@ public class DishAssetService {
         var sha256 = sha256hex(data);
         var asset =
                 DishAssetEntity.create(
-                        storageKey, fileName, mediaType, data.length, sha256, width, height);
+                        "admin",
+                        storageKey,
+                        fileName,
+                        mediaType,
+                        data.length,
+                        sha256,
+                        width,
+                        height);
         return repository.save(asset);
     }
 
@@ -133,6 +162,15 @@ public class DishAssetService {
         var asset =
                 repository
                         .findByPublicId(publicId)
+                        .orElseThrow(() -> new NotFoundException("Dish asset does not exist"));
+        attachToDish(asset, dishId);
+    }
+
+    @Transactional
+    public void assignToDish(UUID publicId, long dishId, String owner) {
+        var asset =
+                repository
+                        .findByPublicIdAndOwner(publicId, requireOwner(owner))
                         .orElseThrow(() -> new NotFoundException("图片不存在"));
         attachToDish(asset, dishId);
     }
@@ -149,6 +187,13 @@ public class DishAssetService {
     @Transactional
     public void deleteStaged(UUID publicId) {
         var asset = repository.findByPublicId(publicId);
+        if (asset.isEmpty()) return;
+        deleteStaged(asset.get());
+    }
+
+    @Transactional
+    public void deleteStaged(UUID publicId, String owner) {
+        var asset = repository.findByPublicIdAndOwner(publicId, requireOwner(owner));
         if (asset.isEmpty()) return;
         deleteStaged(asset.get());
     }
@@ -188,6 +233,14 @@ public class DishAssetService {
     private static String normalizeMediaType(String mediaType) {
         var normalized = mediaType == null ? "" : mediaType.toLowerCase(Locale.ROOT).trim();
         return normalized.equals("image/jpg") ? "image/jpeg" : normalized;
+    }
+
+    private static String requireOwner(String owner) {
+        var normalized = owner == null ? "" : owner.trim();
+        if (normalized.isEmpty() || normalized.length() > 128) {
+            throw new IllegalArgumentException("Resource owner is invalid");
+        }
+        return normalized;
     }
 
     private static String safeFilename(String filename) {

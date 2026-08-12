@@ -1,7 +1,13 @@
 package com.yubai.blog.admin;
 
+import com.yubai.blog.common.ApiResponse;
+import com.yubai.blog.dish.DishImportCommitRequest;
+import com.yubai.blog.dish.DishImportPreviewResponse;
+import com.yubai.blog.dish.DishImportService;
+import com.yubai.blog.dish.DishResponse;
+import jakarta.validation.Valid;
+import java.security.Principal;
 import java.util.UUID;
-
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,15 +24,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.yubai.blog.common.ApiResponse;
-import com.yubai.blog.common.NotFoundException;
-import com.yubai.blog.dish.DishImportCommitRequest;
-import com.yubai.blog.dish.DishImportPreviewResponse;
-import com.yubai.blog.dish.DishImportService;
-import com.yubai.blog.dish.DishResponse;
-
-import jakarta.validation.Valid;
-
 @RestController
 @RequestMapping("/api/v1/admin/dish-imports")
 @Validated
@@ -38,37 +35,40 @@ public class AdminDishImportController {
     }
 
     @PostMapping(path = "/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<DishImportPreviewResponse> preview(@RequestParam("file") MultipartFile file) {
-        return ApiResponse.ok(importService.preview(file));
+    public ApiResponse<DishImportPreviewResponse> preview(
+            @RequestParam("file") MultipartFile file, Principal principal) {
+        return ApiResponse.ok(importService.preview(file, principal.getName()));
     }
 
     @PostMapping("/{token}/commit")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<DishResponse> commit(@PathVariable UUID token,
-                                            @Valid @RequestBody DishImportCommitRequest request) {
-        return ApiResponse.created(importService.commit(token, request));
+    public ApiResponse<DishResponse> commit(
+            @PathVariable UUID token,
+            @Valid @RequestBody DishImportCommitRequest request,
+            Principal principal) {
+        return ApiResponse.created(importService.commit(token, request, principal.getName()));
     }
 
     @DeleteMapping("/{token}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void cancel(@PathVariable UUID token) {
-        importService.cancel(token);
+    public void cancel(@PathVariable UUID token, Principal principal) {
+        importService.cancel(token, principal.getName());
     }
 
     @GetMapping("/{token}/cover")
-    public ResponseEntity<byte[]> stagedCover(@PathVariable UUID token) {
-        var data = importService.readStagedCover(token);
-        var mediaType = importService.getStagedMediaType(token);
+    public ResponseEntity<byte[]> stagedCover(@PathVariable UUID token, Principal principal) {
+        var data = importService.readStagedCover(token, principal.getName());
+        var mediaType = importService.getStagedMediaType(token, principal.getName());
         return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(mediaType != null ? mediaType : "image/jpeg"))
-            .cacheControl(CacheControl.noStore())
-            .header("Cache-Control", "private, no-store")
-            .header("X-Content-Type-Options", "nosniff")
-            .body(data);
+                .contentType(MediaType.parseMediaType(mediaType != null ? mediaType : "image/jpeg"))
+                .cacheControl(CacheControl.noStore())
+                .header("Cache-Control", "private, no-store")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(data);
     }
 
     @GetMapping("/{token}/download")
-    public ResponseEntity<byte[]> downloadStaged(@PathVariable UUID token) {
-        return importService.downloadStaged(token);
+    public ResponseEntity<byte[]> downloadStaged(@PathVariable UUID token, Principal principal) {
+        return importService.downloadStaged(token, principal.getName());
     }
 }

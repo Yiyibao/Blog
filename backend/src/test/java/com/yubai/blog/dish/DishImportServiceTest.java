@@ -235,6 +235,24 @@ class DishImportServiceTest {
         return file;
     }
 
+    @Test
+    void validPreviewChecksOwnerQuotaUnderDatabaseLock() throws IOException {
+        when(stagingRepository.countByOwnerAndConsumedFalseAndCancelledFalseAndExpiresAtAfter(
+                        eq("alice"), any()))
+                .thenReturn(DishImportService.MAX_ACTIVE_IMPORT_COUNT_PER_OWNER);
+
+        assertThatThrownBy(
+                        () ->
+                                importService.previewFromBytes(
+                                        buildZipFromPackage(validPackage()), "alice"))
+                .isInstanceOf(InvalidRecipeException.class)
+                .hasMessageContaining("quota");
+
+        verify(stagingRepository).lockOwnerQuota("alice");
+        verify(stagingRepository, never()).save(any());
+        verify(storageService, never()).store(anyString(), any());
+    }
+
     @SuppressWarnings("unchecked")
     private static <T> T reflectionInvoke(
             String methodName, Class<?>[] paramTypes, Object target, Object... args)

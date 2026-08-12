@@ -12,6 +12,7 @@
 - 当前限流、人机验证、登录失败跟踪和 TOTP 挑战使用进程内状态，因此后端副本数必须保持为 **1**。扩容前须先迁移为共享状态或在 API Gateway 统一处理。
 - 已移除旧 Worker/Sites 配置，前端生产构建只生成供 nginx 发布的 `dist/client`。
 - 数据库变更只能追加 Flyway 迁移；部署前必须执行 `scripts/migration-preflight.ps1` 并确认已有可恢复备份。
+- 数据/发布支持矩阵、fresh/upgrade/rollback 和完整恢复边界见 `docs/release-safety.md`。
 
 ## 项目结构
 

@@ -46,6 +46,8 @@ public class DishImportService {
     static final long MAX_ENTRY_SIZE = 10L * 1024 * 1024;
     static final int MAX_COMPRESSION_RATIO = 100;
     static final Duration STAGING_TTL = Duration.ofMinutes(30);
+    static final long MAX_ACTIVE_IMPORT_COUNT_PER_OWNER = 10;
+    static final long MAX_ACTIVE_IMPORT_BYTES_PER_OWNER = 64L * 1024 * 1024;
     static final int MAX_PIXEL_DIMENSION = 8000;
     static final long MAX_TOTAL_PIXELS = 20_000_000L;
 
@@ -83,6 +85,12 @@ public class DishImportService {
 
     @Transactional
     public DishImportPreviewResponse preview(MultipartFile file) {
+        return preview(file, "admin");
+    }
+
+    @Transactional
+    public DishImportPreviewResponse preview(MultipartFile file, String owner) {
+        var normalizedOwner = requireOwner(owner);
         if (file.isEmpty() || file.getSize() > MAX_COMPRESSED_SIZE) {
             throw new InvalidRecipeException("压缩包不能为空且不能超过 25 MB");
         }
@@ -106,6 +114,7 @@ public class DishImportService {
         var coverMediaType = result.coverMediaType;
         var width = result.width;
         var height = result.height;
+        assertStagingQuota(normalizedOwner, coverData.length);
 
         String matchedCategory = findMatchingCategory(pkg.recipe().categoryHint());
         boolean slugAvailable =
@@ -128,7 +137,12 @@ public class DishImportService {
 
         var staging =
                 DishImportStagingEntity.create(
-                        recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
+                        normalizedOwner,
+                        recipeJson,
+                        storageKey,
+                        coverMediaType,
+                        coverData.length,
+                        Instant.now().plus(STAGING_TTL));
         staging = stagingRepository.save(staging);
 
         String coverPreviewUrl = "/api/v1/admin/dish-imports/" + staging.getToken() + "/cover";
@@ -161,10 +175,16 @@ public class DishImportService {
     /** Rebuilds the preview for an asynchronously completed extraction job. */
     @Transactional(readOnly = true)
     public DishImportPreviewResponse getStagedPreview(UUID token) {
+        return getStagedPreview(token, null);
+    }
+
+    @Transactional(readOnly = true)
+    public DishImportPreviewResponse getStagedPreview(UUID token, String owner) {
         var staging =
                 stagingRepository
                         .findByToken(token)
                         .orElseThrow(() -> new NotFoundException("导入会话不存在或已过期"));
+        assertOwned(staging, owner);
         if (staging.getExpiresAt().isBefore(Instant.now())
                 || staging.isCancelled()
                 || staging.isConsumed()) {
@@ -207,11 +227,17 @@ public class DishImportService {
 
     @Transactional
     public DishResponse commit(UUID token, DishImportCommitRequest request) {
+        return commit(token, request, null);
+    }
+
+    @Transactional
+    public DishResponse commit(UUID token, DishImportCommitRequest request, String owner) {
         var staging =
                 stagingRepository
                         .findByToken(token)
                         .orElseThrow(() -> new NotFoundException("导入会话不存在或已过期"));
 
+        assertOwned(staging, owner);
         if (staging.getExpiresAt().isBefore(Instant.now())) {
             throw new InvalidRecipeException("导入会话已过期，请重新上传");
         }
@@ -336,8 +362,14 @@ public class DishImportService {
 
     @Transactional
     public void cancel(UUID token) {
+        cancel(token, null);
+    }
+
+    @Transactional
+    public void cancel(UUID token, String owner) {
         var staging = stagingRepository.findByToken(token).orElse(null);
         if (staging == null) return;
+        assertOwned(staging, owner);
         staging.setCancelled(true);
         stagingRepository.save(staging);
         var storageKey = staging.getStorageKey();
@@ -422,10 +454,15 @@ public class DishImportService {
     }
 
     public ResponseEntity<byte[]> downloadStaged(UUID token) {
+        return downloadStaged(token, null);
+    }
+
+    public ResponseEntity<byte[]> downloadStaged(UUID token, String owner) {
         var staging =
                 stagingRepository
                         .findByToken(token)
                         .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        assertOwned(staging, owner);
         if (staging.getExpiresAt().isBefore(Instant.now()) || staging.isCancelled()) {
             throw new NotFoundException("导入会话已过期");
         }
@@ -465,10 +502,15 @@ public class DishImportService {
     }
 
     public byte[] readStagedCover(UUID token) {
+        return readStagedCover(token, null);
+    }
+
+    public byte[] readStagedCover(UUID token, String owner) {
         var staging =
                 stagingRepository
                         .findByToken(token)
                         .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        assertOwned(staging, owner);
         if (staging.getExpiresAt().isBefore(Instant.now())) {
             throw new NotFoundException("导入会话已过期");
         }
@@ -479,10 +521,15 @@ public class DishImportService {
     }
 
     public String getStagedMediaType(UUID token) {
+        return getStagedMediaType(token, null);
+    }
+
+    public String getStagedMediaType(UUID token, String owner) {
         var staging =
                 stagingRepository
                         .findByToken(token)
                         .orElseThrow(() -> new NotFoundException("导入会话不存在"));
+        assertOwned(staging, owner);
         if (staging.getExpiresAt().isBefore(Instant.now())) {
             throw new NotFoundException("导入会话已过期");
         }
@@ -490,6 +537,11 @@ public class DishImportService {
     }
 
     public DishImportPreviewResponse previewFromBytes(byte[] zipData) {
+        return previewFromBytes(zipData, "admin");
+    }
+
+    public DishImportPreviewResponse previewFromBytes(byte[] zipData, String owner) {
+        var normalizedOwner = requireOwner(owner);
         if (zipData.length == 0 || zipData.length > MAX_COMPRESSED_SIZE) {
             throw new InvalidRecipeException("压缩包不能为空且不能超过 25 MB");
         }
@@ -505,6 +557,7 @@ public class DishImportService {
         var coverMediaType = result.coverMediaType;
         var width = result.width;
         var height = result.height;
+        assertStagingQuota(normalizedOwner, coverData.length);
 
         String matchedCategory = findMatchingCategory(pkg.recipe().categoryHint());
         boolean slugAvailable =
@@ -527,7 +580,12 @@ public class DishImportService {
 
         var staging =
                 DishImportStagingEntity.create(
-                        recipeJson, storageKey, coverMediaType, Instant.now().plus(STAGING_TTL));
+                        normalizedOwner,
+                        recipeJson,
+                        storageKey,
+                        coverMediaType,
+                        coverData.length,
+                        Instant.now().plus(STAGING_TTL));
         staging = stagingRepository.save(staging);
 
         String coverPreviewUrl = "/api/v1/admin/dish-imports/" + staging.getToken() + "/cover";
@@ -875,6 +933,32 @@ public class DishImportService {
             if (pkg.generation().warnings() != null && pkg.generation().warnings().size() > 10) {
                 throw new InvalidRecipeException("警告数量不能超过 10 条");
             }
+        }
+    }
+
+    private void assertStagingQuota(String owner, long incomingBytes) {
+        stagingRepository.lockOwnerQuota(owner);
+        var now = Instant.now();
+        if (stagingRepository.countByOwnerAndConsumedFalseAndCancelledFalseAndExpiresAtAfter(
+                                owner, now)
+                        >= MAX_ACTIVE_IMPORT_COUNT_PER_OWNER
+                || stagingRepository.sumActiveBytes(owner, now) + incomingBytes
+                        > MAX_ACTIVE_IMPORT_BYTES_PER_OWNER) {
+            throw new InvalidRecipeException("Staged recipe import quota exceeded");
+        }
+    }
+
+    private static String requireOwner(String owner) {
+        var normalized = owner == null ? "" : owner.trim();
+        if (normalized.isEmpty() || normalized.length() > 128) {
+            throw new IllegalArgumentException("Resource owner is invalid");
+        }
+        return normalized;
+    }
+
+    private static void assertOwned(DishImportStagingEntity staging, String owner) {
+        if (owner != null && !staging.getOwner().equals(requireOwner(owner))) {
+            throw new NotFoundException("Dish import does not exist");
         }
     }
 
