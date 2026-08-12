@@ -1,25 +1,12 @@
 package com.yubai.blog.admin.recipe;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.yubai.blog.admin.ai.AiChatService;
 import com.yubai.blog.admin.ai.AiServiceException;
-import com.yubai.blog.admin.ai.ChatMessage;
-import com.yubai.blog.admin.ai.ChatRequest;
 import com.yubai.blog.common.NotFoundException;
-import com.yubai.blog.config.AiProperties;
 import com.yubai.blog.dish.DishImportPreviewResponse;
 import com.yubai.blog.dish.DishImportService;
 import com.yubai.blog.dish.InvalidRecipeException;
-import com.yubai.blog.dish.YrecipePackage;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -29,12 +16,9 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -42,44 +26,38 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+/**
+ * Coordinates durable recipe jobs; source loading, AI parsing and archive writing live elsewhere.
+ */
 @Service
 public class RecipeExtractionService {
     private static final Logger log = LoggerFactory.getLogger(RecipeExtractionService.class);
-    private static final ObjectMapper MAPPER =
-            new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
-
     private static final int LEASE_SECONDS = 60;
-    private static final byte[] ONE_PX_JPEG =
-            Base64.getDecoder()
-                    .decode(
-                            "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AKwA=");
 
     private final RecipeExtractionJobRepository jobRepository;
-    private final AiChatService chatService;
     private final DishImportService dishImportService;
-    private final RecipeSourceHttpClient sourceHttpClient;
-    private final VideoRecipeSourceExtractor videoExtractor;
-    private final AiProperties aiProperties;
+    private final RecipeSourceMaterialService sourceMaterialService;
+    private final RecipeExtractionPayloadService payloadService;
+    private final RecipeImportPackageWriter packageWriter;
     private final ExecutorService executor;
     private final ScheduledExecutorService timeoutScheduler;
     private final ConcurrentHashMap<Long, Future<?>> runningTasks = new ConcurrentHashMap<>();
 
+    @Autowired
     public RecipeExtractionService(
             RecipeExtractionJobRepository jobRepository,
-            AiChatService chatService,
             DishImportService dishImportService,
-            RecipeSourceHttpClient sourceHttpClient,
-            VideoRecipeSourceExtractor videoExtractor,
-            AiProperties aiProperties,
+            RecipeSourceMaterialService sourceMaterialService,
+            RecipeExtractionPayloadService payloadService,
+            RecipeImportPackageWriter packageWriter,
             @Qualifier("recipeExtractionExecutor") ExecutorService executor,
             @Qualifier("recipeExtractionTimeoutScheduler")
                     ScheduledExecutorService timeoutScheduler) {
         this.jobRepository = jobRepository;
-        this.chatService = chatService;
         this.dishImportService = dishImportService;
-        this.sourceHttpClient = sourceHttpClient;
-        this.videoExtractor = videoExtractor;
-        this.aiProperties = aiProperties;
+        this.sourceMaterialService = sourceMaterialService;
+        this.payloadService = payloadService;
+        this.packageWriter = packageWriter;
         this.executor = executor;
         this.timeoutScheduler = timeoutScheduler;
     }
@@ -98,6 +76,7 @@ public class RecipeExtractionService {
             submit(existing.get().getId());
             return RecipeExtractionResponse.from(existing.get(), null);
         }
+
         var entity =
                 new RecipeExtractionJobEntity(
                         RecipeExtractionJobEntity.SourceType.valueOf(request.sourceType()),
@@ -107,82 +86,55 @@ public class RecipeExtractionService {
                         key);
         entity = jobRepository.saveAndFlush(entity);
         var jobId = entity.getId();
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            submit(jobId);
-                        }
-                    });
-        } else {
-            submit(jobId);
-        }
+        submitAfterCommit(jobId);
         return RecipeExtractionResponse.from(entity, null);
     }
 
     void execute(long jobId) {
         var worker = UUID.randomUUID().toString();
         var now = Instant.now();
-        if (jobRepository.claim(jobId, worker, now, leaseUntil(now)) != 1) return;
+        if (jobRepository.claim(jobId, worker, now, leaseUntil(now)) != 1) {
+            runningTasks.remove(jobId);
+            return;
+        }
         var entity = jobRepository.findById(jobId).orElse(null);
-        if (entity == null) return;
+        if (entity == null) {
+            runningTasks.remove(jobId);
+            return;
+        }
+
         ScheduledFuture<?> leaseHeartbeat =
                 timeoutScheduler.scheduleAtFixedRate(
                         () -> renewLease(jobId, worker), 20, 20, TimeUnit.SECONDS);
+        DishImportPreviewResponse importPreview = null;
         try {
-            var source =
-                    switch (entity.getSourceType()) {
-                        case "WEB_URL" ->
-                                new SourceMaterial(
-                                        fetchWebContent(entity.getSourceContent()),
-                                        entity.getSourceContent(),
-                                        null,
-                                        null,
-                                        null,
-                                        null);
-                        case "VIDEO_URL" -> {
-                            var video = videoExtractor.extract(entity.getSourceContent());
-                            yield new SourceMaterial(
-                                    video.text(),
-                                    video.sourceUrl(),
-                                    video.title(),
-                                    video.creator(),
-                                    video.coverBytes(),
-                                    video.coverMediaType());
-                        }
-                        default ->
-                                new SourceMaterial(
-                                        entity.getSourceContent(), null, null, null, null, null);
-                    };
+            var source = sourceMaterialService.load(entity);
             ensureActive(jobId);
 
             heartbeat(jobId, worker, "正在调用 AI 提取菜谱…", 30);
-
-            var aiResult = callAiForRecipe(entity, source.text());
+            var yrecipe = payloadService.extract(entity, source);
             ensureActive(jobId);
 
             heartbeat(jobId, worker, "正在验证结果…", 70);
-
-            var yrecipe = parseAndValidate(aiResult, entity, source);
-
             heartbeat(jobId, worker, "正在生成导入包…", 85);
-
-            var importPreview =
-                    storeAsYrecipe(yrecipe, source.coverBytes(), source.coverMediaType());
+            importPreview =
+                    packageWriter.write(yrecipe, source.coverBytes(), source.coverMediaType());
             ensureActive(jobId);
 
             if (jobRepository.succeed(jobId, worker, importPreview.token(), Instant.now()) != 1) {
                 dishImportService.cancel(importPreview.token());
             }
-        } catch (Exception e) {
-            log.error("Recipe extraction failed for job {}: {}", jobId, e.toString());
-            String safeMessage =
-                    e instanceof InvalidRecipeException
-                            ? e.getMessage()
-                            : (e instanceof AiServiceException ? e.getMessage() : "提取菜谱失败，请稍后重试");
+        } catch (Exception exception) {
+            if (importPreview != null) dishImportService.cancel(importPreview.token());
+            log.error("Recipe extraction failed for job {}: {}", jobId, exception.toString());
+            var safeMessage =
+                    exception instanceof InvalidRecipeException
+                            ? exception.getMessage()
+                            : (exception instanceof AiServiceException
+                                    ? exception.getMessage()
+                                    : "提取菜谱失败，请稍后重试");
             jobRepository.failActive(
-                    jobId, worker, errorCode(e), truncate(safeMessage), Instant.now());
+                    jobId, worker, errorCode(exception), truncate(safeMessage), Instant.now());
         } finally {
             leaseHeartbeat.cancel(false);
             runningTasks.remove(jobId);
@@ -216,15 +168,22 @@ public class RecipeExtractionService {
         }
         entity.retry();
         entity = jobRepository.save(entity);
-        var jobId = entity.getId();
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        submit(jobId);
-                    }
-                });
+        submitAfterCommit(entity.getId());
         return RecipeExtractionResponse.from(entity, null);
+    }
+
+    private void submitAfterCommit(long jobId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            submit(jobId);
+                        }
+                    });
+        } else {
+            submit(jobId);
+        }
     }
 
     private void submit(long jobId) {
@@ -242,15 +201,8 @@ public class RecipeExtractionService {
                         var runningTask = runningTasks.get(jobId);
                         if (runningTask != null && !runningTask.isDone()) {
                             runningTask.cancel(true);
-                            var current = jobRepository.findById(jobId).orElse(null);
-                            if (current != null
-                                    && current.getStatus()
-                                            .equals(
-                                                    RecipeExtractionJobEntity.Status.RUNNING
-                                                            .name())) {
-                                jobRepository.failAnyActive(
-                                        jobId, "TIMEOUT", "提取任务超时，请重试", Instant.now());
-                            }
+                            jobRepository.failAnyActive(
+                                    jobId, "TIMEOUT", "提取任务超时，请重试", Instant.now());
                         }
                     },
                     3,
@@ -332,380 +284,4 @@ public class RecipeExtractionService {
                         preview.slugAvailable(),
                         preview.coverPreviewUrl());
     }
-
-    String fetchWebContent(String url) {
-        String html = sourceHttpClient.fetch(url);
-
-        Document doc = Jsoup.parse(html);
-
-        var ldJson = doc.select("script[type=\"application/ld+json\"]");
-        for (var script : ldJson) {
-            try {
-                var root = MAPPER.readTree(script.data());
-                var recipeNode = findRecipeNode(root);
-                if (recipeNode != null) {
-                    var extracted = extractFromSchemaOrg(recipeNode);
-                    if (extracted != null) return extracted;
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        return extractVisibleText(doc);
-    }
-
-    private JsonNode findRecipeNode(JsonNode node) {
-        if (node == null) return null;
-        if (node.isArray()) {
-            for (var item : node) {
-                var found = findRecipeNode(item);
-                if (found != null) return found;
-            }
-            return null;
-        }
-        var type = node.get("@type");
-        if (type != null) {
-            String typeStr = type.isArray() ? type.get(0).asText("") : type.asText("");
-            if ("Recipe".equals(typeStr)) return node;
-        }
-        var graph = node.get("@graph");
-        if (graph != null && graph.isArray()) {
-            for (var item : graph) {
-                var found = findRecipeNode(item);
-                if (found != null) return found;
-            }
-        }
-        return null;
-    }
-
-    private String extractFromSchemaOrg(JsonNode recipe) {
-        var sb = new StringBuilder();
-        var name = recipe.get("name");
-        if (name != null) sb.append("菜谱名称: ").append(name.asText()).append("\n");
-        var description = recipe.get("description");
-        if (description != null) sb.append("简介: ").append(description.asText()).append("\n");
-        var author = recipe.get("author");
-        if (author != null) {
-            String authorName =
-                    author.isObject() ? author.get("name").asText("") : author.asText("");
-            if (!authorName.isBlank()) sb.append("作者: ").append(authorName).append("\n");
-        }
-        var prepTime = recipe.get("prepTime");
-        if (prepTime != null) {
-            var minutes = parseIsoDuration(prepTime.asText());
-            if (minutes > 0) sb.append("准备时间: ").append(minutes).append(" 分钟\n");
-        }
-        var cookTime = recipe.get("cookTime");
-        if (cookTime != null) {
-            var minutes = parseIsoDuration(cookTime.asText());
-            if (minutes > 0) sb.append("烹饪时间: ").append(minutes).append(" 分钟\n");
-        }
-        var totalTime = recipe.get("totalTime");
-        if (totalTime != null) {
-            var minutes = parseIsoDuration(totalTime.asText());
-            if (minutes > 0) sb.append("总时间: ").append(minutes).append(" 分钟\n");
-        }
-        var recipeYield = recipe.get("recipeYield");
-        if (recipeYield != null) {
-            String yield =
-                    recipeYield.isArray() ? recipeYield.get(0).asText("") : recipeYield.asText("");
-            if (!yield.isBlank()) sb.append("份量: ").append(yield).append("\n");
-        }
-        var recipeCategory = recipe.get("recipeCategory");
-        if (recipeCategory != null) sb.append("分类: ").append(recipeCategory.asText()).append("\n");
-        var recipeCuisine = recipe.get("recipeCuisine");
-        if (recipeCuisine != null) sb.append("菜系: ").append(recipeCuisine.asText()).append("\n");
-        var image = recipe.get("image");
-        if (image != null) {
-            String imgUrl = image.isArray() ? image.get(0).asText("") : image.asText("");
-            if (!imgUrl.isBlank()) sb.append("图片: ").append(imgUrl).append("\n");
-        }
-        var keywords = recipe.get("keywords");
-        if (keywords != null) sb.append("关键词: ").append(keywords.asText()).append("\n");
-
-        var ingredients = recipe.get("recipeIngredient");
-        if (ingredients != null && ingredients.isArray()) {
-            sb.append("\n食材:\n");
-            for (var ing : ingredients) {
-                sb.append("- ").append(ing.asText()).append("\n");
-            }
-        }
-        var instructions = recipe.get("recipeInstructions");
-        if (instructions != null) {
-            sb.append("\n步骤:\n");
-            if (instructions.isArray()) {
-                int stepNum = 1;
-                for (var step : instructions) {
-                    String text;
-                    if (step.isObject()) {
-                        text = step.get("text") != null ? step.get("text").asText() : "";
-                    } else {
-                        text = step.asText();
-                    }
-                    if (!text.isBlank()) {
-                        sb.append(stepNum).append(". ").append(text).append("\n");
-                        stepNum++;
-                    }
-                }
-            }
-        }
-        return sb.toString().isBlank() ? null : sb.toString();
-    }
-
-    private static long parseIsoDuration(String duration) {
-        try {
-            if (duration != null) {
-                duration = duration.trim();
-                if (duration.startsWith("PT") && duration.endsWith("M")) {
-                    var num = duration.substring(2, duration.length() - 1);
-                    return Long.parseLong(num);
-                }
-                if (duration.startsWith("PT") && duration.contains("H")) {
-                    var parsed = java.time.Duration.parse(duration);
-                    return parsed.toMinutes();
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return 0;
-    }
-
-    private String extractVisibleText(Document doc) {
-        doc.select(
-                        "script, style, nav, footer, header, aside, .sidebar, .comments, .comment, .ad, .ads, .advertisement, noscript")
-                .remove();
-        var sb = new StringBuilder();
-        var title = doc.title();
-        if (!title.isBlank()) sb.append("标题: ").append(title).append("\n\n");
-
-        var recipeHeadings = doc.select("h1, h2, h3");
-        for (var h : recipeHeadings) {
-            var text = h.text().trim();
-            if (!text.isBlank()) sb.append(h.tagName()).append(": ").append(text).append("\n");
-        }
-
-        var recipeSections =
-                doc.select(
-                        ".recipe, .recipe-content, .entry-content, .post-content, .article-content, "
-                                + "[class*=recipe], [class*=ingredient], [class*=instruction], [class*=direction], "
-                                + "[class*=method], [class*=step]");
-        if (!recipeSections.isEmpty()) {
-            for (var section : recipeSections) {
-                var text = section.text().trim();
-                if (!text.isBlank())
-                    sb.append(section.tagName()).append(": ").append(text).append("\n\n");
-            }
-        } else {
-            var body = doc.body();
-            if (body != null) {
-                var text = body.text().trim();
-                if (!text.isBlank()) sb.append(text);
-            }
-        }
-        var result = sb.toString();
-        if (result.length() > 30000) {
-            result = result.substring(0, 30000);
-        }
-        return result;
-    }
-
-    private String callAiForRecipe(RecipeExtractionJobEntity entity, String sourceText) {
-        if (sourceText.isBlank()) {
-            throw new InvalidRecipeException("未获取到有效的菜谱内容");
-        }
-
-        var prompt = buildPrompt(sourceText);
-        var messages = List.of(new ChatMessage("user", prompt));
-        var request = new ChatRequest(messages, entity.getProviderId(), entity.getModel());
-
-        var response = chatService.chat(request);
-        var content = response.content();
-        if (content == null || content.isBlank()) {
-            throw new InvalidRecipeException("AI 未返回有效内容");
-        }
-        return content;
-    }
-
-    private String buildPrompt(String sourceText) {
-        var sourceLimit = Math.max(1000, aiProperties.getMaxInputChars() - 1500);
-        var truncated =
-                sourceText.length() > sourceLimit
-                        ? sourceText.substring(0, sourceLimit)
-                        : sourceText;
-        return """
-你是一个专业的菜谱提取助手。请从以下文本中提取菜谱信息，**只返回符合 JSON 格式的菜谱数据**，不要包含任何其他文字、代码块标记或说明。
-
-要求：
-- name: 菜谱名称（必需，最多 120 字）
-- slug: 英文 URL 别名（可选，小写字母+连字符）
-- summary: 菜谱简介（必需，最多 1000 字）
-- categoryHint: 分类提示（可选，如"家常菜"、"烘焙"等）
-- prepMinutes: 准备时间（分钟，1-1440）
-- difficulty: 难度（必须为"简单"、"家常"或"进阶"）
-- baseServings: 份数（必须 >= 1）
-- ingredients: 食材列表（必需，每项最多 240 字，1-30 项）
-- steps: 步骤列表（必需，每项最多 2000 字，1-30 项）
-
-返回 JSON 格式：
-{
-  "name": "...",
-  "slug": "...",
-  "summary": "...",
-  "categoryHint": "...",
-  "prepMinutes": 0,
-  "difficulty": "家常",
-  "baseServings": 2,
-  "ingredients": ["..."],
-  "steps": ["..."]
-}
-
-文本内容：
----
-%s
----"""
-                .formatted(truncated);
-    }
-
-    private YrecipePackage parseAndValidate(
-            String aiResponse, RecipeExtractionJobEntity entity, SourceMaterial source) {
-        String json = aiResponse.trim();
-        if (json.startsWith("```")) {
-            int start = json.indexOf('\n');
-            int end = json.lastIndexOf("```");
-            if (start > 0 && end > start) {
-                json = json.substring(start, end).trim();
-            }
-        }
-
-        JsonNode recipeNode;
-        try {
-            recipeNode = MAPPER.readTree(json);
-        } catch (Exception e) {
-            var braceStart = json.indexOf('{');
-            var braceEnd = json.lastIndexOf('}');
-            if (braceStart >= 0 && braceEnd > braceStart) {
-                json = json.substring(braceStart, braceEnd + 1);
-                try {
-                    recipeNode = MAPPER.readTree(json);
-                } catch (Exception e2) {
-                    throw new InvalidRecipeException("AI 返回的 JSON 格式不合法");
-                }
-            } else {
-                throw new InvalidRecipeException("AI 返回的 JSON 格式不合法");
-            }
-        }
-
-        var name = recipeNode.get("name");
-        var summary = recipeNode.get("summary");
-        var ingredients = recipeNode.get("ingredients");
-        var steps = recipeNode.get("steps");
-
-        if (name == null || name.asText("").isBlank()) throw new InvalidRecipeException("菜谱名称不能为空");
-        if (summary == null || summary.asText("").isBlank())
-            throw new InvalidRecipeException("菜谱简介不能为空");
-        if (ingredients == null || !ingredients.isArray() || ingredients.isEmpty())
-            throw new InvalidRecipeException("食材列表不能为空");
-        if (steps == null || !steps.isArray() || steps.isEmpty())
-            throw new InvalidRecipeException("步骤列表不能为空");
-
-        var ingredientList = new ArrayList<String>();
-        for (var ing : ingredients) {
-            var text = ing.asText("").trim();
-            if (!text.isBlank()) ingredientList.add(text);
-        }
-        var stepList = new ArrayList<String>();
-        for (var step : steps) {
-            var text = step.asText("").trim();
-            if (!text.isBlank()) stepList.add(text);
-        }
-
-        if (ingredientList.size() > 30) throw new InvalidRecipeException("食材数量不能超过 30 项");
-        if (stepList.size() > 30) throw new InvalidRecipeException("步骤数量不能超过 30 项");
-
-        var recipeContent =
-                new YrecipePackage.YrecipeContent(
-                        name.asText().trim(),
-                        recipeNode.has("slug") ? recipeNode.get("slug").asText("").trim() : null,
-                        summary.asText().trim(),
-                        recipeNode.has("categoryHint")
-                                ? recipeNode.get("categoryHint").asText("").trim()
-                                : null,
-                        recipeNode.has("prepMinutes")
-                                ? recipeNode.get("prepMinutes").asInt(30)
-                                : 30,
-                        recipeNode.has("difficulty")
-                                ? recipeNode.get("difficulty").asText("家常")
-                                : "家常",
-                        recipeNode.has("baseServings")
-                                ? recipeNode.get("baseServings").asInt(2)
-                                : 2,
-                        ingredientList,
-                        stepList);
-
-        var packageId = UUID.randomUUID().toString();
-        var coverPath = "assets/cover." + coverExtension(source.coverMediaType());
-        var sourceType = source.sourceUrl() == null ? "ai" : "website";
-        return new YrecipePackage(
-                "1.0",
-                "yubai.recipe",
-                packageId,
-                recipeContent,
-                new YrecipePackage.YrecipeCover(coverPath, name.asText()),
-                new YrecipePackage.YrecipeSource(
-                        sourceType,
-                        source.sourceUrl(),
-                        source.title(),
-                        source.creator(),
-                        Instant.now().getEpochSecond()),
-                new YrecipePackage.YrecipeGeneration(
-                        "yubai-recipe-extractor",
-                        entity.getProviderId() != null
-                                ? String.valueOf(entity.getProviderId())
-                                : null,
-                        entity.getModel(),
-                        Instant.now().toString(),
-                        0.8,
-                        null));
-    }
-
-    private DishImportPreviewResponse storeAsYrecipe(
-            YrecipePackage yrecipe, byte[] coverBytes, String coverMediaType) {
-        try {
-            var baos = new ByteArrayOutputStream();
-            try (var zos = new ZipOutputStream(baos, java.nio.charset.StandardCharsets.UTF_8)) {
-                var jsonBytes = MAPPER.writeValueAsBytes(yrecipe);
-                var jsonEntry = new ZipEntry("recipe.json");
-                jsonEntry.setSize(jsonBytes.length);
-                zos.putNextEntry(jsonEntry);
-                zos.write(jsonBytes);
-                zos.closeEntry();
-
-                var actualCover =
-                        coverBytes == null || coverBytes.length == 0 ? ONE_PX_JPEG : coverBytes;
-                var coverEntry = new ZipEntry(yrecipe.cover().path());
-                coverEntry.setSize(actualCover.length);
-                zos.putNextEntry(coverEntry);
-                zos.write(actualCover);
-                zos.closeEntry();
-            }
-            var zipData = baos.toByteArray();
-            return dishImportService.previewFromBytes(zipData);
-        } catch (IOException e) {
-            throw new InvalidRecipeException("生成菜谱包失败: " + e.getMessage());
-        }
-    }
-
-    private static String coverExtension(String mediaType) {
-        if ("image/png".equals(mediaType)) return "png";
-        if ("image/webp".equals(mediaType)) return "webp";
-        return "jpg";
-    }
-
-    private record SourceMaterial(
-            String text,
-            String sourceUrl,
-            String title,
-            String creator,
-            byte[] coverBytes,
-            String coverMediaType) {}
 }

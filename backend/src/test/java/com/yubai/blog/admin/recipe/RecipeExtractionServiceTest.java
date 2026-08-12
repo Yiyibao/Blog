@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yubai.blog.admin.ai.AiChatService;
 import com.yubai.blog.admin.ai.ChatResponse;
 import com.yubai.blog.config.AiProperties;
@@ -34,20 +35,23 @@ class RecipeExtractionServiceTest {
     private final DishImportService importService = mock(DishImportService.class);
     private final ExecutorService executor = mock(ExecutorService.class);
     private final ScheduledExecutorService timeoutScheduler = mock(ScheduledExecutorService.class);
-    private final RecipeExtractionService service =
-            new RecipeExtractionService(
-                    repository,
-                    chatService,
-                    importService,
-                    mock(RecipeSourceHttpClient.class),
-                    mock(VideoRecipeSourceExtractor.class),
-                    new AiProperties(),
-                    executor,
-                    timeoutScheduler);
+    private RecipeExtractionService service;
     private RecipeExtractionJobEntity job;
 
     @BeforeEach
     void setUp() {
+        service =
+                new RecipeExtractionService(
+                        repository,
+                        importService,
+                        new RecipeSourceMaterialService(
+                                new ObjectMapper(),
+                                mock(RecipeSourceHttpClient.class),
+                                mock(VideoRecipeSourceExtractor.class)),
+                        new RecipeExtractionPayloadService(chatService, new AiProperties()),
+                        new RecipeImportPackageWriter(importService, new ObjectMapper()),
+                        executor,
+                        timeoutScheduler);
         job =
                 new RecipeExtractionJobEntity(
                         RecipeExtractionJobEntity.SourceType.TEXT, "番茄 鸡蛋", null, "model");
