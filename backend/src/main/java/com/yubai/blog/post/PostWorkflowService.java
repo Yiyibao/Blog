@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.cache.annotation.CacheEvict;
@@ -20,10 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class PostWorkflowService {
     private final PostRepository repository;
     private final JdbcTemplate jdbcTemplate;
+    private final Clock clock;
 
-    public PostWorkflowService(PostRepository repository, JdbcTemplate jdbcTemplate) {
+    public PostWorkflowService(PostRepository repository, JdbcTemplate jdbcTemplate, Clock clock) {
         this.repository = repository;
         this.jdbcTemplate = jdbcTemplate;
+        this.clock = clock;
     }
 
     @Transactional
@@ -111,12 +114,34 @@ public class PostWorkflowService {
             },
             allEntries = true)
     public void publishDue() {
-        for (var post :
-                repository.findByStatusAndScheduledPublishAtLessThanEqual(
-                        PostStatus.DRAFT, Instant.now())) {
-            post.changePublicationStatus(PostStatus.PUBLISHED);
-            audit(post.getId(), "SCHEDULED_PUBLISH", "system:scheduler", null);
-        }
+        publishDueAt(clock.instant());
+    }
+
+    List<Long> publishDueAt(Instant now) {
+        return jdbcTemplate.queryForList(
+                """
+                with due as (
+                    select id
+                      from posts
+                     where status = 'DRAFT' and scheduled_publish_at <= ?
+                     order by scheduled_publish_at, id
+                     for update skip locked
+                     limit 100
+                ), published as (
+                    update posts post
+                       set status = 'PUBLISHED', scheduled_publish_at = null
+                      from due
+                     where post.id = due.id
+                    returning post.id
+                ), audited as (
+                    insert into post_publication_audit (post_id, action, actor, detail)
+                    select id, 'SCHEDULED_PUBLISH', 'system:scheduler', null from published
+                    returning post_id
+                )
+                select post_id from audited order by post_id
+                """,
+                Long.class,
+                java.sql.Timestamp.from(now));
     }
 
     private PostEntity entity(long id) {

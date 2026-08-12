@@ -8,8 +8,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,7 +22,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 class PostWorkflowServiceTest {
     private final PostRepository repository = mock(PostRepository.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-    private final PostWorkflowService service = new PostWorkflowService(repository, jdbcTemplate);
+    private final Instant now = Instant.parse("2027-01-15T08:00:00Z");
+    private final PostWorkflowService service =
+            new PostWorkflowService(repository, jdbcTemplate, Clock.fixed(now, ZoneOffset.UTC));
     private PostEntity post;
 
     @BeforeEach
@@ -53,13 +57,13 @@ class PostWorkflowServiceTest {
         assertThat(scheduled.status()).isEqualTo(PostStatus.DRAFT);
         assertThat(scheduled.scheduledPublishAt()).isEqualTo(publishAt);
 
-        when(repository.findByStatusAndScheduledPublishAtLessThanEqual(any(), any()))
-                .thenReturn(List.of(post));
+        when(jdbcTemplate.queryForList(anyString(), any(Class.class), any()))
+                .thenReturn(List.of(9L), List.of());
+        service.publishDue();
         service.publishDue();
 
-        assertThat(post.getStatus()).isEqualTo(PostStatus.PUBLISHED);
-        assertThat(post.getScheduledPublishAt()).isNull();
-        verify(jdbcTemplate, times(2)).update(anyString(), any(), any(), any(), any());
+        verify(jdbcTemplate, times(2)).queryForList(anyString(), any(Class.class), any());
+        verify(jdbcTemplate, times(1)).update(anyString(), any(), any(), any(), any());
     }
 
     @Test
