@@ -4,15 +4,23 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
-  use: { baseURL: 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
-  webServer: {
-    command: 'npm run preview -- --port 4173',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-  },
+  use: { baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:4173', trace: 'retain-on-failure' },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: 'npm run preview -- --port 4173',
+        url: 'http://127.0.0.1:4173',
+        reuseExistingServer: !process.env.CI,
+      },
   projects: [
     {
-      name: 'chromium',
+      name: 'offline-chromium',
+      testMatch: /public-site\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], channel: process.env.CI ? undefined : 'chrome' },
+    },
+    {
+      name: 'online-chromium',
+      testMatch: /online-contract\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], channel: process.env.CI ? undefined : 'chrome' },
     },
   ],

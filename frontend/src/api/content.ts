@@ -79,6 +79,23 @@ export function fetchCategories() {
   return unwrap<CategorySummary[]>(api.get('/categories'));
 }
 
+export interface CategoryDetail {
+  name: string;
+  slug: string;
+  description: string | null;
+  total: number;
+  posts: PostSummary[];
+  page: number;
+  size: number;
+  totalPages: number;
+}
+
+export function fetchCategoryDetail(slug: string, page = 0, size = 10) {
+  return unwrap<CategoryDetail>(
+    api.get(`/categories/${encodeURIComponent(slug)}`, { params: { page, size } }),
+  );
+}
+
 export async function fetchDishes(page = 0, size = 12, categorySlug?: string, query?: string) {
   const params: Record<string, unknown> = { page, size };
   if (categorySlug) params.categorySlug = categorySlug;

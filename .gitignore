@@ -62,3 +62,5 @@ next-env.d.ts
 /work/
 /frontend/test-results/
 /frontend/playwright-report/
+/frontend/e2e-results/
+/frontend/coverage-tmp/

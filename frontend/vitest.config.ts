@@ -13,7 +13,9 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.{ts,vue}'],
       exclude: ['src/main.ts', 'src/**/*.d.ts', 'src/test/**'],
-      thresholds: { lines: 45, functions: 45, statements: 45, branches: 35 },
+      // M4 baseline: 2026-08-13 local run (61.81/55.49/50.71/64.44).
+      // Keep the floor above the pre-M4 45/45/45/35 gate; future work may only raise it.
+      thresholds: { lines: 64, functions: 50, statements: 61, branches: 55 },
     },
   },
 });

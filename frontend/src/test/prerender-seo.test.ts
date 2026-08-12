@@ -235,11 +235,12 @@ describe('generateStaticRoutes', () => {
     const paths = await mod.generateStaticRoutes(TEMPLATE);
     expect(paths).toContain('/');
     expect(paths).toContain('/articles');
+    expect(paths).toContain('/about');
+    expect(paths).toContain('/categories');
     expect(paths).toContain('/recipes');
-    expect(paths).not.toContain('/about');
     expect(paths).not.toContain('/series');
     expect(paths).not.toContain('/archive');
-    expect(paths.length).toBe(3);
+    expect(paths.length).toBe(5);
   });
 
   it('produces valid HTML with SPA assets preserved', async () => {
@@ -532,7 +533,7 @@ describe('prerender', () => {
 
   it('generates static and noindex routes without API base', async () => {
     const result = await mod.prerender({ template: TEMPLATE, apiBase: '' });
-    expect(result.static.length).toBe(3);
+    expect(result.static.length).toBe(5);
     expect(result.noindex.length).toBe(2);
     expect(result.dynamic.articles.length).toBe(0);
   });
@@ -599,7 +600,7 @@ describe('prerender', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
     const result = await mod.prerender({ template: TEMPLATE, apiBase: 'https://test.example.com/api/v1' });
-    expect(result.static.length).toBe(3);
+    expect(result.static.length).toBe(5);
     expect(result.noindex.length).toBe(2);
     expect(result.dynamic.articles.length).toBe(1);
     expect(result.dynamic.series.length).toBe(0);
@@ -639,7 +640,7 @@ describe('prerender', () => {
   it('succeeds without dynamic routes when REQUIRE_DYNAMIC is false', async () => {
     mod.__setConfig({ apiBase: '', requireDynamic: false });
     const result = await mod.prerender({ template: TEMPLATE, apiBase: '' });
-    expect(result.static.length).toBe(3);
+    expect(result.static.length).toBe(5);
     expect(result.noindex.length).toBe(2);
     expect(result.dynamic.articles.length).toBe(0);
   });

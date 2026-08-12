@@ -17,7 +17,7 @@ const AdminPetAssistant = defineAsyncComponent(() => import('./components/admin-
 const route = useRoute();
 const ui = useUiStore();
 const siteConfig = createSiteConfig();
-// L-16：角色化导航——游客隐藏学习笔记，管理角色（ADMIN/PARTNER）多一个"进入后台"
+// M4：公开导航与路由可见性保持一致；学习笔记仍由登录与 capability 守卫保护。
 const auth = useAuthStore();
 
 const menuOpen = ref(false);
@@ -151,6 +151,13 @@ watch(
         },
         'series-detail': { title: '合集详情', description: '', canonicalPath: '' },
         tag: { title: '标签', description: '', canonicalPath: '' },
+        about: { title: '关于我', description: '了解这个网站与它记录的内容。', canonicalPath: '/about' },
+        categories: {
+          title: '文章分类',
+          description: '按主题浏览已发布的文章分类。',
+          canonicalPath: '/categories',
+        },
+        'category-detail': { title: '文章分类', description: '', canonicalPath: '' },
         recipes: { title: '美食', description: '家常菜谱与美食记录', canonicalPath: '/recipes' },
         archive: {
           title: '内容归档',
@@ -253,7 +260,9 @@ onBeforeUnmount(() => {
         <RouterLink to="/articles"><i>✎</i>文章</RouterLink>
         <RouterLink to="/series"><i>≣</i>合集</RouterLink>
         <RouterLink to="/archive"><i>☰</i>归档</RouterLink>
+        <RouterLink to="/categories"><i>✦</i>分类</RouterLink>
         <RouterLink to="/recipes"><i>♨</i>美食</RouterLink>
+        <RouterLink to="/about"><i>◎</i>关于</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/notes"><i>☘</i>学习笔记</RouterLink>
       </nav>
       <div class="header-actions">
@@ -289,8 +298,10 @@ onBeforeUnmount(() => {
       <RouterLink to="/articles">文章 <span>02</span></RouterLink>
       <RouterLink to="/series">合集 <span>03</span></RouterLink>
       <RouterLink to="/archive">归档 <span>04</span></RouterLink>
-      <RouterLink to="/recipes">美食 <span>05</span></RouterLink>
-      <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记 <span>06</span></RouterLink>
+      <RouterLink to="/categories">分类 <span>05</span></RouterLink>
+      <RouterLink to="/recipes">美食 <span>06</span></RouterLink>
+      <RouterLink to="/about">关于 <span>07</span></RouterLink>
+      <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记 <span>08</span></RouterLink>
       <RouterLink :to="auth.isStaff ? '/admin' : '/login'">进入后台 <span>→</span></RouterLink>
     </nav>
 
@@ -308,7 +319,9 @@ onBeforeUnmount(() => {
         <RouterLink to="/articles">文章</RouterLink>
         <RouterLink to="/series">合集</RouterLink>
         <RouterLink to="/archive">归档</RouterLink>
+        <RouterLink to="/categories">分类</RouterLink>
         <RouterLink to="/recipes">美食</RouterLink>
+        <RouterLink to="/about">关于</RouterLink>
         <RouterLink v-if="auth.isAuthenticated" to="/notes">学习笔记</RouterLink>
         <RouterLink to="/admin/login">管理</RouterLink>
       </div>
@@ -374,30 +387,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-/* Guests can browse only the four public sections; keep the router guard
-   authoritative while mirroring it in the navigation. */
-.restricted-visitor .desktop-nav a[href='/series'],
-.restricted-visitor .desktop-nav a[href='/archive'],
-.restricted-visitor .mobile-nav a[href='/series'],
-.restricted-visitor .mobile-nav a[href='/archive'],
-.restricted-visitor .site-footer a[href='/series'],
-.restricted-visitor .site-footer a[href='/archive'] {
-  display: none;
-}
-
-/* Ordinary signed-in members can read only articles and recipes. */
-.restricted-member .desktop-nav a[href='/'],
-.restricted-member .desktop-nav a[href='/series'],
-.restricted-member .desktop-nav a[href='/archive'],
+/* Ordinary signed-in members may read the same public pages as guests. */
 .restricted-member .desktop-nav a[href='/notes'],
 .restricted-member .admin-entry-link,
-.restricted-member .mobile-nav a[href='/'],
-.restricted-member .mobile-nav a[href='/series'],
-.restricted-member .mobile-nav a[href='/archive'],
 .restricted-member .mobile-nav a[href='/notes'],
 .restricted-member .mobile-nav a[href='/admin'],
-.restricted-member .site-footer a[href='/series'],
-.restricted-member .site-footer a[href='/archive'],
 .restricted-member .site-footer a[href='/notes'],
 .restricted-member .site-footer a[href='/admin/login'] {
   display: none;

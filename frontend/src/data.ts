@@ -67,6 +67,7 @@ export interface Post extends PostSummary {
 export interface CategorySummary {
   name: string;
   slug: string;
+  description?: string | null;
   publishedPostCount: number;
 }
 

@@ -21,14 +21,24 @@ function result(overrides: Partial<LoginResult> = {}): LoginResult {
   };
 }
 
-/** 与 src/router/index.ts 守卫一致的副本（FD-8）。 */
+/** 与 src/router/index.ts 守卫一致的最小契约夹具（FD-8/M4）。 */
 function guardedRouter(): Router {
   const r = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', name: 'home', component: { template: '<div />' } },
-      { path: '/articles', name: 'articles', component: { template: '<div />' } },
-      { path: '/articles/:slug', name: 'article', component: { template: '<div />' } },
+      { path: '/', name: 'home', component: { template: '<div />' }, meta: { visibility: 'public' } },
+      {
+        path: '/articles',
+        name: 'articles',
+        component: { template: '<div />' },
+        meta: { visibility: 'public' },
+      },
+      {
+        path: '/articles/:slug',
+        name: 'article',
+        component: { template: '<div />' },
+        meta: { visibility: 'public' },
+      },
       { path: '/login', name: 'login', component: { template: '<div />' } },
       { path: '/admin/login', name: 'admin-login', component: { template: '<div />' } },
       {
@@ -37,35 +47,39 @@ function guardedRouter(): Router {
         component: { template: '<div />' },
         meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE },
       },
-      { path: '/recipes', name: 'recipes', component: { template: '<div />' } },
-      { path: '/series', name: 'series', component: { template: '<div />' } },
-      { path: '/archive', name: 'archive', component: { template: '<div />' } },
+      {
+        path: '/recipes',
+        name: 'recipes',
+        component: { template: '<div />' },
+        meta: { visibility: 'public' },
+      },
+      { path: '/series', name: 'series', component: { template: '<div />' }, meta: { visibility: 'public' } },
+      {
+        path: '/archive',
+        name: 'archive',
+        component: { template: '<div />' },
+        meta: { visibility: 'public' },
+      },
+      {
+        path: '/categories',
+        name: 'categories',
+        component: { template: '<div />' },
+        meta: { visibility: 'public' },
+      },
+      { path: '/about', name: 'about', component: { template: '<div />' }, meta: { visibility: 'public' } },
     ],
   });
   r.beforeEach((to, _from, next) => {
     const auth = useAuthStore();
     const routeName = String(to.name ?? '');
-    const guestVisibleRoutes = new Set(['home', 'articles', 'article', 'recipes']);
     const authEntryRoutes = new Set(['login', 'admin-login']);
-    const memberVisibleRoutes = new Set(['articles', 'article', 'recipes']);
     if (!to.meta.requiresAuth) {
-      if (!auth.isAuthenticated && !guestVisibleRoutes.has(routeName) && !authEntryRoutes.has(routeName)) {
-        next({ name: 'home' });
-        return;
-      }
-      if (auth.isAuthenticated && !auth.isStaff && !memberVisibleRoutes.has(routeName)) {
-        next({ name: 'articles' });
-        return;
-      }
-      next();
+      if (to.meta.visibility === 'public' || authEntryRoutes.has(routeName)) next();
+      else next({ name: 'home' });
       return;
     }
     if (!auth.isAuthenticated) {
       next({ name: 'login', query: { next: to.fullPath } });
-      return;
-    }
-    if (auth.isAuthenticated && !auth.isStaff && !memberVisibleRoutes.has(routeName)) {
-      next({ name: 'articles' });
       return;
     }
     const required = to.meta.capability as Capability | undefined;
@@ -204,24 +218,24 @@ describe('FD-8 authStore 角色感知', () => {
     expect(router.currentRoute.value.name).toBe('admin');
   });
 
-  it('guest cannot enter other public modules', async () => {
+  it('guest can enter every explicitly public module', async () => {
     sessionStorage.clear();
     freshStore().clearSession();
     const router = guardedRouter();
     await router.push('/series');
     await router.isReady();
-    expect(router.currentRoute.value.name).toBe('home');
+    expect(router.currentRoute.value.name).toBe('series');
 
     await router.push('/archive');
     await router.isReady();
-    expect(router.currentRoute.value.name).toBe('home');
+    expect(router.currentRoute.value.name).toBe('archive');
   });
 
-  it('guest can enter home, articles, and recipes', async () => {
+  it('guest can enter home, public content, and categories', async () => {
     sessionStorage.clear();
     freshStore().clearSession();
     const router = guardedRouter();
-    for (const path of ['/', '/articles', '/articles/hello', '/recipes']) {
+    for (const path of ['/', '/articles', '/articles/hello', '/recipes', '/categories', '/about']) {
       await router.push(path);
       await router.isReady();
       expect(router.currentRoute.value.path).toBe(path);
