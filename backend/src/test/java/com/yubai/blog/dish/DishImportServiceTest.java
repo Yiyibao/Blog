@@ -27,10 +27,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -48,7 +48,19 @@ class DishImportServiceTest {
     @Mock DishAssetService assetService;
     @Mock DishService dishService;
     @Mock StorageService storageService;
-    @InjectMocks DishImportService importService;
+    DishImportService importService;
+
+    @BeforeEach
+    void setUp() {
+        importService =
+                new DishImportService(
+                        stagingRepository,
+                        dishRepository,
+                        categoryService,
+                        assetService,
+                        dishService,
+                        storageService);
+    }
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
