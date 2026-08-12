@@ -15,11 +15,6 @@ import com.yubai.blog.dish.InvalidRecipeException;
 import com.yubai.blog.dish.YrecipePackage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -53,9 +48,6 @@ public class RecipeExtractionService {
     private static final ObjectMapper MAPPER =
             new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
 
-    private static final int HTTP_TIMEOUT_SECONDS = 15;
-    private static final int MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
-    private static final int MAX_URL_LENGTH = 2048;
     private static final int LEASE_SECONDS = 60;
     private static final byte[] ONE_PX_JPEG =
             Base64.getDecoder()
@@ -65,7 +57,7 @@ public class RecipeExtractionService {
     private final RecipeExtractionJobRepository jobRepository;
     private final AiChatService chatService;
     private final DishImportService dishImportService;
-    private final RecipeUrlValidator urlValidator;
+    private final RecipeSourceHttpClient sourceHttpClient;
     private final VideoRecipeSourceExtractor videoExtractor;
     private final AiProperties aiProperties;
     private final ExecutorService executor;
@@ -76,7 +68,7 @@ public class RecipeExtractionService {
             RecipeExtractionJobRepository jobRepository,
             AiChatService chatService,
             DishImportService dishImportService,
-            RecipeUrlValidator urlValidator,
+            RecipeSourceHttpClient sourceHttpClient,
             VideoRecipeSourceExtractor videoExtractor,
             AiProperties aiProperties,
             @Qualifier("recipeExtractionExecutor") ExecutorService executor,
@@ -85,7 +77,7 @@ public class RecipeExtractionService {
         this.jobRepository = jobRepository;
         this.chatService = chatService;
         this.dishImportService = dishImportService;
-        this.urlValidator = urlValidator;
+        this.sourceHttpClient = sourceHttpClient;
         this.videoExtractor = videoExtractor;
         this.aiProperties = aiProperties;
         this.executor = executor;
@@ -342,38 +334,7 @@ public class RecipeExtractionService {
     }
 
     String fetchWebContent(String url) {
-        if (url == null || url.isBlank() || url.length() > MAX_URL_LENGTH) {
-            throw new InvalidRecipeException("URL 不合法");
-        }
-        URI uri = urlValidator.validatePublicHttps(url);
-
-        String html;
-        try {
-            var request =
-                    HttpRequest.newBuilder(uri)
-                            .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS))
-                            .header("User-Agent", "Mozilla/5.0 (compatible; BlogBot/1.0)")
-                            .header("Accept", "text/html,application/xhtml+xml,application/ld+json")
-                            .GET()
-                            .build();
-            var response = httpClient().send(request, HttpResponse.BodyHandlers.ofByteArray());
-            int status = response.statusCode();
-            if (status >= 300) {
-                throw new InvalidRecipeException("页面返回 " + status + "，无法获取内容");
-            }
-            var bodyBytes = response.body();
-            if (bodyBytes.length > MAX_RESPONSE_BYTES) {
-                throw new InvalidRecipeException("页面内容过大");
-            }
-            html = new String(bodyBytes, java.nio.charset.StandardCharsets.UTF_8);
-        } catch (InvalidRecipeException e) {
-            throw e;
-        } catch (IOException e) {
-            throw new InvalidRecipeException("无法获取页面内容: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new InvalidRecipeException("请求被中断");
-        }
+        String html = sourceHttpClient.fetch(url);
 
         Document doc = Jsoup.parse(html);
 
@@ -391,13 +352,6 @@ public class RecipeExtractionService {
         }
 
         return extractVisibleText(doc);
-    }
-
-    private HttpClient httpClient() {
-        return HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .connectTimeout(Duration.ofSeconds(HTTP_TIMEOUT_SECONDS))
-                .build();
     }
 
     private JsonNode findRecipeNode(JsonNode node) {

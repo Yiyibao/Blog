@@ -39,7 +39,7 @@ class RecipeExtractionServiceTest {
                     repository,
                     chatService,
                     importService,
-                    mock(RecipeUrlValidator.class),
+                    mock(RecipeSourceHttpClient.class),
                     mock(VideoRecipeSourceExtractor.class),
                     new AiProperties(),
                     executor,
