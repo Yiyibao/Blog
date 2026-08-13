@@ -13,6 +13,7 @@ export interface SearchHit {
   // L-8：POST 分页分支实装的文章头元信息（其余类型为 null）
   date?: string | null;
   readTime?: number | null;
+  telemetryId?: string;
   tags?: string[] | null;
 }
 

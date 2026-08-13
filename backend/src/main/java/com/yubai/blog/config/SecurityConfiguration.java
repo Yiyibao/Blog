@@ -87,6 +87,7 @@ public class SecurityConfiguration {
                                                 "/api/v1/dish-categories/**",
                                                 "/api/v1/dishes/**",
                                                 "/api/v1/search",
+                                                "/api/v1/search/**",
                                                 "/api/v1/music/**",
                                                 "/api/v1/graph/**",
                                                 "/api/v1/quotes/**",
@@ -97,7 +98,8 @@ public class SecurityConfiguration {
                                                 HttpMethod.POST,
                                                 "/api/v1/dishes/*/favorite",
                                                 "/api/v1/posts/*/like",
-                                                "/api/v1/search")
+                                                "/api/v1/search",
+                                                "/api/v1/search/**")
                                         .permitAll()
                                         // FD-7：kitchen（今日菜单/打卡）为两人私有空间——必须 kitchen:access 权限；
                                         // 规则须在 /api/** 通配之前，顺序敏感

@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Username,
     [Parameter(Mandatory = $true)][SecureString]$Password,
     [Parameter(Mandatory = $true)][string]$BackupFile,
-    [ValidateRange(1, 999)][int]$ExpectedTargetVersion = 59,
+    [ValidateRange(1, 999)][int]$ExpectedTargetVersion = 60,
     [ValidateRange(1, 168)][int]$MaxBackupAgeHours = 26,
     [string]$ExpectedBackupSha256,
     [ValidateRange(1048576, [long]::MaxValue)][long]$MinimumFreeBytes = 1073741824,

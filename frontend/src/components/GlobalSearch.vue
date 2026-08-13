@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSearch } from '../composables/useSearch';
+import { recordSearchClick } from '../api/content';
 import { splitHighlight } from '../utils/searchHighlight';
 import type { SearchHit } from '../data';
 
@@ -84,6 +85,11 @@ const hasResults = computed(() => resultCount.value > 0);
 
 function goToHit(hit: SearchHit) {
   if (query.value) saveSearchHistory(query.value);
+  const flatIndex = flatItems.value.findIndex((item) => item.type === 'result' && item.hit === hit);
+  if (flatIndex >= 0) {
+    const position = flatItems.value.slice(0, flatIndex + 1).filter((item) => item.type === 'result').length;
+    void recordSearchClick(hit.telemetryId, position);
+  }
   const url = hit.url;
   emit('close');
   query.value = '';

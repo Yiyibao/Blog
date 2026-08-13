@@ -1968,6 +1968,103 @@ class BlogApiIntegrationTest {
 
     @Test
     @Order(60)
+    void searchFiltersAndTelemetryStayServerSideAndAnonymous() throws Exception {
+        String token = login();
+        rateLimiter.reset();
+        var body =
+                """
+            {"slug":"m9-search-contract","title":"M9 检索契约","excerpt":"可重复搜索评测",
+             "date":"2026-07-15","readTime":3,"category":"工程实践","tags":["m9-search-contract"],
+             "color":"#112233","number":"M9","featured":false,"status":"PUBLISHED",
+             "contentFormat":"MARKDOWN","markdownContent":"M9 中文指南"}
+            """;
+        long postId =
+                objectMapper
+                        .readTree(
+                                mockMvc.perform(
+                                                post("/api/v1/admin/posts")
+                                                        .header("Authorization", "Bearer " + token)
+                                                        .contentType(MediaType.APPLICATION_JSON)
+                                                        .content(body))
+                                        .andExpect(status().isCreated())
+                                        .andReturn()
+                                        .getResponse()
+                                        .getContentAsString(StandardCharsets.UTF_8))
+                        .path("data")
+                        .path("id")
+                        .asLong();
+
+        var response =
+                objectMapper.readTree(
+                        mockMvc.perform(
+                                        post("/api/v1/search")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        """
+                                                    {"query":"M9","type":"POST","page":0,"size":10,
+                                                     "tag":"m9-search-contract","from":"2026-07-15","to":"2026-07-15"}
+                                                    """))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(StandardCharsets.UTF_8));
+        var data = response.path("data");
+        assertEquals(1, data.path("totalElements").asInt());
+        assertEquals("m9-search-contract", data.path("results").get(0).path("slug").asText());
+        String telemetryId = data.path("telemetryId").asText();
+        assertTrue(telemetryId.matches("[0-9a-f-]{36}"));
+
+        mockMvc.perform(
+                        post("/api/v1/search/events/" + telemetryId + "/click")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"position\":1}"))
+                .andExpect(status().isOk());
+        String queryHash =
+                jdbcTemplate.queryForObject(
+                        "select query_hash from search_query_events where id = ?",
+                        String.class,
+                        java.util.UUID.fromString(telemetryId));
+        assertThat(queryHash).hasSize(64).doesNotContain("M9");
+        assertEquals(
+                1,
+                jdbcTemplate.queryForObject(
+                        "select clicked_position from search_query_events where id = ?",
+                        Integer.class,
+                        java.util.UUID.fromString(telemetryId)));
+
+        mockMvc.perform(get("/api/v1/search").param("q", "M9").param("limit", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notes").isEmpty());
+
+        var zeroResult =
+                objectMapper.readTree(
+                        mockMvc.perform(
+                                        post("/api/v1/search")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(
+                                                        "{\"query\":\"m9-no-result-sentinel\",\"type\":\"ALL\",\"page\":0,\"size\":10}"))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString(StandardCharsets.UTF_8));
+        var zeroTelemetryId = zeroResult.path("data").path("telemetryId").asText();
+        assertTrue(zeroTelemetryId.matches("[0-9a-f-]{36}"));
+        assertEquals(
+                true,
+                jdbcTemplate.queryForObject(
+                        "select zero_result from search_query_events where id = ?",
+                        Boolean.class,
+                        java.util.UUID.fromString(zeroTelemetryId)));
+
+        mockMvc.perform(
+                        delete("/api/v1/admin/posts/" + postId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+        rateLimiter.reset();
+    }
+
+    @Test
+    @Order(61)
     void tagEndpointsAggregateAndPaginatePublishedPosts() throws Exception {
         // 5B：标签聚合公开可读→按标签分页→未知标签 404→sitemap 带标签页
         var tags =

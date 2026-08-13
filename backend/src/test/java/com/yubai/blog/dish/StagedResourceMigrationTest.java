@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.yubai.blog.TestDatabase;
+import com.yubai.blog.common.LegacyDishAssetMigrationCallback;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.UUID;
@@ -98,6 +99,7 @@ class StagedResourceMigrationTest {
                 Flyway.configure()
                         .dataSource(dataSource)
                         .schemas(SCHEMA)
+                        .callbacks(new LegacyDishAssetMigrationCallback())
                         .locations("classpath:db/migration");
         if (target != null) configuration.target(target);
         configuration.load().migrate();

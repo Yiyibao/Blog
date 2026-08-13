@@ -27,6 +27,7 @@ class AiToolOrchestratorTest {
     @Mock private AiTaskPartRepository partRepository;
     @Mock private AiImageService imageService;
     @Mock private AiActionProposalService proposalService;
+    @Mock private AiReadOnlySearchService searchService;
 
     private AiToolOrchestrator orchestrator;
 
@@ -40,7 +41,8 @@ class AiToolOrchestratorTest {
                         artifactRepository,
                         partRepository,
                         imageService,
-                        proposalService);
+                        proposalService,
+                        searchService);
     }
 
     @Test
@@ -94,5 +96,41 @@ class AiToolOrchestratorTest {
                 .singleElement()
                 .satisfies(failure -> assertThat(failure).contains("never AI tools"));
         verify(proposalService, never()).create(any(), any());
+    }
+
+    @Test
+    void searchToolReturnsAuthorizedSourceRefsWithoutPersistingTheQuery() {
+        var taskId = UUID.randomUUID();
+        var telemetryId = UUID.randomUUID();
+        when(partRepository.findByTaskIdOrderBySequenceAsc(taskId)).thenReturn(List.of());
+        when(searchService.search(eq("alice"), any()))
+                .thenReturn(
+                        new AiReadOnlySearchService.SearchResponse(
+                                "ALL",
+                                1,
+                                List.of(
+                                        new AiReadOnlySearchService.Source(
+                                                "POST", 7L, "指南", "/articles/search-safety")),
+                                telemetryId));
+
+        var batch =
+                orchestrator.execute(
+                        taskId,
+                        "alice",
+                        List.of(
+                                new AiToolCall(
+                                        "call-search",
+                                        "search_content",
+                                        "{\"query\":\"private phrase\",\"type\":\"ALL\"}")));
+
+        assertThat(batch.failures()).isEmpty();
+        assertThat(batch.results())
+                .singleElement()
+                .satisfies(
+                        result -> {
+                            assertThat(result.payload()).contains("/articles/search-safety", "指南");
+                            assertThat(result.payload()).doesNotContain("private phrase");
+                        });
+        verify(searchService).search(eq("alice"), any());
     }
 }

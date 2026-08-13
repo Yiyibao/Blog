@@ -209,7 +209,43 @@ public class OpenAiResponsesMultimodalClient {
                                         "title",
                                         Map.of("type", "string", "maxLength", 160),
                                         "content",
-                                        Map.of("type", "string", "maxLength", 120000)))));
+                                        Map.of("type", "string", "maxLength", 120000)))),
+                Map.of(
+                        "type",
+                        "function",
+                        "name",
+                        "search_content",
+                        "description",
+                        "Search only content the current authenticated owner is allowed to see; returns source refs, never writes.",
+                        "parameters",
+                        Map.of(
+                                "type",
+                                "object",
+                                "additionalProperties",
+                                false,
+                                "required",
+                                List.of("query"),
+                                "properties",
+                                Map.of(
+                                        "query", Map.of("type", "string", "maxLength", 400),
+                                        "type",
+                                                Map.of(
+                                                        "type",
+                                                        "string",
+                                                        "enum",
+                                                        List.of("ALL", "POST", "NOTE", "DISH")),
+                                        "page",
+                                                Map.of(
+                                                        "type", "integer", "minimum", 0, "maximum",
+                                                        100000),
+                                        "size",
+                                                Map.of(
+                                                        "type", "integer", "minimum", 1, "maximum",
+                                                        20),
+                                        "category", Map.of("type", "string", "maxLength", 120),
+                                        "tag", Map.of("type", "string", "maxLength", 120),
+                                        "from", Map.of("type", "string", "format", "date"),
+                                        "to", Map.of("type", "string", "format", "date")))));
     }
 
     private static String apiRole(AiPartRole role) {

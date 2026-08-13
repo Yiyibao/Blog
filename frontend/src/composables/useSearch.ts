@@ -1,5 +1,5 @@
 import { ref, watch, type Ref, onScopeDispose } from 'vue';
-import { searchContent, type SearchGroup } from '../api/content';
+import { searchByType, type SearchGroup } from '../api/content';
 
 export function useSearch(query: Ref<string>, debounceMs = 300) {
   const results = ref<SearchGroup>({ articles: [], notes: [], dishes: [], total: 0 });
@@ -20,9 +20,21 @@ export function useSearch(query: Ref<string>, debounceMs = 300) {
     error.value = null;
 
     try {
-      const data = await searchContent(q, 10, controller.signal);
+      const page = await searchByType(q, 0, 10, { type: 'ALL' }, controller.signal);
       if (seq !== currentSeq) return;
-      results.value = data;
+      results.value = {
+        articles: page.results
+          .filter((hit) => hit.type === 'POST')
+          .map((hit) => ({ ...hit, telemetryId: page.telemetryId })),
+        notes: page.results
+          .filter((hit) => hit.type === 'NOTE')
+          .map((hit) => ({ ...hit, telemetryId: page.telemetryId })),
+        dishes: page.results
+          .filter((hit) => hit.type === 'DISH')
+          .map((hit) => ({ ...hit, telemetryId: page.telemetryId })),
+        total: page.totalElements,
+        telemetryId: page.telemetryId,
+      };
     } catch (err: unknown) {
       if ((err as any)?.name === 'AbortError' || (err as any)?.code === 'ERR_CANCELED') return;
       if (seq !== currentSeq) return;

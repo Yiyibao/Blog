@@ -13,7 +13,7 @@ const searchApi = vi.hoisted(() => {
     queue,
     resolve(value: any) {
       const e = queue.shift();
-      e?.resolve(value);
+      e?.resolve(toTypedResult(value));
     },
     reject(reason: any) {
       const e = queue.shift();
@@ -22,27 +22,35 @@ const searchApi = vi.hoisted(() => {
     clear() {
       queue.length = 0;
     },
-    searchContent: vi.fn((_q: string, _limit?: number, signal?: AbortSignal) => {
-      return new Promise<any>((resolve, reject) => {
-        if (signal?.aborted) {
-          reject(new DOMException('Aborted', 'AbortError'));
-          return;
-        }
-        const entry = { resolve, reject };
-        queue.push(entry);
-        signal?.addEventListener('abort', () => {
-          const idx = queue.indexOf(entry);
-          if (idx >= 0) queue.splice(idx, 1);
-          reject(new DOMException('Aborted', 'AbortError'));
+    searchByType: vi.fn(
+      (_q: string, _page?: number, _size?: number, _options?: unknown, signal?: AbortSignal) => {
+        return new Promise<any>((resolve, reject) => {
+          if (signal?.aborted) {
+            reject(new DOMException('Aborted', 'AbortError'));
+            return;
+          }
+          const entry = { resolve, reject };
+          queue.push(entry);
+          signal?.addEventListener('abort', () => {
+            const idx = queue.indexOf(entry);
+            if (idx >= 0) queue.splice(idx, 1);
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
         });
-      });
-    }),
+      },
+    ),
   };
 });
 
+function toTypedResult(value: any) {
+  if (value?.results) return value;
+  const results = [...(value?.articles ?? []), ...(value?.dishes ?? []), ...(value?.notes ?? [])];
+  return { results, page: 0, size: 10, totalElements: value?.total ?? results.length, totalPages: 1 };
+}
+
 vi.mock('../api/content', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
-  return { ...actual, searchContent: searchApi.searchContent };
+  return { ...actual, searchByType: searchApi.searchByType };
 });
 
 // ── Router mock ──────────────────────────────────────────────────────────────
@@ -124,15 +132,21 @@ describe('GlobalSearch — debounce', () => {
   it('waits 300ms before calling the API after typing', async () => {
     const wrapper = mount(GlobalSearch, { props: { open: true } });
     wrapper.get('#global-search').setValue('test');
-    expect(searchApi.searchContent).not.toHaveBeenCalled();
+    expect(searchApi.searchByType).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(299);
-    expect(searchApi.searchContent).not.toHaveBeenCalled();
+    expect(searchApi.searchByType).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(2);
     await flush();
-    expect(searchApi.searchContent).toHaveBeenCalledTimes(1);
-    expect(searchApi.searchContent).toHaveBeenCalledWith('test', 10, expect.any(AbortSignal));
+    expect(searchApi.searchByType).toHaveBeenCalledTimes(1);
+    expect(searchApi.searchByType).toHaveBeenCalledWith(
+      'test',
+      0,
+      10,
+      { type: 'ALL' },
+      expect.any(AbortSignal),
+    );
     wrapper.unmount();
   });
 
@@ -147,11 +161,17 @@ describe('GlobalSearch — debounce', () => {
     input.setValue('abc');
     await advance(100);
 
-    expect(searchApi.searchContent).not.toHaveBeenCalled();
+    expect(searchApi.searchByType).not.toHaveBeenCalled();
 
     await advance(305);
-    expect(searchApi.searchContent).toHaveBeenCalledTimes(1);
-    expect(searchApi.searchContent).toHaveBeenCalledWith('abc', 10, expect.any(AbortSignal));
+    expect(searchApi.searchByType).toHaveBeenCalledTimes(1);
+    expect(searchApi.searchByType).toHaveBeenCalledWith(
+      'abc',
+      0,
+      10,
+      { type: 'ALL' },
+      expect.any(AbortSignal),
+    );
     wrapper.unmount();
   });
 });
@@ -163,15 +183,15 @@ describe('GlobalSearch — cancel race', () => {
 
     input.setValue('first');
     await advance(310);
-    expect(searchApi.searchContent).toHaveBeenCalledTimes(1);
-    const firstSignal = searchApi.searchContent.mock.calls[0][2] as AbortSignal;
+    expect(searchApi.searchByType).toHaveBeenCalledTimes(1);
+    const firstSignal = searchApi.searchByType.mock.calls[0][4] as AbortSignal;
     expect(firstSignal.aborted).toBe(false);
 
     input.setValue('second');
     await advance(310);
-    expect(searchApi.searchContent).toHaveBeenCalledTimes(2);
+    expect(searchApi.searchByType).toHaveBeenCalledTimes(2);
     expect(firstSignal.aborted).toBe(true);
-    const secondSignal = searchApi.searchContent.mock.calls[1][2] as AbortSignal;
+    const secondSignal = searchApi.searchByType.mock.calls[1][4] as AbortSignal;
     expect(secondSignal.aborted).toBe(false);
     wrapper.unmount();
   });
@@ -182,7 +202,7 @@ describe('GlobalSearch — cancel race', () => {
 
     input.setValue('first');
     await advance(310);
-    const signal = searchApi.searchContent.mock.calls[0][2] as AbortSignal;
+    const signal = searchApi.searchByType.mock.calls[0][4] as AbortSignal;
 
     await input.setValue('');
     await nextTick();
@@ -240,7 +260,7 @@ describe('GlobalSearch — loading / error / retry', () => {
     retryBtn.trigger('click');
     await advance(310);
 
-    expect(searchApi.searchContent).toHaveBeenCalledTimes(2);
+    expect(searchApi.searchByType).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 

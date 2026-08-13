@@ -276,6 +276,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/search/events/{eventId}/click': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['recordClick'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/posts/{slug}/like': {
     parameters: {
       query?: never;
@@ -564,6 +580,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/ai/proposals': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['proposals'];
+    put?: never;
+    post: operations['createProposal'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/proposals/{proposalId}/reject': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['rejectProposal'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/proposals/{proposalId}/approve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['approveProposal'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/ai/projects': {
     parameters: {
       query?: never;
@@ -814,6 +878,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations['restoreRevision'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/posts/{id}/preview-tokens': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['createPreviewToken'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1348,6 +1428,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/preview/posts/{postId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/posts': {
     parameters: {
       query?: never;
@@ -1611,7 +1707,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['get'];
+    get: operations['get_1'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1740,6 +1836,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations['conversation'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/ai/proposals/{proposalId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['proposal'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1924,6 +2036,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/posts/{id}/publish-check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['publishCheck'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/posts/audit': {
     parameters: {
       query?: never;
@@ -1964,6 +2092,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations['export'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/library/media': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['list_6'];
     put?: never;
     post?: never;
     delete?: never;
@@ -2027,7 +2171,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_6'];
+    get: operations['list_7'];
     put?: never;
     post?: never;
     delete?: never;
@@ -2175,6 +2319,22 @@ export interface paths {
     put?: never;
     post?: never;
     delete: operations['deleteArtifact'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/posts/{id}/preview-tokens/{tokenId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations['revokePreviewToken'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2418,6 +2578,8 @@ export interface components {
       markdownContent?: string;
       /** @enum {string} */
       contentFormat?: 'HTML' | 'MARKDOWN';
+      /** Format: int64 */
+      version?: number;
     };
     ApiResponsePostResponse: {
       /** Format: int32 */
@@ -2449,6 +2611,8 @@ export interface components {
       featured?: boolean;
       /** @enum {string} */
       status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+      /** Format: int64 */
+      version?: number;
       content?: string;
       markdownContent?: string;
       /** @enum {string} */
@@ -2798,6 +2962,11 @@ export interface components {
       categorySlug?: string;
       /** @enum {string} */
       sort?: 'RELEVANCE' | 'DATE_DESC' | 'DATE_ASC';
+      tag?: string;
+      /** Format: date */
+      from?: string;
+      /** Format: date */
+      to?: string;
     };
     ApiResponseSearchPostResponse: {
       /** Format: int32 */
@@ -2819,6 +2988,8 @@ export interface components {
       totalElements?: number;
       /** Format: int32 */
       totalPages?: number;
+      /** Format: uuid */
+      telemetryId?: string;
     };
     SearchResult: {
       type?: string;
@@ -2835,6 +3006,18 @@ export interface components {
       /** Format: int32 */
       readTime?: number;
       tags?: string[];
+    };
+    ClickRequest: {
+      /** Format: int32 */
+      position?: number;
+    };
+    ApiResponseVoid: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: unknown;
+      /** Format: date-time */
+      timestamp?: string;
     };
     ApiResponsePostLikeResponse: {
       /** Format: int32 */
@@ -3105,6 +3288,65 @@ export interface components {
       /** Format: int64 */
       projectId?: number;
     };
+    ProposalRequest: {
+      /** Format: uuid */
+      taskId?: string;
+      actionType: string;
+      targetType?: string;
+      targetId?: string;
+      /** Format: int64 */
+      targetVersion?: number;
+      arguments?: string;
+      /** Format: int32 */
+      ttlMinutes?: number;
+    };
+    ApiResponseResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['Response'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    Response: {
+      /** Format: uuid */
+      id?: string;
+      /** Format: uuid */
+      taskId?: string;
+      actionType?: string;
+      targetType?: string;
+      targetId?: string;
+      /** Format: int64 */
+      targetVersion?: number;
+      arguments?: string;
+      /** @enum {string} */
+      status?: 'PROPOSED' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CONFLICTED';
+      /** Format: date-time */
+      expiresAt?: string;
+      /** Format: int64 */
+      version?: number;
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: date-time */
+      updatedAt?: string;
+      /** Format: date-time */
+      approvedAt?: string;
+      approvedBy?: string;
+      /** Format: date-time */
+      rejectedAt?: string;
+      rejectedBy?: string;
+      rejectedReason?: string;
+      nonce?: string;
+    };
+    ProposalRejectionRequest: {
+      nonce: string;
+      reason?: string;
+    };
+    ProposalApprovalRequest: {
+      nonce: string;
+      /** Format: int64 */
+      expectedTargetVersion?: number;
+    };
     AiProjectCreateRequest: {
       title: string;
     };
@@ -3322,6 +3564,27 @@ export interface components {
       /** Format: date-time */
       scheduledPublishAt?: string;
       tags?: string[];
+    };
+    PreviewTokenRequest: {
+      /** Format: int32 */
+      ttlMinutes: number;
+    };
+    ApiResponseCreatedToken: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['CreatedToken'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    CreatedToken: {
+      /** Format: uuid */
+      id?: string;
+      token?: string;
+      /** Format: date-time */
+      expiresAt?: string;
+      /** Format: int64 */
+      postVersion?: number;
     };
     ApiResponseListConversionReport: {
       /** Format: int32 */
@@ -3638,6 +3901,8 @@ export interface components {
       dishes?: components['schemas']['SearchResult'][];
       /** Format: int32 */
       total?: number;
+      /** Format: uuid */
+      telemetryId?: string;
     };
     ApiResponseListQuoteResponse: {
       /** Format: int32 */
@@ -4072,6 +4337,14 @@ export interface components {
       /** Format: date-time */
       timestamp?: string;
     };
+    ApiResponseListResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['Response'][];
+      /** Format: date-time */
+      timestamp?: string;
+    };
     ApiResponseListAiProjectResponse: {
       /** Format: int32 */
       code?: number;
@@ -4149,6 +4422,23 @@ export interface components {
       /** Format: date-time */
       createdAt?: string;
     };
+    ApiResponseResult: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['Result'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    Check: {
+      code?: string;
+      severity?: string;
+      message?: string;
+    };
+    Result: {
+      publishable?: boolean;
+      checks?: components['schemas']['Check'][];
+    };
     ApiResponseListAuditEntry: {
       /** Format: int32 */
       code?: number;
@@ -4191,6 +4481,35 @@ export interface components {
       data?: components['schemas']['AdminQuoteResponse'][];
       /** Format: date-time */
       timestamp?: string;
+    };
+    ApiResponseListMediaItem: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['MediaItem'][];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    MediaItem: {
+      sourceType?: string;
+      sourceId?: string;
+      owner?: string;
+      fileName?: string;
+      mediaType?: string;
+      /** Format: int64 */
+      byteSize?: number;
+      sha256?: string;
+      altText?: string;
+      sourceUrl?: string;
+      license?: string;
+      /** Format: int32 */
+      referenceCount?: number;
+      createdBy?: string;
+      status?: string;
+      /** Format: date-time */
+      createdAt?: string;
+      storageKey?: string;
+      url?: string;
     };
     ApiResponseListAdminDishCategory: {
       /** Format: int32 */
@@ -4330,14 +4649,6 @@ export interface components {
       content?: string;
       /** Format: date-time */
       createdAt?: string;
-    };
-    ApiResponseVoid: {
-      /** Format: int32 */
-      code?: number;
-      message?: string;
-      data?: unknown;
-      /** Format: date-time */
-      timestamp?: string;
     };
   };
   responses: never;
@@ -5799,6 +6110,54 @@ export interface operations {
       };
     };
   };
+  recordClick: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        eventId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ClickRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseVoid'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   likePost: {
     parameters: {
       query?: never;
@@ -6789,6 +7148,192 @@ export interface operations {
       };
     };
   };
+  proposals: {
+    parameters: {
+      query?: {
+        status?: 'PROPOSED' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CONFLICTED';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  createProposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProposalRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  rejectProposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposalId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProposalRejectionRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  approveProposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposalId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProposalApprovalRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   projects: {
     parameters: {
       query?: never;
@@ -7747,6 +8292,54 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponsePostResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  createPreviewToken: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['PreviewTokenRequest'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseCreatedToken'];
         };
       };
       /** @description Bad Request */
@@ -9846,6 +10439,52 @@ export interface operations {
       };
     };
   };
+  get: {
+    parameters: {
+      query: {
+        token: string;
+      };
+      header?: never;
+      path: {
+        postId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponsePostResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   findPublished: {
     parameters: {
       query?: {
@@ -10554,7 +11193,7 @@ export interface operations {
       };
     };
   };
-  get: {
+  get_1: {
     parameters: {
       query?: never;
       header?: {
@@ -10978,6 +11617,50 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseAiSessionConversationResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  proposal: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        proposalId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
         };
       };
       /** @description Bad Request */
@@ -11529,6 +12212,52 @@ export interface operations {
       };
     };
   };
+  publishCheck: {
+    parameters: {
+      query?: {
+        scheduledAt?: string;
+      };
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResult'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   audit: {
     parameters: {
       query?: never;
@@ -11634,6 +12363,51 @@ export interface operations {
         };
         content: {
           'text/markdown;charset=UTF-8': string;
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  list_6: {
+    parameters: {
+      query?: {
+        sourceType?: string;
+        status?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListMediaItem'];
         };
       };
       /** @description Bad Request */
@@ -11792,7 +12566,7 @@ export interface operations {
       };
     };
   };
-  list_6: {
+  list_7: {
     parameters: {
       query?: never;
       header?: never;
@@ -12199,6 +12973,49 @@ export interface operations {
         content: {
           '*/*': components['schemas']['ApiResponseVoid'];
         };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  revokePreviewToken: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+        tokenId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Bad Request */
       400: {

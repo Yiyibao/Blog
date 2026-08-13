@@ -227,6 +227,61 @@ public interface PostRepository extends JpaRepository<PostEntity, Long> {
             @Param("categorySlug") String categorySlug,
             Pageable pageable);
 
+    /** M9: push tag/date filters into the paged query so counts stay exact. */
+    @Query(
+            value =
+                    """
+        SELECT p.id as id, p.title as title, p.excerpt as excerpt, p.category as category,
+               p.slug as slug, p.color as color, p.number as number, p.date as date, p.readTime as readTime,
+               (CASE WHEN LOWER(p.title) LIKE LOWER(:query) THEN 4 ELSE 0 END
+                + CASE WHEN LOWER(p.excerpt) LIKE LOWER(:query) THEN 2 ELSE 0 END
+                + CASE WHEN LOWER(p.category) LIKE LOWER(:query) THEN 2 ELSE 0 END
+                + CASE WHEN EXISTS (SELECT 1 FROM PostEntity p2 JOIN p2.tags tag2
+                                    WHERE p2.id = p.id AND LOWER(tag2) LIKE LOWER(:query)) THEN 2 ELSE 0 END
+                + CASE WHEN LOWER(p.content) LIKE LOWER(:query)
+                        OR LOWER(p.markdownContent) LIKE LOWER(:query) THEN 1 ELSE 0 END) as score
+        FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (:categoryFilter = false OR p.categorySlug = :categorySlug)
+          AND (:tagFilter = false OR EXISTS (SELECT 1 FROM PostEntity p4 JOIN p4.tags tag4
+                                       WHERE p4.id = p.id AND LOWER(tag4) = LOWER(:tag)))
+          AND p.date >= :fromDate
+          AND p.date <= :toDate
+          AND (LOWER(p.title) LIKE LOWER(:query)
+            OR LOWER(p.excerpt) LIKE LOWER(:query)
+            OR LOWER(p.category) LIKE LOWER(:query)
+            OR LOWER(p.content) LIKE LOWER(:query)
+            OR LOWER(p.markdownContent) LIKE LOWER(:query)
+            OR EXISTS (SELECT 1 FROM PostEntity p3 JOIN p3.tags tag3
+                       WHERE p3.id = p.id AND LOWER(tag3) LIKE LOWER(:query)))
+        """,
+            countQuery =
+                    """
+        SELECT COUNT(p) FROM PostEntity p
+        WHERE p.status = com.yubai.blog.post.PostStatus.PUBLISHED
+          AND (:categoryFilter = false OR p.categorySlug = :categorySlug)
+          AND (:tagFilter = false OR EXISTS (SELECT 1 FROM PostEntity p4 JOIN p4.tags tag4
+                                       WHERE p4.id = p.id AND LOWER(tag4) = LOWER(:tag)))
+          AND p.date >= :fromDate
+          AND p.date <= :toDate
+          AND (LOWER(p.title) LIKE LOWER(:query)
+            OR LOWER(p.excerpt) LIKE LOWER(:query)
+            OR LOWER(p.category) LIKE LOWER(:query)
+            OR LOWER(p.content) LIKE LOWER(:query)
+            OR LOWER(p.markdownContent) LIKE LOWER(:query)
+            OR EXISTS (SELECT 1 FROM PostEntity p3 JOIN p3.tags tag3
+                       WHERE p3.id = p.id AND LOWER(tag3) LIKE LOWER(:query)))
+        """)
+    Page<PostSearchRow> searchPublishedWithFilters(
+            @Param("query") String query,
+            @Param("categorySlug") String categorySlug,
+            @Param("tag") String tag,
+            @Param("categoryFilter") boolean categoryFilter,
+            @Param("tagFilter") boolean tagFilter,
+            @Param("fromDate") java.time.LocalDate fromDate,
+            @Param("toDate") java.time.LocalDate toDate,
+            Pageable pageable);
+
     /** L-9：精选文章不再受首页取窗限制，直接按标记检索。 */
     Page<PostListRow> findByFeaturedTrueAndStatusOrderByDateDesc(
             PostStatus status, Pageable pageable);

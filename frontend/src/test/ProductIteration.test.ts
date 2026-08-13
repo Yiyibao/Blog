@@ -119,7 +119,7 @@ describe('SearchPage', () => {
     await router.isReady();
     const wrapper = mount(SearchPage, { global: { plugins: [router] } });
     await flushPromises();
-    expect(api.searchByType).toHaveBeenCalledTimes(3);
+    expect(api.searchByType).toHaveBeenCalledTimes(1);
     expect(wrapper.text()).toContain('没有符合筛选条件的结果');
   });
 

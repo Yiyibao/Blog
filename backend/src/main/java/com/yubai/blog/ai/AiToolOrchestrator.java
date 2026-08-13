@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yubai.blog.admin.ai.AiImageGenerateRequest;
 import com.yubai.blog.admin.ai.AiImageService;
 import com.yubai.blog.admin.ai.AiServiceException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -24,6 +25,7 @@ public class AiToolOrchestrator {
     private final AiTaskPartRepository partRepository;
     private final AiImageService imageService;
     private final AiActionProposalService proposalService;
+    private final AiReadOnlySearchService searchService;
 
     public AiToolOrchestrator(
             ObjectMapper objectMapper,
@@ -32,7 +34,8 @@ public class AiToolOrchestrator {
             AiArtifactRepository artifactRepository,
             AiTaskPartRepository partRepository,
             AiImageService imageService,
-            AiActionProposalService proposalService) {
+            AiActionProposalService proposalService,
+            AiReadOnlySearchService searchService) {
         this.objectMapper = objectMapper;
         this.taskService = taskService;
         this.artifactService = artifactService;
@@ -40,6 +43,7 @@ public class AiToolOrchestrator {
         this.partRepository = partRepository;
         this.imageService = imageService;
         this.proposalService = proposalService;
+        this.searchService = searchService;
     }
 
     public ToolBatch execute(UUID taskId, String owner, List<AiToolCall> calls) {
@@ -130,15 +134,75 @@ public class AiToolOrchestrator {
                 AiPartRole.ASSISTANT,
                 AiPartKind.TOOL_CALL,
                 null,
-                arguments,
+                persistedArguments(normalizedName, arguments),
                 null,
                 "tool-call:" + call.stableId());
         return switch (call.name().trim()) {
             case "generate_document" -> generateDocument(taskId, owner, parsed, call);
             case "generate_image" -> generateImage(taskId, owner, parsed, call);
             case "propose_action" -> proposeAction(taskId, owner, parsed);
+            case "search_content" -> searchContent(owner, parsed);
             default -> throw badRequest("Tool is not allowed: " + call.name());
         };
+    }
+
+    private ToolResult searchContent(String owner, JsonNode args) {
+        var query = text(args, "query", "");
+        if (query.isBlank()) throw badRequest("Search query is missing");
+        var type = text(args, "type", "ALL").toUpperCase(Locale.ROOT);
+        final int page;
+        final int size;
+        try {
+            page = boundedInt(args, "page", 0, 0, 100_000);
+            size = boundedInt(args, "size", 10, 1, 20);
+            com.yubai.blog.search.SearchType.valueOf(type);
+        } catch (IllegalArgumentException exception) {
+            throw badRequest("Search type or pagination is invalid");
+        }
+        var from = parseDate(args, "from");
+        var to = parseDate(args, "to");
+        var request =
+                AiReadOnlySearchService.request(
+                        query,
+                        type,
+                        page,
+                        size,
+                        nullableText(args, "category"),
+                        nullableText(args, "tag"),
+                        from,
+                        to);
+        var result = searchService.search(owner, request);
+        try {
+            var payload =
+                    objectMapper.writeValueAsString(
+                            java.util.Map.of(
+                                    "status", "ok",
+                                    "type", result.type(),
+                                    "total", result.total(),
+                                    "sources", result.sources()));
+            return new ToolResult(null, "search:" + result.telemetryId(), "已完成授权范围内的只读检索", payload);
+        } catch (Exception exception) {
+            throw badRequest("Search result could not be serialized");
+        }
+    }
+
+    private static int boundedInt(JsonNode args, String field, int fallback, int min, int max) {
+        var value = args == null ? null : args.get(field);
+        if (value == null || value.isNull()) return fallback;
+        if (!value.canConvertToInt()) throw new IllegalArgumentException(field);
+        var parsed = value.intValue();
+        if (parsed < min || parsed > max) throw new IllegalArgumentException(field);
+        return parsed;
+    }
+
+    private static LocalDate parseDate(JsonNode args, String field) {
+        var value = nullableText(args, field);
+        if (value == null) return null;
+        try {
+            return LocalDate.parse(value);
+        } catch (java.time.format.DateTimeParseException exception) {
+            throw badRequest("Search date is invalid");
+        }
     }
 
     private ToolResult proposeAction(UUID taskId, String owner, JsonNode args) {
@@ -258,6 +322,12 @@ public class AiToolOrchestrator {
         } catch (Exception exception) {
             throw badRequest("Tool arguments are invalid JSON");
         }
+    }
+
+    private static String persistedArguments(String normalizedName, String arguments) {
+        return "search_content".equals(normalizedName)
+                ? "{\"status\":\"accepted\",\"tool\":\"search_content\"}"
+                : arguments;
     }
 
     private static String text(JsonNode node, String field, String fallback) {

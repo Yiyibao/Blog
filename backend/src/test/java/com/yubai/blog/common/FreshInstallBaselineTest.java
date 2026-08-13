@@ -61,7 +61,7 @@ class FreshInstallBaselineTest {
             assertThat(count(jdbc, "dishes")).isZero();
             assertThat(count(jdbc, "music_tracks")).isZero();
             assertThat(count(jdbc, "sys_quote")).isZero();
-            assertThat(latestVersion(jdbc)).isEqualTo("59");
+            assertThat(latestVersion(jdbc)).isEqualTo("60");
         }
     }
 
@@ -79,7 +79,7 @@ class FreshInstallBaselineTest {
 
             assertThat(count(jdbc, "posts")).isEqualTo(postsBefore);
             assertThat(count(jdbc, "dishes")).isEqualTo(dishesBefore);
-            assertThat(latestVersion(jdbc)).isEqualTo("59");
+            assertThat(latestVersion(jdbc)).isEqualTo("60");
         }
     }
 
@@ -106,11 +106,11 @@ class FreshInstallBaselineTest {
                             .ignoreMigrationPatterns("*:pending")
                             .load();
 
-            var report = FlywayReleasePreflight.inspect(flyway, 59);
+            var report = FlywayReleasePreflight.inspect(flyway, 60);
 
             assertThat(report.currentVersion()).isEqualTo(58);
-            assertThat(report.targetVersion()).isEqualTo(59);
-            assertThat(report.pendingMigrations()).isEqualTo(1);
+            assertThat(report.targetVersion()).isEqualTo(60);
+            assertThat(report.pendingMigrations()).isEqualTo(2);
             assertThat(latestVersion(new JdbcTemplate(schemaDataSource))).isEqualTo("58");
         }
     }

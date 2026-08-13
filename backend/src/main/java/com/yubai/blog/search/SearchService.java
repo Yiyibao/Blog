@@ -1,19 +1,19 @@
 package com.yubai.blog.search;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import com.yubai.blog.common.PageRequests;
 import com.yubai.blog.dish.DishRepository;
 import com.yubai.blog.note.NoteRepository;
 import com.yubai.blog.post.PostRepository;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true)
@@ -23,7 +23,10 @@ public class SearchService {
     private final DishRepository dishRepository;
     private final NoteRepository noteRepository;
 
-    public SearchService(PostRepository postRepository, DishRepository dishRepository, NoteRepository noteRepository) {
+    public SearchService(
+            PostRepository postRepository,
+            DishRepository dishRepository,
+            NoteRepository noteRepository) {
         this.postRepository = postRepository;
         this.dishRepository = dishRepository;
         this.noteRepository = noteRepository;
@@ -31,7 +34,7 @@ public class SearchService {
 
     /** L-16/D-17：includeNotes=false（游客）时笔记命中整体剔除。 */
     public SearchResponse search(String query, int requestedLimit, boolean includeNotes) {
-        var normalized = query.trim().toLowerCase();
+        var normalized = SearchQueryNormalizer.normalize(query);
         if (normalized.isBlank()) {
             return SearchResponse.empty();
         }
@@ -40,26 +43,36 @@ public class SearchService {
         var pageable = PageRequest.of(0, limit);
         var likePattern = "%" + escapeLike(normalized) + "%";
 
-        var articles = postRepository.searchPublished(likePattern, null, withSort(pageable, SearchSort.RELEVANCE)).stream()
-            .map(SearchService::toResult)
-            .toList();
+        var articles =
+                postRepository
+                        .searchPublished(
+                                likePattern, null, withSort(pageable, SearchSort.RELEVANCE))
+                        .stream()
+                        .map(SearchService::toResult)
+                        .toList();
 
-        var dishes = dishRepository.searchPublished(likePattern, pageable).stream()
-            .map(SearchService::toResult)
-            .toList();
+        var dishes =
+                dishRepository.searchPublished(likePattern, pageable).stream()
+                        .map(SearchService::toResult)
+                        .toList();
 
-        var notes = includeNotes
-            ? noteRepository.searchPublished(likePattern, pageable).stream()
-                .map(SearchService::toResult)
-                .toList()
-            : List.<SearchResult>of();
+        var notes =
+                includeNotes
+                        ? noteRepository.searchPublished(likePattern, pageable).stream()
+                                .map(SearchService::toResult)
+                                .toList()
+                        : List.<SearchResult>of();
 
-        return new SearchResponse(articles, notes, dishes, articles.size() + notes.size() + dishes.size());
+        return new SearchResponse(
+                articles, notes, dishes, articles.size() + notes.size() + dishes.size());
     }
 
     public SearchPostResponse search(SearchRequest request, boolean includeNotes) {
-        var normalized = request.query().trim().toLowerCase();
+        var normalized = SearchQueryNormalizer.normalize(request.query());
         if (normalized.isBlank()) {
+            return SearchPostResponse.empty(request.type().name(), request.query());
+        }
+        if (request.hasInvalidDateRange()) {
             return SearchPostResponse.empty(request.type().name(), request.query());
         }
 
@@ -73,10 +86,12 @@ public class SearchService {
         }
 
         if (type == SearchType.ALL) {
-            var maxSize = Math.max(1, Math.min(10, request.size()));
+            var maxSize = Math.max(1, Math.min(50, request.size()));
             var allPageable = PageRequest.of(0, maxSize);
-            var posts = postRepository.searchPublished(likePattern, null, withSort(allPageable, SearchSort.RELEVANCE));
-            var dishes = dishRepository.searchPublished(likePattern, allPageable);
+            var posts =
+                    searchPosts(
+                            request, likePattern, withSort(allPageable, request.sortOrDefault()));
+            var dishes = searchDishes(request, likePattern, allPageable);
 
             List<SearchResult> allResults = new ArrayList<>();
             allResults.addAll(posts.stream().map(SearchService::toResult).toList());
@@ -84,96 +99,222 @@ public class SearchService {
 
             long total = posts.getTotalElements() + dishes.getTotalElements();
             if (includeNotes) {
-                var notes = noteRepository.searchPublished(likePattern, allPageable);
+                var notes = searchNotes(request, likePattern, allPageable);
                 allResults.addAll(notes.stream().map(SearchService::toResult).toList());
                 total += notes.getTotalElements();
             }
-            return new SearchPostResponse("ALL", request.query(), allResults, 0, allResults.size(), total, 1);
+            return new SearchPostResponse(
+                    "ALL", request.query(), allResults, 0, allResults.size(), total, 1);
         }
 
         if (type == SearchType.POST) {
             // L-8：分类过滤与排序下推到数据库，命中补 date/readTime/tags——前端不再客户端补偿
-            var page = postRepository.searchPublished(likePattern, request.categorySlugOrNull(),
-                withSort(pageable, request.sortOrDefault()));
+            var page =
+                    searchPosts(request, likePattern, withSort(pageable, request.sortOrDefault()));
             var tagsByPost = tagsFor(page.getContent());
-            return new SearchPostResponse("POST", request.query(),
-                page.stream().map(row -> toResult(row, tagsByPost.getOrDefault(row.getId(), List.of()))).toList(),
-                page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+            return new SearchPostResponse(
+                    "POST",
+                    request.query(),
+                    page.stream()
+                            .map(
+                                    row ->
+                                            toResult(
+                                                    row,
+                                                    tagsByPost.getOrDefault(
+                                                            row.getId(), List.of())))
+                            .toList(),
+                    page.getNumber(),
+                    page.getSize(),
+                    page.getTotalElements(),
+                    page.getTotalPages());
         }
 
         if (type == SearchType.DISH) {
-            var page = dishRepository.searchPublished(likePattern, pageable);
-            return new SearchPostResponse("DISH", request.query(),
-                page.stream().map(SearchService::toResult).toList(),
-                page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+            var page = searchDishes(request, likePattern, pageable);
+            return new SearchPostResponse(
+                    "DISH",
+                    request.query(),
+                    page.stream().map(SearchService::toResult).toList(),
+                    page.getNumber(),
+                    page.getSize(),
+                    page.getTotalElements(),
+                    page.getTotalPages());
         }
 
         if (type == SearchType.NOTE) {
-            var page = noteRepository.searchPublished(likePattern, pageable);
-            return new SearchPostResponse("NOTE", request.query(),
-                page.stream().map(SearchService::toResult).toList(),
-                page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+            var page = searchNotes(request, likePattern, pageable);
+            return new SearchPostResponse(
+                    "NOTE",
+                    request.query(),
+                    page.stream().map(SearchService::toResult).toList(),
+                    page.getNumber(),
+                    page.getSize(),
+                    page.getTotalElements(),
+                    page.getTotalPages());
         }
 
         return SearchPostResponse.empty(request.type().name(), request.query());
     }
 
+    private org.springframework.data.domain.Page<PostRepository.PostSearchRow> searchPosts(
+            SearchRequest request,
+            String likePattern,
+            org.springframework.data.domain.Pageable pageable) {
+        if (request.tagOrNull() == null && !request.hasDateFilters()) {
+            return postRepository.searchPublished(
+                    likePattern, request.categorySlugOrNull(), pageable);
+        }
+        return postRepository.searchPublishedWithFilters(
+                likePattern,
+                request.categorySlugOrNull(),
+                request.tagOrNull(),
+                request.categorySlugOrNull() != null,
+                request.tagOrNull() != null,
+                request.from() == null ? java.time.LocalDate.of(1900, 1, 1) : request.from(),
+                request.to() == null ? java.time.LocalDate.of(9999, 12, 31) : request.to(),
+                pageable);
+    }
+
+    private org.springframework.data.domain.Page<DishRepository.DishSearchRow> searchDishes(
+            SearchRequest request,
+            String likePattern,
+            org.springframework.data.domain.Pageable pageable) {
+        if (!request.hasDateFilters()) {
+            return dishRepository.searchPublished(likePattern, pageable);
+        }
+        return dishRepository.searchPublishedBetween(
+                likePattern, fromInstant(request), toExclusiveInstant(request), pageable);
+    }
+
+    private org.springframework.data.domain.Page<NoteRepository.NoteSearchRow> searchNotes(
+            SearchRequest request,
+            String likePattern,
+            org.springframework.data.domain.Pageable pageable) {
+        if (!request.hasDateFilters()) {
+            return noteRepository.searchPublished(likePattern, pageable);
+        }
+        return noteRepository.searchPublishedBetween(
+                likePattern, fromInstant(request), toExclusiveInstant(request), pageable);
+    }
+
+    private static Instant fromInstant(SearchRequest request) {
+        return (request.from() == null ? java.time.LocalDate.of(1970, 1, 1) : request.from())
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant();
+    }
+
+    private static Instant toExclusiveInstant(SearchRequest request) {
+        return (request.to() == null
+                        ? java.time.LocalDate.of(9999, 12, 31)
+                        : request.to().plusDays(1))
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant();
+    }
+
     /**
-     * L-8：排序统一由 Pageable.Sort 表达（仓库查询不再内嵌 ORDER BY）。
-     * 5A：RELEVANCE 用 JpaSort.unsafe 引用查询里的 score 别名（加权分降序，同分最新优先）。
+     * L-8：排序统一由 Pageable.Sort 表达（仓库查询不再内嵌 ORDER BY）。 5A：RELEVANCE 用 JpaSort.unsafe 引用查询里的 score
+     * 别名（加权分降序，同分最新优先）。
      */
-    private static PageRequest withSort(org.springframework.data.domain.Pageable pageable, SearchSort sort) {
+    private static PageRequest withSort(
+            org.springframework.data.domain.Pageable pageable, SearchSort sort) {
         if (sort == SearchSort.RELEVANCE) {
-            var relevance = org.springframework.data.jpa.domain.JpaSort.unsafe(Sort.Direction.DESC, "score")
-                .and(org.springframework.data.jpa.domain.JpaSort.unsafe(Sort.Direction.DESC, "date"));
+            var relevance =
+                    org.springframework.data.jpa.domain.JpaSort.unsafe(Sort.Direction.DESC, "score")
+                            .and(
+                                    org.springframework.data.jpa.domain.JpaSort.unsafe(
+                                            Sort.Direction.DESC, "date"));
             return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), relevance);
         }
         var direction = sort == SearchSort.DATE_ASC ? Sort.Direction.ASC : Sort.Direction.DESC;
-        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(direction, "date"));
+        return PageRequest.of(
+                pageable.getPageNumber(), pageable.getPageSize(), Sort.by(direction, "date"));
     }
 
     /** L-8：一页命中批量补标签（复用 L-12 的 [postId, tag] 行查询，一次 IN）。 */
     private Map<Long, List<String>> tagsFor(List<PostRepository.PostSearchRow> rows) {
         if (rows.isEmpty()) return Map.of();
         var ids = rows.stream().map(PostRepository.PostSearchRow::getId).toList();
-        return postRepository.findTagRows(ids).stream().collect(Collectors.groupingBy(
-            row -> (Long) row[0],
-            Collectors.mapping(row -> (String) row[1], Collectors.toList())));
+        return postRepository.findTagRows(ids).stream()
+                .collect(
+                        Collectors.groupingBy(
+                                row -> (Long) row[0],
+                                Collectors.mapping(row -> (String) row[1], Collectors.toList())));
     }
 
     // NB-5：三类命中均由轻量投影行映射，不再为拼摘要/URL 捞整实体（正文列不出库）。
 
     private static SearchResult toResult(PostRepository.PostSearchRow post) {
-        return new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
-            post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug(),
-            null, null, null);
+        return new SearchResult(
+                "POST",
+                post.getId(),
+                post.getTitle(),
+                post.getExcerpt(),
+                post.getCategory(),
+                "/articles/" + post.getSlug(),
+                post.getColor(),
+                post.getNumber(),
+                post.getSlug(),
+                null,
+                null,
+                null);
     }
 
     /** L-8：POST 分页分支的完整命中——含文章头所需 date/readTime/tags。 */
     private static SearchResult toResult(PostRepository.PostSearchRow post, List<String> tags) {
-        return new SearchResult("POST", post.getId(), post.getTitle(), post.getExcerpt(),
-            post.getCategory(), "/articles/" + post.getSlug(), post.getColor(), post.getNumber(), post.getSlug(),
-            post.getDate().toString(), post.getReadTime(), tags);
+        return new SearchResult(
+                "POST",
+                post.getId(),
+                post.getTitle(),
+                post.getExcerpt(),
+                post.getCategory(),
+                "/articles/" + post.getSlug(),
+                post.getColor(),
+                post.getNumber(),
+                post.getSlug(),
+                post.getDate().toString(),
+                post.getReadTime(),
+                tags);
     }
 
     private static SearchResult toResult(DishRepository.DishSearchRow dish) {
-        return new SearchResult("DISH", dish.getId(), dish.getName(), dish.getSummary(),
-            dish.getCategory(), "/recipes?dish=" + dish.getSlug(), null, null, dish.getSlug(),
-            null, null, null);
+        return new SearchResult(
+                "DISH",
+                dish.getId(),
+                dish.getName(),
+                dish.getSummary(),
+                dish.getCategory(),
+                "/recipes?dish=" + dish.getSlug(),
+                null,
+                null,
+                dish.getSlug(),
+                null,
+                null,
+                null);
     }
 
     private static SearchResult toResult(NoteRepository.NoteSearchRow note) {
-        return new SearchResult("NOTE", note.getId(), note.getTitle(), noteExcerpt(note),
-            note.getFolder(), "/notes?note=" + note.getId(), null, null, null,
-            null, null, null);
+        return new SearchResult(
+                "NOTE",
+                note.getId(),
+                note.getTitle(),
+                noteExcerpt(note),
+                note.getFolder(),
+                "/notes?note=" + note.getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     /** 笔记摘要：由投影截取的前 400 字符正文清洗生成（展示上限 200 字符，400 字符源足够）。 */
     static String noteExcerpt(NoteRepository.NoteSearchRow note) {
         var source = note.getExcerptSource() == null ? "" : note.getExcerptSource();
-        var excerpt = source
-            .replaceAll("(?m)^#{1,6}\\s+|[#*_~`>\\[\\]()-]", "")
-            .replaceAll("\\s+", " ").trim();
+        var excerpt =
+                source.replaceAll("(?m)^#{1,6}\\s+|[#*_~`>\\[\\]()-]", "")
+                        .replaceAll("\\s+", " ")
+                        .trim();
         if (excerpt.length() > 200) {
             excerpt = excerpt.substring(0, 200).trim() + "...";
         }
@@ -183,14 +324,8 @@ public class SearchService {
         return excerpt;
     }
 
-    /**
-     * P0-9：转义 LIKE 通配符，防止 %/_/\ 注入模式匹配。
-     * PostgreSQL 中 LIKE 的默认转义符即反斜杠。
-     */
+    /** P0-9：转义 LIKE 通配符，防止 %/_/\ 注入模式匹配。 PostgreSQL 中 LIKE 的默认转义符即反斜杠。 */
     static String escapeLike(String input) {
-        return input
-            .replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_");
+        return input.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

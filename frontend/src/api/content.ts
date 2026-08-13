@@ -316,6 +316,7 @@ export interface SearchGroup {
   notes: SearchHit[];
   dishes: SearchHit[];
   total: number;
+  telemetryId?: string;
 }
 
 export interface PostSearchPage {
@@ -324,15 +325,19 @@ export interface PostSearchPage {
   size: number;
   totalElements: number;
   totalPages: number;
+  telemetryId?: string;
 }
 
 export interface SearchPostsOptions {
   categorySlug?: string;
+  tag?: string;
+  from?: string;
+  to?: string;
   sort?: 'asc' | 'desc';
 }
 
 export interface SearchPageOptions extends SearchPostsOptions {
-  type: SearchHit['type'];
+  type: SearchHit['type'] | 'ALL';
 }
 
 // NF-5：归档搜索走 POST /search 的分页模式（type=POST），覆盖全部已发布文章而非仅当前页。
@@ -350,6 +355,9 @@ export async function searchPosts(
       page,
       size,
       ...(options.categorySlug ? { categorySlug: options.categorySlug } : {}),
+      ...(options.tag ? { tag: options.tag } : {}),
+      ...(options.from ? { from: options.from } : {}),
+      ...(options.to ? { to: options.to } : {}),
       ...(options.sort ? { sort: options.sort === 'asc' ? 'DATE_ASC' : 'DATE_DESC' } : {}),
     }),
   );
@@ -359,6 +367,7 @@ export async function searchPosts(
     size: data.size ?? size,
     totalElements: data.totalElements ?? 0,
     totalPages: Math.max(1, data.totalPages ?? 1),
+    telemetryId: data.telemetryId,
   };
 }
 
@@ -367,18 +376,28 @@ export async function searchByType(
   page = 0,
   size = 20,
   options: SearchPageOptions,
+  signal?: AbortSignal,
 ): Promise<PostSearchPage> {
   const data = await unwrap<PostSearchPage>(
-    api.post('/search', {
-      query: q.trim(),
-      type: options.type,
-      page,
-      size,
-      ...(options.type === 'POST' && options.categorySlug ? { categorySlug: options.categorySlug } : {}),
-      ...(options.type === 'POST' && options.sort
-        ? { sort: options.sort === 'asc' ? 'DATE_ASC' : 'DATE_DESC' }
-        : {}),
-    }),
+    api.post(
+      '/search',
+      {
+        query: q.trim(),
+        type: options.type,
+        page,
+        size,
+        ...((options.type === 'POST' || options.type === 'ALL') && options.categorySlug
+          ? { categorySlug: options.categorySlug }
+          : {}),
+        ...((options.type === 'POST' || options.type === 'ALL') && options.tag ? { tag: options.tag } : {}),
+        ...(options.from ? { from: options.from } : {}),
+        ...(options.to ? { to: options.to } : {}),
+        ...((options.type === 'POST' || options.type === 'ALL') && options.sort
+          ? { sort: options.sort === 'asc' ? 'DATE_ASC' : 'DATE_DESC' }
+          : {}),
+      },
+      { signal },
+    ),
   );
   return {
     results: data.results ?? [],
@@ -386,6 +405,7 @@ export async function searchByType(
     size: data.size ?? size,
     totalElements: data.totalElements ?? 0,
     totalPages: Math.max(1, data.totalPages ?? 1),
+    telemetryId: data.telemetryId,
   };
 }
 
@@ -402,5 +422,11 @@ export async function searchContent(q: string, limit = 10, signal?: AbortSignal)
     notes: data.notes ?? [],
     dishes: data.dishes ?? [],
     total: data.total ?? 0,
+    telemetryId: data.telemetryId,
   };
+}
+
+export function recordSearchClick(telemetryId: string | undefined, position: number) {
+  if (!telemetryId || position < 1) return Promise.resolve();
+  return api.post(`/search/events/${encodeURIComponent(telemetryId)}/click`, { position });
 }

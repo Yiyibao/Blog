@@ -60,6 +60,10 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
         String getCategory();
 
         String getSlug();
+
+        default java.time.Instant getUpdatedAt() {
+            return null;
+        }
     }
 
     @Query(
@@ -133,6 +137,43 @@ public interface DishRepository extends JpaRepository<DishEntity, Long> {
             OR LOWER(step) LIKE LOWER(:query))
         """)
     Page<DishSearchRow> searchPublished(@Param("query") String query, Pageable pageable);
+
+    @Query(
+            value =
+                    """
+        SELECT DISTINCT d.id as id, d.name as name, d.summary as summary, d.category as category,
+               d.slug as slug, d.featured as featured, d.displayOrder as displayOrder,
+               d.updatedAt as updatedAt
+        FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND d.updatedAt >= :fromDate AND d.updatedAt < :toDate
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        ORDER BY d.featured DESC, d.displayOrder ASC
+        """,
+            countQuery =
+                    """
+        SELECT COUNT(DISTINCT d) FROM DishEntity d
+        LEFT JOIN d.ingredients ingredient
+        LEFT JOIN d.steps step
+        WHERE d.published = true
+          AND d.updatedAt >= :fromDate AND d.updatedAt < :toDate
+          AND (LOWER(d.name) LIKE LOWER(:query)
+            OR LOWER(d.summary) LIKE LOWER(:query)
+            OR LOWER(d.category) LIKE LOWER(:query)
+            OR LOWER(ingredient) LIKE LOWER(:query)
+            OR LOWER(step) LIKE LOWER(:query))
+        """)
+    Page<DishSearchRow> searchPublishedBetween(
+            @Param("query") String query,
+            @Param("fromDate") java.time.Instant fromDate,
+            @Param("toDate") java.time.Instant toDate,
+            Pageable pageable);
 
     @Query(
             value =

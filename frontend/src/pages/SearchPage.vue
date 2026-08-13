@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { fetchCategories, searchByType } from '../api/content';
+import { fetchCategories, recordSearchClick, searchByType } from '../api/content';
 import PaginationNav from '../components/PaginationNav.vue';
 import type { SearchHit, SearchType } from '../data';
 import { splitHighlight } from '../utils/searchHighlight';
@@ -13,6 +13,7 @@ const router = useRouter();
 const query = ref('');
 const type = ref<TypeFilter>('ALL');
 const category = ref('');
+const tag = ref('');
 const from = ref('');
 const to = ref('');
 const sort = ref<'relevance' | 'desc' | 'asc'>('relevance');
@@ -26,10 +27,6 @@ const error = ref('');
 const history = ref<string[]>([]);
 let requestToken = 0;
 
-const selectedTypes = computed<SearchType[]>(() =>
-  type.value === 'ALL' ? ['POST', 'DISH', 'NOTE'] : [type.value],
-);
-
 function scalar(value: unknown) {
   return Array.isArray(value) ? String(value[0] ?? '') : String(value ?? '');
 }
@@ -39,6 +36,7 @@ function readUrl() {
   const routeType = scalar(route.query.type).toUpperCase();
   type.value = ['POST', 'DISH', 'NOTE'].includes(routeType) ? (routeType as SearchType) : 'ALL';
   category.value = scalar(route.query.category);
+  tag.value = scalar(route.query.tag);
   from.value = scalar(route.query.from);
   to.value = scalar(route.query.to);
   const routeSort = scalar(route.query.sort);
@@ -51,6 +49,7 @@ function writeUrl() {
     q: query.value.trim() || undefined,
     type: type.value === 'ALL' ? undefined : type.value.toLowerCase(),
     category: type.value === 'DISH' || type.value === 'NOTE' ? undefined : category.value || undefined,
+    tag: type.value === 'DISH' || type.value === 'NOTE' ? undefined : tag.value || undefined,
     from: from.value || undefined,
     to: to.value || undefined,
     sort: sort.value === 'relevance' ? undefined : sort.value,
@@ -66,8 +65,10 @@ function remember(value: string) {
   localStorage.setItem('yubai_search_history', JSON.stringify(history.value));
 }
 
+// The API is authoritative for pagination/counts; this guard keeps old cached
+// responses and contract-test fixtures from reintroducing stale dated hits.
 function matchesDate(hit: SearchHit) {
-  if (!hit.date) return !from.value && !to.value;
+  if (!hit.date) return true;
   return (!from.value || hit.date >= from.value) && (!to.value || hit.date <= to.value);
 }
 
@@ -83,24 +84,25 @@ async function search() {
   loading.value = true;
   error.value = '';
   try {
-    const pages = await Promise.all(
-      selectedTypes.value.map((selectedType) =>
-        searchByType(term, type.value === 'ALL' ? 0 : page.value, type.value === 'ALL' ? 50 : 12, {
-          type: selectedType,
-          categorySlug: category.value,
-          sort: sort.value === 'relevance' ? undefined : sort.value,
-        }),
-      ),
+    const resultPage = await searchByType(
+      term,
+      type.value === 'ALL' ? 0 : page.value,
+      type.value === 'ALL' ? 50 : 12,
+      {
+        type: type.value as SearchType | 'ALL',
+        categorySlug: category.value,
+        tag: tag.value,
+        from: from.value,
+        to: to.value,
+        sort: sort.value === 'relevance' ? undefined : sort.value,
+      },
     );
     if (token !== requestToken) return;
-    results.value = pages.flatMap((item) => item.results).filter(matchesDate);
-    totalElements.value =
-      type.value === 'ALL'
-        ? results.value.length
-        : from.value || to.value
-          ? results.value.length
-          : pages[0].totalElements;
-    totalPages.value = type.value === 'ALL' || from.value || to.value ? 1 : pages[0].totalPages;
+    results.value = resultPage.results
+      .map((hit) => ({ ...hit, telemetryId: resultPage.telemetryId }))
+      .filter(matchesDate);
+    totalElements.value = resultPage.totalElements;
+    totalPages.value = resultPage.totalPages;
     remember(term);
   } catch {
     if (token === requestToken) error.value = '搜索服务暂时不可用，请稍后重试。';
@@ -109,12 +111,16 @@ async function search() {
   }
 }
 
+function trackClick(item: SearchHit, index: number) {
+  void recordSearchClick(item.telemetryId, index + 1);
+}
+
 function resultTypeLabel(value: SearchType) {
   return { POST: '文章', DISH: '菜谱', NOTE: '笔记' }[value];
 }
 
 let debounce: ReturnType<typeof setTimeout> | undefined;
-watch([query, type, category, from, to, sort], () => {
+watch([query, type, category, tag, from, to, sort], () => {
   page.value = 0;
   writeUrl();
   clearTimeout(debounce);
@@ -180,6 +186,9 @@ onMounted(async () => {
           <option value="asc">时间从旧到新</option>
         </select></label
       >
+      <label v-if="type === 'ALL' || type === 'POST'"
+        ><span>标签</span><input v-model="tag" type="search" placeholder="可选标签"
+      /></label>
       <button class="button primary" type="submit">搜索</button>
     </form>
 
@@ -195,10 +204,11 @@ onMounted(async () => {
         <strong>{{ totalElements }}</strong> 条结果
       </header>
       <RouterLink
-        v-for="item in results"
+        v-for="(item, index) in results"
         :key="`${item.type}-${item.id}`"
         :to="item.url"
         class="search-center-result"
+        @click="trackClick(item, index)"
       >
         <span class="search-center-type">{{ resultTypeLabel(item.type) }}</span>
         <div>

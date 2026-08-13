@@ -8,20 +8,20 @@
 | --- | --- | --- |
 | Java | Temurin 21 | 本地编译、CI、生产 systemd |
 | Spring Boot | 3.5.16 | Maven 锁定版本 |
-| Flyway | 11.7.2（Spring Boot 3.5.16 BOM） | V1–V59 fresh、V39–V59、V52–V59、V53–V59 |
+| Flyway | 11.7.2（Spring Boot 3.5.16 BOM） | V1–V60 fresh、V39–V60、V52–V60、V53–V60 |
 | PostgreSQL | 17 | CI/Testcontainers 的正式发布基线 |
 | PostgreSQL | 18 | 本机兼容验证；升级生产前仍需独立演练 |
 | Node.js | 22 | CI 与生产前端构建 |
 
-`docs/migrations/flyway-content-manifest.sha256` 冻结 V1–V59 的 SHA-256。历史迁移不得修改；新增迁移必须同时追加清单并更新 `deploy/release-compatibility.env`。CI 运行 `node scripts/verify-migration-manifest.mjs`，文件集合、内容或目标版本漂移都会失败。
+`docs/migrations/flyway-content-manifest.sha256` 冻结 V1–V60 的 SHA-256。历史迁移不得修改；新增迁移必须同时追加清单并更新 `deploy/release-compatibility.env`。CI 运行 `node scripts/verify-migration-manifest.mjs`，文件集合、内容或目标版本漂移都会失败。
 
 ## Fresh、upgrade 与 rollback
 
-- 真正空 schema 首次启动时执行全部历史迁移，然后仅对该 fresh 安装清除历史演示文章、菜品、分类、音乐和语录，最终保留 V59 空内容基线。
+- 真正空 schema 首次启动时执行全部历史迁移，然后仅对该 fresh 安装清除历史演示文章、菜品、分类、音乐和语录，最终保留 V60 空内容基线。
 - 已存在 `flyway_schema_history` 的数据库只升级结构，不清理业务数据。
 - 非空但没有 Flyway 历史的 schema 会 fail closed，避免把未知数据库误判为 fresh。
 - V34/V39 的历史 seed 和 V36 的重复 `add column if not exists` 保持只读；它们是历史事实，不通过改写 checksum 修复。
-- V54–V59 为 expand-only：V53 的表和列全部保留，新引用可空或带默认值。代码可回滚到 schema 下限不低于 V53 的上一发行版，但数据库仍保持 V59；代码回滚不伪装成数据库回滚。
+- V54–V60 为 expand-only：V53 的表和列全部保留，新引用可空或带默认值。代码可回滚到 schema 下限不低于 V53 的上一发行版，但数据库仍保持 V60；代码回滚不伪装成数据库回滚。
 
 ## 资源所有权与生命周期
 
@@ -39,7 +39,7 @@
 - `storage-inventory-<STAMP>.sha256`：shared storage 中每个文件的逐项 SHA-256；
 - `SHA256SUMS-<STAMP>`：整个批次的提交标记；COS 最后上传该文件。
 
-`scripts/restore-and-migrate-drill.ps1` 可恢复数据库与 storage archive，逐文件核对 inventory，并验证 V59、附件回收站、统一媒体元数据、AI 提案、AI budget、AI lifecycle 表、可恢复菜谱任务和知识索引元数据。数据库 metadata 与 shared storage 必须作为同一批次恢复，不能只恢复其中一侧。
+`scripts/restore-and-migrate-drill.ps1` 可恢复数据库与 storage archive，逐文件核对 inventory，并验证 V60、附件回收站、统一媒体元数据、AI 提案、AI budget、AI lifecycle 表、可恢复菜谱任务和知识索引元数据。数据库 metadata 与 shared storage 必须作为同一批次恢复，不能只恢复其中一侧。
 
 ## 发布前置
 

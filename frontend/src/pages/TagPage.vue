@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import axios from 'axios';
 import { fetchTagPosts } from '../api/content';
 import type { PostSummary } from '../data';
@@ -10,6 +10,7 @@ import PaginationNav from '../components/PaginationNav.vue';
 
 /** 5B：标签页——该标签下已发布文章（服务端分页）。 */
 const route = useRoute();
+const router = useRouter();
 const tag = ref('');
 const posts = ref<PostSummary[]>([]);
 const page = ref(0);
@@ -48,20 +49,24 @@ async function load() {
 }
 
 watch(
-  () => route.params.tag,
-  (raw) => {
+  () => [route.params.tag, route.query.page],
+  ([raw, rawPage]) => {
     const next = String(raw ?? '');
     if (!next) return;
     tag.value = next;
-    page.value = 0;
+    const parsed = Number.parseInt(String(rawPage ?? '1'), 10);
+    page.value = Number.isFinite(parsed) && parsed > 0 ? parsed - 1 : 0;
     void load();
   },
   { immediate: true },
 );
 
 function go(pageIndex: number) {
-  page.value = pageIndex;
-  void load();
+  void router.push({
+    name: 'tag',
+    params: { tag: String(route.params.tag) },
+    query: pageIndex > 0 ? { page: String(pageIndex + 1) } : {},
+  });
 }
 </script>
 
