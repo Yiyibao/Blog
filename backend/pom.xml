@@ -89,7 +89,7 @@
         <dependency>
             <groupId>com.twelvemonkeys.imageio</groupId>
             <artifactId>imageio-webp</artifactId>
-            <version>3.12.0</version>
+            <version>3.14.0</version>
         </dependency>
         <!-- P1-5：只读热点（图谱/站点地图/语录/曲目）进程内缓存，计划点名依赖 -->
         <dependency>
