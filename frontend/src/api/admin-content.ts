@@ -152,6 +152,71 @@ export interface PostPublicationAudit {
   createdAt: string;
 }
 
+export interface PostPublicationCheck {
+  code: string;
+  severity: 'ERROR' | 'WARNING';
+  message: string;
+}
+
+export interface PostPublicationCheckResult {
+  publishable: boolean;
+  checks: PostPublicationCheck[];
+}
+
+export interface PostPreviewToken {
+  id: string;
+  token: string;
+  expiresAt: string;
+  postVersion: number;
+}
+
+export interface MediaLibraryItem {
+  sourceType: 'NOTE_ATTACHMENT' | 'DISH_ASSET' | 'AI_GENERATED_IMAGE' | 'AI_ARTIFACT' | string;
+  sourceId: string;
+  owner: string;
+  fileName: string;
+  mediaType: string;
+  byteSize: number;
+  sha256: string | null;
+  altText: string | null;
+  sourceUrl: string | null;
+  license: string | null;
+  referenceCount: number;
+  createdBy: string;
+  status: string;
+  createdAt: string;
+  storageKey: string | null;
+  url: string;
+}
+
+export function checkPostPublication(id: number, scheduledAt?: string) {
+  return unwrap<PostPublicationCheckResult>(
+    api.get(`/admin/posts/${id}/publish-check`, {
+      headers: tokenHeader(),
+      params: scheduledAt ? { scheduledAt } : undefined,
+    }),
+  );
+}
+
+export function createPostPreviewToken(id: number, ttlMinutes = 15) {
+  return unwrap<PostPreviewToken>(
+    api.post(`/admin/posts/${id}/preview-tokens`, { ttlMinutes }, { headers: tokenHeader() }),
+  );
+}
+
+export function revokePostPreviewToken(id: number, tokenId: string) {
+  return api.delete(`/admin/posts/${id}/preview-tokens/${tokenId}`, { headers: tokenHeader() });
+}
+
+export function fetchMediaLibrary(sourceType?: string, status?: string) {
+  return unwrap<MediaLibraryItem[]>(
+    api.get('/admin/library/media', {
+      headers: tokenHeader(),
+      params: { ...(sourceType ? { sourceType } : {}), ...(status ? { status } : {}) },
+    }),
+  );
+}
+
 export function schedulePost(id: number, publishAt: string) {
   return unwrap<PostWorkflowResult>(
     api.post(`/admin/posts/${id}/schedule`, { publishAt }, { headers: tokenHeader() }),

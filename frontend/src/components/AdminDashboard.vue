@@ -10,6 +10,7 @@ import {
   createDish,
   createDishCategory,
   createPost,
+  createPostPreviewToken,
   createPostCategory,
   deleteDish,
   deleteDishCategory,
@@ -97,6 +98,12 @@ const dishCategories = ref<AdminDishCategory[]>([]);
 const loading = ref(true);
 const saving = ref(false);
 const error = ref('');
+const versionConflict = ref<{
+  expectedVersion: number;
+  actualVersion: number;
+  local: { title: string; excerpt: string; content: string };
+  server: { title: string; excerpt: string; content: string };
+} | null>(null);
 const editorOpen = ref(false);
 const editingId = ref<number | null>(null);
 const editorKind = ref<'post' | 'dish'>('post');
@@ -147,6 +154,7 @@ const postForm = reactive({
   content: '',
   markdownContent: '# 新文章\n\n从这里开始写正文。',
   contentFormat: 'MARKDOWN' as 'HTML' | 'MARKDOWN',
+  version: undefined as number | undefined,
 });
 
 /** 3A-3：Markdown 模式判定——MARKDOWN 篇或已有转换稿的存量篇都走 TyporaEditor；纯 HTML 未转换篇保留旧文本域 */
@@ -220,8 +228,24 @@ function applyRestoredPost(post: AdminPost) {
     content: post.content,
     markdownContent: post.markdownContent ?? '',
     contentFormat: post.contentFormat ?? 'HTML',
+    version: post.version,
   });
   revisionDrawerOpen.value = false;
+}
+
+async function previewCurrentPost() {
+  if (!editingId.value) return;
+  try {
+    const preview = await createPostPreviewToken(editingId.value, 15);
+    const target = router.resolve({
+      name: 'post-preview',
+      params: { postId: String(editingId.value) },
+      query: { token: preview.token },
+    });
+    window.open(target.href, '_blank', 'noopener,noreferrer');
+  } catch (cause) {
+    if (!handleAuthError(cause)) error.value = '预览令牌创建失败，请稍后重试。';
+  }
 }
 
 const importOpen = ref(false);
@@ -431,6 +455,7 @@ function logout() {
 
 function newItem() {
   resetDishImageState();
+  versionConflict.value = null;
   // 使在途的 editPost 详情请求作废，避免其迟到响应覆盖新建表单
   editRequestToken += 1;
   editingId.value = null;
@@ -451,6 +476,7 @@ function newItem() {
       content: '',
       markdownContent: '# 新文章\n\n从这里开始写正文。',
       contentFormat: 'MARKDOWN',
+      version: undefined,
     });
   else
     Object.assign(dishForm, {
@@ -478,6 +504,7 @@ let editRequestToken = 0;
 
 async function editPost(post: AdminPostSummary) {
   error.value = '';
+  versionConflict.value = null;
   const token = ++editRequestToken;
   try {
     const full = await fetchAdminPost(post.id);
@@ -500,6 +527,7 @@ async function editPost(post: AdminPostSummary) {
       content: full.content,
       markdownContent: full.markdownContent ?? '',
       contentFormat: full.contentFormat ?? 'HTML',
+      version: full.version,
     });
     editorOpen.value = true;
   } catch (cause) {
@@ -509,6 +537,7 @@ async function editPost(post: AdminPostSummary) {
 
 function editDish(dish: AdminDish) {
   resetDishImageState(dish.imageUrl);
+  versionConflict.value = null;
   editingId.value = dish.id;
   editorKind.value = 'dish';
   Object.assign(dishForm, {
@@ -572,6 +601,7 @@ async function save() {
   }
   saving.value = true;
   error.value = '';
+  versionConflict.value = null;
   try {
     if (editorKind.value === 'post') {
       if (editingId.value) await updatePost(editingId.value, postPayload());
@@ -591,11 +621,38 @@ async function save() {
     const contentStore = useContentStore();
     await contentStore.loadRemoteContent().catch(() => null);
   } catch (cause) {
-    if (!handleAuthError(cause))
-      error.value =
-        axios.isAxiosError(cause) && cause.response?.status === 409
-          ? '保存失败：唯一字段与现有记录冲突。'
-          : '保存失败，请检查必填项和字段格式。';
+    if (!handleAuthError(cause)) {
+      if (axios.isAxiosError(cause) && cause.response?.status === 409) {
+        const payload = cause.response.data as {
+          expectedVersion?: number;
+          actualVersion?: number;
+          server?: Partial<AdminPost>;
+        };
+        const server = payload.server;
+        if (server && payload.expectedVersion != null && payload.actualVersion != null) {
+          versionConflict.value = {
+            expectedVersion: payload.expectedVersion,
+            actualVersion: payload.actualVersion,
+            local: {
+              title: postForm.title,
+              excerpt: postForm.excerpt,
+              content: currentPostContext(),
+            },
+            server: {
+              title: server.title ?? '',
+              excerpt: server.excerpt ?? '',
+              content:
+                server.contentFormat === 'MARKDOWN' ? (server.markdownContent ?? '') : (server.content ?? ''),
+            },
+          };
+          error.value = '保存被阻止：服务器版本已变化，请比较差异后人工合并。';
+        } else {
+          error.value = '保存失败：数据与现有记录冲突。';
+        }
+      } else {
+        error.value = '保存失败，请检查必填项和字段格式。';
+      }
+    }
   } finally {
     saving.value = false;
   }
@@ -1133,9 +1190,11 @@ onMounted(load);
       :dish-image-uploading="dishImageUploading"
       :dish-image-error="dishImageError"
       :handle-dish-image-change="handleDishImageChange"
+      :version-conflict="versionConflict"
       @close="closeEditor"
       @save="save"
       @open-revision="revisionDrawerOpen = true"
+      @preview="previewCurrentPost"
       @new-category="newCategory"
       @new-dish-category="newDishCategory"
       @error="error = $event"

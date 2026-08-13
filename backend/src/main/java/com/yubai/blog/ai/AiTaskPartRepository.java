@@ -14,6 +14,28 @@ public interface AiTaskPartRepository extends JpaRepository<AiTaskPartEntity, Lo
 
     long countByTaskId(UUID taskId);
 
+    long countByArtifactId(UUID artifactId);
+
+    long countByArtifactIdAndTaskId(UUID artifactId, UUID taskId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(
+            "delete from AiTaskPartEntity p where p.artifactId = :artifactId and p.taskId = :taskId")
+    int deleteByArtifactIdAndTaskId(
+            @Param("artifactId") UUID artifactId, @Param("taskId") UUID taskId);
+
+    interface ArtifactReferenceCount {
+        UUID getArtifactId();
+
+        long getReferenceCount();
+    }
+
+    @Query(
+            "select p.artifactId as artifactId, count(p) as referenceCount "
+                    + "from AiTaskPartEntity p where p.artifactId is not null "
+                    + "group by p.artifactId")
+    List<ArtifactReferenceCount> countArtifactReferences();
+
     @Query(
             """
             select part from AiTaskPartEntity part, AiTaskEntity task

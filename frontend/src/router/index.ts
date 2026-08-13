@@ -25,6 +25,12 @@ const router = createRouter({
       meta: { visibility: 'public' },
     },
     {
+      path: '/preview/posts/:postId',
+      name: 'post-preview',
+      component: () => import('../pages/PostPreviewPage.vue'),
+      meta: { visibility: 'public' },
+    },
+    {
       path: '/search',
       name: 'search',
       component: () => import('../pages/SearchPage.vue'),
@@ -102,6 +108,12 @@ const router = createRouter({
       name: 'admin-attachments',
       component: () => import('../pages/AdminAttachmentsPage.vue'),
       meta: { requiresAuth: true, capability: Capabilities.ATTACHMENTS_MANAGE },
+    },
+    {
+      path: '/admin/media',
+      name: 'admin-media',
+      component: () => import('../pages/AdminMediaPage.vue'),
+      meta: { requiresAuth: true, capability: Capabilities.LIBRARY_MANAGE },
     },
     {
       path: '/series',

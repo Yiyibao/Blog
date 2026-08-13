@@ -128,6 +128,7 @@ public class AiImageService {
                                 sha256hex(image.bytes()),
                                 image.width(),
                                 image.height());
+                entity.setCreatedBy(owner);
                 saved.add(AiGeneratedImageResponse.from(repository.save(entity)));
             }
         } catch (RuntimeException exception) {

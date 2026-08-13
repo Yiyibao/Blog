@@ -3,6 +3,8 @@ package com.yubai.blog.admin;
 import com.yubai.blog.common.ApiResponse;
 import com.yubai.blog.common.PageResponse;
 import com.yubai.blog.post.PostMarkdownConversionService;
+import com.yubai.blog.post.PostPreviewService;
+import com.yubai.blog.post.PostPublicationChecks;
 import com.yubai.blog.post.PostRequest;
 import com.yubai.blog.post.PostResponse;
 import com.yubai.blog.post.PostRevisionService;
@@ -14,6 +16,9 @@ import com.yubai.blog.series.SeriesService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import java.time.Instant;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -36,18 +41,21 @@ public class AdminPostController {
     private final SeriesService seriesService;
     private final PostRevisionService revisionService;
     private final PostWorkflowService workflowService;
+    private final PostPreviewService previewService;
 
     public AdminPostController(
             PostService service,
             PostMarkdownConversionService conversionService,
             SeriesService seriesService,
             PostRevisionService revisionService,
-            PostWorkflowService workflowService) {
+            PostWorkflowService workflowService,
+            PostPreviewService previewService) {
         this.service = service;
         this.conversionService = conversionService;
         this.seriesService = seriesService;
         this.revisionService = revisionService;
         this.workflowService = workflowService;
+        this.previewService = previewService;
     }
 
     /**
@@ -84,6 +92,29 @@ public class AdminPostController {
     public ApiResponse<PostResponse> update(
             @PathVariable long id, @Valid @RequestBody PostRequest request) {
         return ApiResponse.ok(service.updateWithRevision(id, request));
+    }
+
+    @GetMapping("/{id}/publish-check")
+    public ApiResponse<PostPublicationChecks.Result> publishCheck(
+            @PathVariable long id, @RequestParam(required = false) Instant scheduledAt) {
+        return ApiResponse.ok(service.checkPublication(id, scheduledAt));
+    }
+
+    @PostMapping("/{id}/preview-tokens")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<PostPreviewService.CreatedToken> createPreviewToken(
+            @PathVariable long id,
+            @Valid @RequestBody(required = false) PreviewTokenRequest request,
+            java.security.Principal principal) {
+        return ApiResponse.created(
+                previewService.create(
+                        id, request == null ? null : request.ttlMinutes(), principal.getName()));
+    }
+
+    @DeleteMapping("/{id}/preview-tokens/{tokenId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokePreviewToken(@PathVariable long id, @PathVariable UUID tokenId) {
+        previewService.revoke(id, tokenId);
     }
 
     // 4C：版本历史——列表/查看/恢复（恢复 = 回写正文字段并产生新版本）
@@ -139,4 +170,6 @@ public class AdminPostController {
     public ApiResponse<java.util.List<PostWorkflowService.AuditEntry>> audit() {
         return ApiResponse.ok(workflowService.recentAudit());
     }
+
+    public record PreviewTokenRequest(@NotNull @Min(1) @Max(60) Integer ttlMinutes) {}
 }

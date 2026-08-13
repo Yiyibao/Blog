@@ -49,11 +49,13 @@ M2 把上述能力接入文章、笔记、菜谱、媒体、搜索和后台，�
 
 功能完成和生产开放是两件事。M1 要先完成用户价值，但生产开关默认关闭，不能绕过迁移、备份和发布门。
 
-### 1.3 实施进度（2026-08-10 实时更新）
+### 1.3 实施进度（2026-08-13 实时更新）
 
 | 月份 | 状态 | 结果与证据 | 下一月门 |
 | ---- | ---- | ---------- | -------- |
 | M1 | **完成并发布：Internal Alpha；生产功能关闭** | 新增 V53 与网站级 `com.yubai.blog.ai`；PNG/PDF/DOCX/Markdown/CSV parts 真实进入本地 fake Responses HTTP；真实记忆、四类文本/数据产物和现有 AI 图片产物、owner 隔离、恢复/事件回放、过期清理与兼容回归通过；最终发布门禁后端 755、前端 811 个测试通过；提交 `5bcc83c` 以标签 `v1.1.0-ai-platform-m1` 部署成功 | **M2 可启动：YES**；Production GA 仍为 **NO** |
+| M2–M7 | **完成；Production GA 仍关闭** | 全站 Agent/领域入口、知识与可靠性、公开质量、数据与发布安全、任务/模块化、全栈 E2E/安全供应链/SLO checkpoints 已落库并分别完成验证；M7 的 fake-provider 全栈 Chromium、Firefox、移动端和安全门已通过 | **M8 可启动：YES** |
+| M8 | **完成；未自动发布/未部署** | 创作预览、统一媒体库、发布质量门、文章乐观锁差异、AI 候选提案与审批保护完成；V57–V59、`docs/checkpoints/m8-authoring-media-2026-08-13.md`，后端/前端/迁移 manifest 验证通过 | **M9 可启动：YES**；Production GA 仍为 **NO** |
 
 M1 的完整证据、文件范围、风险和未执行项见
 [`docs/checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md`](checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md)。2026-08-10 发布跟进已完成 commit、push、迁移前备份、V51→V53 生产迁移、原子部署和线上冒烟；四个后端开关与前端 Workspace 开关继续关闭，未开放 Production GA，未执行真实模型调用。

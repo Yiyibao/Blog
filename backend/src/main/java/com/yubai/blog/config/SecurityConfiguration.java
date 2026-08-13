@@ -79,6 +79,7 @@ public class SecurityConfiguration {
                                         .requestMatchers(
                                                 HttpMethod.GET,
                                                 "/api/v1/dish-assets/**",
+                                                "/api/v1/preview/**",
                                                 "/api/v1/posts/**",
                                                 "/api/v1/categories",
                                                 "/api/v1/categories/**",

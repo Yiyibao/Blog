@@ -4125,6 +4125,126 @@ class BlogApiIntegrationTest {
         assertEquals(0, unexpected.get());
     }
 
+    @Test
+    @Order(65)
+    void authoringGovernanceProtectsPreviewAndPostVersions() throws Exception {
+        String token = login();
+        String draftBody =
+                """
+            {
+              "slug":"authoring-governance-it",
+              "title":"版本治理集成测试文章",
+              "excerpt":"这是一段足够长的文章摘要，用于覆盖发布前检查和预览流程。",
+              "date":"2026-08-13",
+              "readTime":5,
+              "category":"工程实践",
+              "tags":["integration"],
+              "color":"#123456",
+              "number":"91",
+              "featured":false,
+              "status":"DRAFT",
+              "content":"<p>governance body</p>"
+            }
+            """;
+        MvcResult created =
+                mockMvc.perform(
+                                post("/api/v1/admin/posts")
+                                        .header("Authorization", "Bearer " + token)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(draftBody))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.data.version").value(0))
+                        .andReturn();
+        var createdPost =
+                objectMapper.readTree(created.getResponse().getContentAsString()).path("data");
+        long postId = createdPost.path("id").asLong();
+        long originalVersion = createdPost.path("version").asLong();
+
+        mockMvc.perform(
+                        get("/api/v1/admin/posts/" + postId + "/publish-check")
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.publishable").value(true));
+
+        MvcResult previewToken =
+                mockMvc.perform(
+                                post("/api/v1/admin/posts/" + postId + "/preview-tokens")
+                                        .header("Authorization", "Bearer " + token)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"ttlMinutes\":10}"))
+                        .andExpect(status().isCreated())
+                        .andReturn();
+        var previewData =
+                objectMapper.readTree(previewToken.getResponse().getContentAsString()).path("data");
+        String rawPreviewToken = previewData.path("token").asText();
+        String previewId = previewData.path("id").asText();
+
+        mockMvc.perform(get("/api/v1/preview/posts/" + postId).param("token", rawPreviewToken))
+                .andExpect(status().isOk())
+                .andExpect(
+                        header().string(
+                                        "Cache-Control",
+                                        org.hamcrest.Matchers.containsString("no-store")))
+                .andExpect(header().string("X-Robots-Tag", "noindex, nofollow, noarchive"))
+                .andExpect(jsonPath("$.data.id").value(postId));
+        mockMvc.perform(get("/api/v1/preview/posts/" + postId).param("token", "guess"))
+                .andExpect(status().isNotFound());
+
+        var updated =
+                (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(draftBody);
+        updated.put("title", "版本治理集成测试文章（服务器版本）");
+        updated.put("version", originalVersion);
+        MvcResult updateResult =
+                mockMvc.perform(
+                                put("/api/v1/admin/posts/" + postId)
+                                        .header("Authorization", "Bearer " + token)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(objectMapper.writeValueAsString(updated)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.version").value(1))
+                        .andReturn();
+        assertThat(
+                        objectMapper
+                                .readTree(updateResult.getResponse().getContentAsString())
+                                .path("data")
+                                .path("title")
+                                .asText())
+                .contains("服务器版本");
+
+        mockMvc.perform(get("/api/v1/preview/posts/" + postId).param("token", rawPreviewToken))
+                .andExpect(status().isNotFound());
+
+        updated.put("title", "本地并发版本");
+        updated.put("version", originalVersion);
+        mockMvc.perform(
+                        put("/api/v1/admin/posts/" + postId)
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(updated)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.expectedVersion").value(originalVersion))
+                .andExpect(jsonPath("$.actualVersion").value(1))
+                .andExpect(jsonPath("$.server.title").value("版本治理集成测试文章（服务器版本）"));
+
+        mockMvc.perform(
+                        delete("/api/v1/admin/posts/" + postId + "/preview-tokens/" + previewId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/preview/posts/" + postId).param("token", rawPreviewToken))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/admin/library/media")).andExpect(status().isUnauthorized());
+        mockMvc.perform(
+                        get("/api/v1/admin/library/media")
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray());
+        mockMvc.perform(
+                        delete("/api/v1/admin/posts/" + postId)
+                                .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+    }
+
     private long readTodayViewTrend(String token) throws Exception {
         var trend =
                 objectMapper

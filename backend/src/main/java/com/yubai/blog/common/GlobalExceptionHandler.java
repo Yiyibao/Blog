@@ -5,6 +5,8 @@ import com.yubai.blog.auth.ChallengeVerificationException;
 import com.yubai.blog.auth.LoginCooldownException;
 import com.yubai.blog.note.InvalidNoteFileException;
 import com.yubai.blog.note.NoteVersionConflictException;
+import com.yubai.blog.post.PostPublicationException;
+import com.yubai.blog.post.PostVersionConflictException;
 import com.yubai.blog.series.SeriesVersionConflictException;
 import jakarta.validation.ConstraintViolationException;
 import java.time.Instant;
@@ -16,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
@@ -155,6 +158,38 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleSeriesConflict(
             SeriesVersionConflictException exception) {
         return error(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
+    @ExceptionHandler(PostVersionConflictException.class)
+    public ResponseEntity<Map<String, Object>> handlePostConflict(
+            PostVersionConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(
+                        Map.of(
+                                "status", HttpStatus.CONFLICT.value(),
+                                "message", exception.getMessage(),
+                                "postId", exception.getPostId(),
+                                "expectedVersion", exception.getExpectedVersion(),
+                                "actualVersion", exception.getActualVersion(),
+                                "server", exception.getServer(),
+                                "timestamp", Instant.now()));
+    }
+
+    @ExceptionHandler(PostPublicationException.class)
+    public ResponseEntity<Map<String, Object>> handlePostPublication(
+            PostPublicationException exception) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(
+                        Map.of(
+                                "status", HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                                "message", exception.getMessage(),
+                                "checks", exception.getResult().checks(),
+                                "timestamp", Instant.now()));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> handleOptimisticLocking() {
+        return error(HttpStatus.CONFLICT, "记录已在其他位置更新，请刷新后重试");
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

@@ -5,6 +5,10 @@ import com.yubai.blog.common.ApiResponse;
 import com.yubai.blog.config.AiPlatformProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +44,7 @@ public class AiPlatformController {
     private final AiFileService fileService;
     private final AiMemoryService memoryService;
     private final AiArtifactService artifactService;
+    private final AiActionProposalService proposalService;
 
     public AiPlatformController(
             AiPlatformProperties properties,
@@ -49,7 +54,8 @@ public class AiPlatformController {
             AiTaskEventService eventService,
             AiFileService fileService,
             AiMemoryService memoryService,
-            AiArtifactService artifactService) {
+            AiArtifactService artifactService,
+            AiActionProposalService proposalService) {
         this.properties = properties;
         this.sessionService = sessionService;
         this.taskService = taskService;
@@ -58,6 +64,7 @@ public class AiPlatformController {
         this.fileService = fileService;
         this.memoryService = memoryService;
         this.artifactService = artifactService;
+        this.proposalService = proposalService;
     }
 
     @PostMapping("/sessions")
@@ -305,6 +312,79 @@ public class AiPlatformController {
         artifactService.delete(artifactId, principal.getName());
         return ApiResponse.ok(null);
     }
+
+    @PostMapping("/proposals")
+    public ApiResponse<AiActionProposalService.Response> createProposal(
+            @Valid @RequestBody ProposalRequest request, Principal principal) {
+        requireTasks();
+        return ApiResponse.created(
+                proposalService
+                        .create(
+                                principal.getName(),
+                                new AiActionProposalService.CreateRequest(
+                                        request.taskId(),
+                                        request.actionType(),
+                                        request.targetType(),
+                                        request.targetId(),
+                                        request.targetVersion(),
+                                        request.arguments(),
+                                        request.ttlMinutes()))
+                        .proposal());
+    }
+
+    @GetMapping("/proposals")
+    public ApiResponse<List<AiActionProposalService.Response>> proposals(
+            @RequestParam(required = false) AiActionProposalStatus status, Principal principal) {
+        requireTasks();
+        return ApiResponse.ok(proposalService.list(principal.getName(), status));
+    }
+
+    @GetMapping("/proposals/{proposalId}")
+    public ApiResponse<AiActionProposalService.Response> proposal(
+            @PathVariable UUID proposalId, Principal principal) {
+        requireTasks();
+        return ApiResponse.ok(proposalService.get(proposalId, principal.getName()));
+    }
+
+    @PostMapping("/proposals/{proposalId}/approve")
+    public ApiResponse<AiActionProposalService.Response> approveProposal(
+            @PathVariable UUID proposalId,
+            @Valid @RequestBody ProposalApprovalRequest request,
+            Principal principal) {
+        requireTasks();
+        return ApiResponse.ok(
+                proposalService.approve(
+                        proposalId,
+                        principal.getName(),
+                        request.nonce(),
+                        request.expectedTargetVersion()));
+    }
+
+    @PostMapping("/proposals/{proposalId}/reject")
+    public ApiResponse<AiActionProposalService.Response> rejectProposal(
+            @PathVariable UUID proposalId,
+            @Valid @RequestBody ProposalRejectionRequest request,
+            Principal principal) {
+        requireTasks();
+        return ApiResponse.ok(
+                proposalService.reject(
+                        proposalId, principal.getName(), request.nonce(), request.reason()));
+    }
+
+    public record ProposalRequest(
+            UUID taskId,
+            @NotBlank @Size(max = 80) String actionType,
+            @Size(max = 80) String targetType,
+            @Size(max = 128) String targetId,
+            Long targetVersion,
+            @Size(max = 120_000) String arguments,
+            @Min(1) @Max(120) Integer ttlMinutes) {}
+
+    public record ProposalApprovalRequest(
+            @NotBlank @Size(max = 128) String nonce, Long expectedTargetVersion) {}
+
+    public record ProposalRejectionRequest(
+            @NotBlank @Size(max = 128) String nonce, @Size(max = 500) String reason) {}
 
     private void requireTasks() {
         require(properties.isTasksEnabled());

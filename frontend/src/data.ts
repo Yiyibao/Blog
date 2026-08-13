@@ -53,6 +53,7 @@ export interface PostSeriesRef {
 
 export interface Post extends PostSummary {
   content: string;
+  version?: number;
   // 3A：Markdown 化双字段——MARKDOWN 篇走受控渲染管线，HTML 为存量默认
   markdownContent?: string | null;
   contentFormat?: 'HTML' | 'MARKDOWN';

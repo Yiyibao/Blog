@@ -40,6 +40,7 @@ public class PostWorkflowService {
             allEntries = true)
     public WorkflowResult schedule(long postId, Instant publishAt, String actor) {
         var post = entity(postId);
+        PostPublicationChecks.requirePublishable(post, publishAt);
         post.schedulePublication(publishAt);
         audit(postId, "SCHEDULE", actor, publishAt.toString());
         return result(post);
@@ -68,8 +69,10 @@ public class PostWorkflowService {
             throw new NotFoundException("批量操作包含不存在的文章");
         }
         for (var post : posts) {
-            if (request.action() == BatchAction.PUBLISH)
+            if (request.action() == BatchAction.PUBLISH) {
+                PostPublicationChecks.requirePublishable(post, null);
                 post.changePublicationStatus(PostStatus.PUBLISHED);
+            }
             if (request.action() == BatchAction.ARCHIVE)
                 post.changePublicationStatus(PostStatus.ARCHIVED);
             if (request.action() == BatchAction.DRAFT)

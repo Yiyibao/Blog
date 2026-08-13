@@ -50,6 +50,21 @@ public class AiArtifactEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "alt_text", length = 240)
+    private String altText;
+
+    @Column(name = "source_url", length = 500)
+    private String sourceUrl;
+
+    @Column(name = "license", length = 160)
+    private String license;
+
+    @Column(name = "reference_count", nullable = false)
+    private int referenceCount;
+
+    @Column(name = "created_by", nullable = false, length = 128)
+    private String createdBy = "system:migration";
+
     protected AiArtifactEntity() {}
 
     public static AiArtifactEntity ready(
@@ -73,6 +88,8 @@ public class AiArtifactEntity {
         entity.sha256 = sha256;
         entity.status = AiArtifactStatus.READY;
         entity.expiresAt = expiresAt;
+        entity.altText = name;
+        entity.createdBy = owner;
         return entity;
     }
 
@@ -141,5 +158,25 @@ public class AiArtifactEntity {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public String getAltText() {
+        return altText;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public String getLicense() {
+        return license;
+    }
+
+    public int getReferenceCount() {
+        return referenceCount;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
     }
 }

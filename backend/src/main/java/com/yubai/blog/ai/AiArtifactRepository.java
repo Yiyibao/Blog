@@ -22,6 +22,8 @@ public interface AiArtifactRepository extends JpaRepository<AiArtifactEntity, UU
 
     List<AiArtifactEntity> findByTaskIdAndOwnerOrderByCreatedAtAsc(UUID taskId, String owner);
 
+    List<AiArtifactEntity> findAllByOrderByCreatedAtDesc();
+
     List<AiArtifactEntity> findByStatusInAndExpiresAtBefore(
             List<AiArtifactStatus> statuses, java.time.Instant expiresAt);
 

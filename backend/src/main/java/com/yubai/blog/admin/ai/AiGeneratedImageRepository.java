@@ -9,4 +9,6 @@ public interface AiGeneratedImageRepository extends JpaRepository<AiGeneratedIma
     Optional<AiGeneratedImageEntity> findByPublicId(UUID publicId);
 
     List<AiGeneratedImageEntity> findBySessionIdOrderByCreatedAtAsc(Long sessionId);
+
+    List<AiGeneratedImageEntity> findAllByOrderByCreatedAtDesc();
 }

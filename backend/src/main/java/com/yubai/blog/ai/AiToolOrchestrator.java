@@ -23,6 +23,7 @@ public class AiToolOrchestrator {
     private final AiArtifactRepository artifactRepository;
     private final AiTaskPartRepository partRepository;
     private final AiImageService imageService;
+    private final AiActionProposalService proposalService;
 
     public AiToolOrchestrator(
             ObjectMapper objectMapper,
@@ -30,13 +31,15 @@ public class AiToolOrchestrator {
             AiArtifactService artifactService,
             AiArtifactRepository artifactRepository,
             AiTaskPartRepository partRepository,
-            AiImageService imageService) {
+            AiImageService imageService,
+            AiActionProposalService proposalService) {
         this.objectMapper = objectMapper;
         this.taskService = taskService;
         this.artifactService = artifactService;
         this.artifactRepository = artifactRepository;
         this.partRepository = partRepository;
         this.imageService = imageService;
+        this.proposalService = proposalService;
     }
 
     public ToolBatch execute(UUID taskId, String owner, List<AiToolCall> calls) {
@@ -115,6 +118,12 @@ public class AiToolOrchestrator {
         if (arguments.length() > MAX_ARGUMENT_CHARS)
             throw badRequest("Tool arguments are too large");
         var parsed = readArguments(arguments);
+        var normalizedName = call.name().trim().toLowerCase(Locale.ROOT);
+        if (normalizedName.contains("publish")
+                || normalizedName.contains("delete")
+                || normalizedName.contains("schedule")) {
+            throw badRequest("Publishing, deleting, and scheduling are never AI tools");
+        }
         taskService.appendToolPart(
                 taskId,
                 owner,
@@ -127,8 +136,36 @@ public class AiToolOrchestrator {
         return switch (call.name().trim()) {
             case "generate_document" -> generateDocument(taskId, owner, parsed, call);
             case "generate_image" -> generateImage(taskId, owner, parsed, call);
+            case "propose_action" -> proposeAction(taskId, owner, parsed);
             default -> throw badRequest("Tool is not allowed: " + call.name());
         };
+    }
+
+    private ToolResult proposeAction(UUID taskId, String owner, JsonNode args) {
+        var proposal =
+                proposalService.create(
+                        owner,
+                        new AiActionProposalService.CreateRequest(
+                                taskId,
+                                text(args, "actionType", "suggest.content"),
+                                nullableText(args, "targetType"),
+                                nullableText(args, "targetId"),
+                                args.has("targetVersion")
+                                                && args.get("targetVersion").canConvertToLong()
+                                        ? args.get("targetVersion").longValue()
+                                        : null,
+                                proposalArguments(args),
+                                null));
+        var item = proposal.proposal();
+        return new ToolResult(
+                null,
+                "proposal:" + item.id(),
+                "已生成候选提案，等待作者审批",
+                "{\"status\":\"PROPOSED\",\"proposalId\":\""
+                        + item.id()
+                        + "\",\"actionType\":\""
+                        + safeJson(item.actionType())
+                        + "\"}");
     }
 
     private ToolResult generateDocument(UUID taskId, String owner, JsonNode args, AiToolCall call) {
@@ -197,6 +234,17 @@ public class AiToolOrchestrator {
                         + "\",\"name\":\""
                         + safeJson(artifact.name())
                         + "\"}");
+    }
+
+    private String proposalArguments(JsonNode args) {
+        var value = args == null ? null : args.get("arguments");
+        if (value == null || value.isNull()) return "{}";
+        if (!value.isObject()) throw badRequest("Proposal arguments must be a JSON object");
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception exception) {
+            throw badRequest("Proposal arguments are invalid JSON");
+        }
     }
 
     private JsonNode readArguments(String arguments) {

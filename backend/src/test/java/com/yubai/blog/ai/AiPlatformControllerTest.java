@@ -48,7 +48,8 @@ class AiPlatformControllerTest {
                         eventService,
                         fileService,
                         mock(AiMemoryService.class),
-                        artifactService);
+                        artifactService,
+                        mock(AiActionProposalService.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

@@ -58,6 +58,21 @@ public class DishAssetEntity {
     @Column(name = "expires_at")
     private Instant expiresAt;
 
+    @Column(name = "alt_text", length = 240)
+    private String altText;
+
+    @Column(name = "source_url", length = 500)
+    private String sourceUrl;
+
+    @Column(name = "license", length = 160)
+    private String license;
+
+    @Column(name = "reference_count", nullable = false)
+    private int referenceCount;
+
+    @Column(name = "created_by", nullable = false, length = 128)
+    private String createdBy = "admin";
+
     protected DishAssetEntity() {}
 
     public static DishAssetEntity create(
@@ -90,6 +105,8 @@ public class DishAssetEntity {
         entity.sha256 = sha256;
         entity.width = width;
         entity.height = height;
+        entity.altText = fileName;
+        entity.createdBy = owner;
         entity.expiresAt = Instant.now().plusSeconds(3600);
         return entity;
     }
@@ -122,6 +139,8 @@ public class DishAssetEntity {
         entity.sha256 = sha256;
         entity.width = width;
         entity.height = height;
+        entity.altText = fileName;
+        entity.createdBy = owner;
         entity.expiresAt = Instant.now().plusSeconds(3600);
         return entity;
     }
@@ -201,5 +220,25 @@ public class DishAssetEntity {
 
     public Instant getExpiresAt() {
         return expiresAt;
+    }
+
+    public String getAltText() {
+        return altText;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public String getLicense() {
+        return license;
+    }
+
+    public int getReferenceCount() {
+        return referenceCount;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
     }
 }

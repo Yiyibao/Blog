@@ -5,6 +5,9 @@ import com.yubai.blog.storage.StorageException;
 import com.yubai.blog.storage.StorageService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -178,6 +181,7 @@ public class NoteAttachmentService {
         var key = entity.getPublicId() + "/image" + ext;
         storageService.store(key, data);
         entity.setStorageKey(key);
+        entity.setSha256(sha256hex(data));
         var rollbackCleanupRegistered = registerRollbackCleanup(key);
         try {
             entity = attachments.saveAndFlush(entity);
@@ -310,6 +314,13 @@ public class NoteAttachmentService {
         for (var attachment :
                 attachments.findByDeletedAtBefore(
                         java.time.Instant.now().minus(java.time.Duration.ofDays(30)))) {
+            var note = notes.findById(attachment.getNoteId()).orElse(null);
+            if (note != null
+                    && note.getMarkdownContent() != null
+                    && note.getMarkdownContent().contains(attachment.getPublicId().toString())) {
+                log.warn("Skipping purge of referenced attachment {}", attachment.getPublicId());
+                continue;
+            }
             var storageKey = attachment.getStorageKey();
             attachments.delete(attachment);
             if (storageKey != null) {
@@ -341,6 +352,14 @@ public class NoteAttachmentService {
             storageService.delete(storageKey);
         } catch (Exception e) {
             log.warn("Failed to clean up storage file {}: {}", storageKey, e.toString());
+        }
+    }
+
+    private static String sha256hex(byte[] data) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
     }
 

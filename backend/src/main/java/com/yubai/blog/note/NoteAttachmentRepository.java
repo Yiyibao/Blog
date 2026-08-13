@@ -73,6 +73,36 @@ public interface NoteAttachmentRepository extends JpaRepository<NoteAttachmentEn
         Instant getCreatedAt();
     }
 
+    interface MediaRow {
+        Long getId();
+
+        UUID getPublicId();
+
+        long getNoteId();
+
+        String getFileName();
+
+        String getMediaType();
+
+        long getByteSize();
+
+        String getStorageKey();
+
+        String getAltText();
+
+        String getSourceUrl();
+
+        String getLicense();
+
+        String getSha256();
+
+        String getCreatedBy();
+
+        Instant getCreatedAt();
+
+        Instant getDeletedAt();
+    }
+
     @Query(
             """
         SELECT a.id as id, a.publicId as publicId, a.noteId as noteId, a.fileName as fileName,
@@ -81,6 +111,17 @@ public interface NoteAttachmentRepository extends JpaRepository<NoteAttachmentEn
         FROM NoteAttachmentEntity a WHERE a.deletedAt IS NULL ORDER BY a.createdAt DESC, a.id DESC
         """)
     List<AttachmentAdminRow> findAdminRows();
+
+    @Query(
+            """
+        SELECT a.id as id, a.publicId as publicId, a.noteId as noteId, a.fileName as fileName,
+               a.mediaType as mediaType, a.byteSize as byteSize, a.storageKey as storageKey,
+               a.altText as altText, a.sourceUrl as sourceUrl, a.license as license,
+               a.sha256 as sha256, a.createdBy as createdBy, a.createdAt as createdAt,
+               a.deletedAt as deletedAt
+        FROM NoteAttachmentEntity a ORDER BY a.createdAt DESC, a.id DESC
+        """)
+    List<MediaRow> findMediaRows();
 
     interface StorageAggregate {
         long getCnt();

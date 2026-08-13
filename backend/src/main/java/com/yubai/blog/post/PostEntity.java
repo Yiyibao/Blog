@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -87,6 +88,10 @@ public class PostEntity {
 
     @Column(name = "scheduled_publish_at")
     private Instant scheduledPublishAt;
+
+    @Version
+    @Column(nullable = false)
+    private long version;
 
     protected PostEntity() {}
 
@@ -221,6 +226,10 @@ public class PostEntity {
 
     public Instant getScheduledPublishAt() {
         return scheduledPublishAt;
+    }
+
+    public long getVersion() {
+        return version;
     }
 
     public void schedulePublication(Instant publishAt) {

@@ -28,4 +28,49 @@ public interface DishAssetRepository extends JpaRepository<DishAssetEntity, Long
     List<DishAssetEntity> findByDishIdIsNullAndExpiresAtBefore(Instant now);
 
     void deleteByDishId(Long dishId);
+
+    interface MediaRow {
+        Long getId();
+
+        UUID getPublicId();
+
+        Long getDishId();
+
+        String getOwner();
+
+        String getStorageKey();
+
+        String getFileName();
+
+        String getMediaType();
+
+        long getByteSize();
+
+        String getSha256();
+
+        String getAltText();
+
+        String getSourceUrl();
+
+        String getLicense();
+
+        int getReferenceCount();
+
+        String getCreatedBy();
+
+        Instant getCreatedAt();
+
+        Instant getExpiresAt();
+    }
+
+    @org.springframework.data.jpa.repository.Query(
+            """
+        SELECT a.id as id, a.publicId as publicId, a.dishId as dishId, a.owner as owner,
+               a.storageKey as storageKey, a.fileName as fileName, a.mediaType as mediaType,
+               a.byteSize as byteSize, a.sha256 as sha256, a.altText as altText,
+               a.sourceUrl as sourceUrl, a.license as license, a.referenceCount as referenceCount,
+               a.createdBy as createdBy, a.createdAt as createdAt, a.expiresAt as expiresAt
+        FROM DishAssetEntity a ORDER BY a.createdAt DESC, a.id DESC
+        """)
+    List<MediaRow> findMediaRows();
 }

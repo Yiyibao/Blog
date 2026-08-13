@@ -100,7 +100,7 @@ class AiPlatformMigrationTest {
                                     + ".flyway_schema_history where success "
                                     + "order by installed_rank desc limit 1",
                             String.class);
-            assertThat(version).isEqualTo("56");
+            assertThat(version).isEqualTo("59");
             assertThat(columnExists(schema, "ai_sessions", "project_id")).isTrue();
             assertThat(columnExists(schema, "ai_tasks", "resolved_provider_id")).isTrue();
             assertThat(columnExists(schema, "ai_tasks", "required_capabilities")).isTrue();

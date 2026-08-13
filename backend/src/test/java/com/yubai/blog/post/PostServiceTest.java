@@ -592,11 +592,48 @@ class PostServiceTest {
                         null,
                         null);
         when(repository.findById(1L)).thenReturn(Optional.of(post));
+        when(sanitizer.sanitize(any())).thenReturn("<p>updated</p>");
 
         var result = service.update(1L, request);
 
         assertThat(result.slug()).isEqualTo("test-slug");
         verify(repository, never()).existsBySlugAndIdNot(any(), anyLong());
+    }
+
+    @Test
+    void updateRejectsStaleVersionWithServerSnapshot() {
+        var post = samplePost();
+        setField(post, "id", 1L);
+        setField(post, "version", 4L);
+        var request =
+                new PostRequest(
+                        "test-slug",
+                        "Local draft",
+                        "Excerpt",
+                        LocalDate.of(2026, 1, 1),
+                        5,
+                        "工程实践",
+                        List.of(),
+                        "#000000",
+                        "01",
+                        false,
+                        PostStatus.PUBLISHED,
+                        "<p>local</p>",
+                        null,
+                        null,
+                        3L);
+        when(repository.findById(1L)).thenReturn(Optional.of(post));
+
+        assertThatThrownBy(() -> service.update(1L, request))
+                .isInstanceOf(PostVersionConflictException.class)
+                .satisfies(
+                        exception -> {
+                            var conflict = (PostVersionConflictException) exception;
+                            assertThat(conflict.getExpectedVersion()).isEqualTo(3L);
+                            assertThat(conflict.getActualVersion()).isEqualTo(4L);
+                            assertThat(conflict.getServer().title()).isEqualTo("Test Title");
+                        });
+        verify(repository, never()).save(any());
     }
 
     @Test

@@ -20,6 +20,7 @@ interface PostEditorForm {
   content: string;
   markdownContent: string;
   contentFormat: 'HTML' | 'MARKDOWN';
+  version?: number;
 }
 
 interface DishEditorForm {
@@ -59,6 +60,7 @@ const {
   dishImageUploading,
   dishImageError,
   handleDishImageChange,
+  versionConflict,
 } = defineProps<{
   editingId: number | null;
   editorKind: 'post' | 'dish';
@@ -79,6 +81,12 @@ const {
   dishImageUploading: boolean;
   dishImageError: string;
   handleDishImageChange: (event: Event) => unknown;
+  versionConflict: {
+    expectedVersion: number;
+    actualVersion: number;
+    local: { title: string; excerpt: string; content: string };
+    server: { title: string; excerpt: string; content: string };
+  } | null;
 }>();
 
 // The parent owns these reactive form objects; the child only edits their fields.
@@ -88,6 +96,7 @@ const mutableDishForm = dishForm;
 const emit = defineEmits<{
   close: [];
   save: [];
+  preview: [];
   'open-revision': [];
   'new-category': [];
   'new-dish-category': [];
@@ -121,6 +130,14 @@ function reportPostUploadError() {
             @click="emit('open-revision')"
           >
             ↺ 历史版本
+          </button>
+          <button
+            v-if="editorKind === 'post' && editingId"
+            type="button"
+            class="revision-trigger"
+            @click="emit('preview')"
+          >
+            预览文章
           </button>
           <button type="button" aria-label="关闭编辑器" @click="emit('close')">×</button>
         </div>
@@ -354,6 +371,36 @@ function reportPostUploadError() {
       </template>
 
       <p v-if="error" class="admin-error" role="alert">{{ error }}</p>
+      <section v-if="versionConflict && editorKind === 'post'" class="version-conflict" aria-live="assertive">
+        <h3>文章版本冲突，请人工合并</h3>
+        <p>
+          你正在编辑 v{{ versionConflict.expectedVersion }}，服务器已经是 v{{
+            versionConflict.actualVersion
+          }}。 本次保存没有覆盖服务器内容。
+        </p>
+        <div class="version-conflict-grid">
+          <div>
+            <strong>本地未提交</strong>
+            <dl>
+              <dt>标题</dt>
+              <dd>{{ versionConflict.local.title }}</dd>
+              <dt>摘要</dt>
+              <dd>{{ versionConflict.local.excerpt }}</dd>
+            </dl>
+            <pre>{{ versionConflict.local.content }}</pre>
+          </div>
+          <div>
+            <strong>服务器版本</strong>
+            <dl>
+              <dt>标题</dt>
+              <dd>{{ versionConflict.server.title }}</dd>
+              <dt>摘要</dt>
+              <dd>{{ versionConflict.server.excerpt }}</dd>
+            </dl>
+            <pre>{{ versionConflict.server.content }}</pre>
+          </div>
+        </div>
+      </section>
       <footer>
         <button class="button secondary" type="button" @click="emit('close')">取消</button
         ><button
@@ -367,3 +414,70 @@ function reportPostUploadError() {
     </form>
   </div>
 </template>
+
+<style scoped>
+.version-conflict {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #c98245;
+  border-radius: 10px;
+  background: color-mix(in srgb, #c98245 8%, var(--surface));
+}
+.version-conflict h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.version-conflict p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.version-conflict-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.version-conflict-grid > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.version-conflict-grid strong {
+  font-size: 12px;
+}
+.version-conflict-grid dl {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 4px 8px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.version-conflict-grid dt {
+  color: var(--muted);
+}
+.version-conflict-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.version-conflict-grid pre {
+  max-height: 180px;
+  margin: 8px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    11px/1.5 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+@media (max-width: 720px) {
+  .version-conflict-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

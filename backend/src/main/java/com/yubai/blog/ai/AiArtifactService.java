@@ -191,6 +191,13 @@ public class AiArtifactService {
     public void delete(UUID id, String owner) {
         var artifact = requireOwned(id, owner);
         if (artifact.getStatus() == AiArtifactStatus.DELETED) return;
+        var totalReferences = partRepository.countByArtifactId(id);
+        var ownReferences = partRepository.countByArtifactIdAndTaskId(id, artifact.getTaskId());
+        if (totalReferences > ownReferences) {
+            throw new AiServiceException(
+                    HttpStatus.CONFLICT, "AI artifact is still referenced by another task");
+        }
+        partRepository.deleteByArtifactIdAndTaskId(id, artifact.getTaskId());
         storage.delete(artifact.getStorageKey());
         artifact.delete();
         repository.save(artifact);

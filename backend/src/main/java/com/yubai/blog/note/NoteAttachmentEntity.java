@@ -44,6 +44,24 @@ public class NoteAttachmentEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "alt_text", length = 240)
+    private String altText;
+
+    @Column(name = "source_url", length = 500)
+    private String sourceUrl;
+
+    @Column(name = "license", length = 160)
+    private String license;
+
+    @Column(length = 64)
+    private String sha256;
+
+    @Column(name = "reference_count", nullable = false)
+    private int referenceCount;
+
+    @Column(name = "created_by", nullable = false, length = 128)
+    private String createdBy = "admin";
+
     protected NoteAttachmentEntity() {}
 
     static NoteAttachmentEntity create(
@@ -67,6 +85,7 @@ public class NoteAttachmentEntity {
         attachment.mediaType = mediaType;
         attachment.byteSize = byteSize;
         attachment.storageKey = storageKey;
+        attachment.altText = fileName;
         return attachment;
     }
 
@@ -115,12 +134,40 @@ public class NoteAttachmentEntity {
         this.content = content;
     }
 
+    void setSha256(String sha256) {
+        this.sha256 = sha256;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     public Instant getDeletedAt() {
         return deletedAt;
+    }
+
+    public String getAltText() {
+        return altText;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public String getLicense() {
+        return license;
+    }
+
+    public String getSha256() {
+        return sha256;
+    }
+
+    public int getReferenceCount() {
+        return referenceCount;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
     }
 
     void moveToTrash() {

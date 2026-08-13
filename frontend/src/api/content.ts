@@ -75,6 +75,10 @@ export function fetchPost(slug: string) {
   return unwrap<Post>(api.get(`/posts/${encodeURIComponent(slug)}`));
 }
 
+export function fetchPostPreview(postId: number, token: string) {
+  return unwrap<Post>(api.get(`/preview/posts/${postId}`, { params: { token } }));
+}
+
 export function fetchCategories() {
   return unwrap<CategorySummary[]>(api.get('/categories'));
 }

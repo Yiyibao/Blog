@@ -4,7 +4,7 @@ param(
     [string]$AttachmentArchivePath,
     [string]$StorageInventoryPath,
     [int]$Port = 55432,
-    [int]$ExpectedLatestVersion = 56
+    [int]$ExpectedLatestVersion = 59
 )
 
 $ErrorActionPreference = 'Stop'
