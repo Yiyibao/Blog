@@ -34,7 +34,7 @@ jobs:
       - run: npm run test:e2e:offline
       - name: Upload frontend coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: frontend/coverage
@@ -131,7 +131,7 @@ jobs:
           node scripts/run-full-stack-e2e.mjs
       - name: Upload full-stack evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: full-stack-e2e-evidence
           path: |
@@ -161,14 +161,14 @@ jobs:
         run: mvn --batch-mode verify 2>&1 | tee test-output.log
       - name: Upload test output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-output
           path: backend/test-output.log
       # P2-5：JaCoCo 覆盖率报告随构建产出（阈值基线见计划书 6C，只升不降）
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: backend/target/site/jacoco

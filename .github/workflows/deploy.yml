@@ -94,19 +94,19 @@ jobs:
           mkdir -p deploy/target
           cp deploy/release-preflight.sh deploy/release-compatibility.env deploy/target/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist
           retention-days: 7
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deployment-safety
           path: deploy/target
           retention-days: 7
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: backend-jar
           path: backend/target/canonical/blog-backend.jar
