@@ -20,8 +20,18 @@ export default defineConfig({
     },
     {
       name: 'online-chromium',
-      testMatch: /online-contract\.spec\.ts/,
+      testMatch: /(?:online-contract|full-stack)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], channel: process.env.CI ? undefined : 'chrome' },
+    },
+    {
+      name: 'online-firefox',
+      testMatch: /online-contract\.spec\.ts/,
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'online-mobile-chromium',
+      testMatch: /online-contract\.spec\.ts/,
+      use: { ...devices['Pixel 7'] },
     },
   ],
 });

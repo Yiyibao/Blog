@@ -41,6 +41,8 @@ public interface AiTaskRepository extends JpaRepository<AiTaskEntity, UUID> {
     List<AiTaskEntity> findByStatusInAndUpdatedAtBefore(
             List<AiTaskStatus> statuses, Instant cutoff);
 
+    long countByStatus(AiTaskStatus status);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select task from AiTaskEntity task where task.id = :id")
     Optional<AiTaskEntity> lockById(@Param("id") UUID id);

@@ -1,0 +1,55 @@
+groups:
+  - name: blogdemo-slo
+    rules:
+      - alert: BlogHighApiErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{uri=~"/api/.*",status=~"5.."}[5m]))
+            /
+          sum(rate(http_server_requests_seconds_count{uri=~"/api/.*"}[5m])) > 0.005
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: Blog API 5xx rate is above 0.5%
+
+      - alert: BlogPublicApiLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{uri=~"/api/v1/(posts|dishes|categories).*"}[5m]))) > 0.3
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Public API p95 latency is above 300ms
+
+      - alert: BlogAiQueueStuck
+        expr: blog_ai_tasks{status="RUNNING"} > 0
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: AI task has remained RUNNING for at least ten minutes
+
+      - alert: BlogHikariPoolPressure
+        expr: hikaricp_connections_pending > 0 or hikaricp_connections_active / hikaricp_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Database connection pool is under pressure
+
+      - alert: BlogResourceCleanupFailures
+        expr: increase(blog_resources_cleanup_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Resource cleanup failed and will be retried
+
+      - alert: BlogBackupFreshness
+        expr: time() - yubai_blog_backup_last_success_timestamp_seconds > 93600
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          summary: Last completed backup batch is older than 26 hours
