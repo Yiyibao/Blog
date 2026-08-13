@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+  '/api/v1/kitchen/shopping-lists/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations['update'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/kitchen/menus': {
     parameters: {
       query?: never;
@@ -44,7 +60,7 @@ export interface paths {
       cookie?: never;
     };
     get: operations['findOne'];
-    put: operations['update'];
+    put: operations['update_1'];
     post?: never;
     delete: operations['delete'];
     options?: never;
@@ -76,7 +92,7 @@ export interface paths {
       cookie?: never;
     };
     get: operations['findOne_1'];
-    put: operations['update_1'];
+    put: operations['update_2'];
     post?: never;
     delete: operations['delete_1'];
     options?: never;
@@ -92,7 +108,7 @@ export interface paths {
       cookie?: never;
     };
     get: operations['findOne_2'];
-    put: operations['update_2'];
+    put: operations['update_3'];
     post?: never;
     delete: operations['delete_2'];
     options?: never;
@@ -188,7 +204,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    put: operations['update_3'];
+    put: operations['update_4'];
     post?: never;
     delete: operations['delete_3'];
     options?: never;
@@ -204,7 +220,7 @@ export interface paths {
       cookie?: never;
     };
     get: operations['findOne_3'];
-    put: operations['update_4'];
+    put: operations['update_5'];
     post?: never;
     delete: operations['delete_4'];
     options?: never;
@@ -220,7 +236,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    put: operations['update_5'];
+    put: operations['update_6'];
     post?: never;
     delete: operations['delete_5'];
     options?: never;
@@ -236,7 +252,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    put: operations['update_6'];
+    put: operations['update_7'];
     post?: never;
     delete: operations['delete_6'];
     options?: never;
@@ -252,7 +268,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    put: operations['update_7'];
+    put: operations['update_8'];
     post?: never;
     delete: operations['delete_7'];
     options?: never;
@@ -318,6 +334,38 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations['likePost'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/kitchen/shopping-lists/{id}/clear-checked': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['clearChecked'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/kitchen/shopping-lists/generate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['generate'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1604,6 +1652,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/kitchen/shopping-lists': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['get_1'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/kitchen/menus/history': {
     parameters: {
       query?: never;
@@ -1771,7 +1835,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['get_1'];
+    get: operations['get_2'];
     put?: never;
     post?: never;
     delete?: never;
@@ -2520,6 +2584,66 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    ItemDraft: {
+      /** Format: uuid */
+      id?: string;
+      displayName: string;
+      normalizedName: string;
+      quantity?: number;
+      unit?: string;
+      originalQuantity?: string;
+      sourceRecipe?: string;
+      category?: string;
+      checked?: boolean;
+      manual?: boolean;
+      note?: string;
+    };
+    UpdateRequest: {
+      /** Format: int64 */
+      expectedVersion: number;
+      note?: string;
+      items: components['schemas']['ItemDraft'][];
+    };
+    ApiResponseShoppingListResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['ShoppingListResponse'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    ItemResponse: {
+      /** Format: uuid */
+      id?: string;
+      displayName?: string;
+      normalizedName?: string;
+      quantity?: number;
+      unit?: string;
+      originalQuantity?: string;
+      sourceRecipe?: string;
+      category?: string;
+      checked?: boolean;
+      manual?: boolean;
+      note?: string;
+      /** Format: int32 */
+      sortOrder?: number;
+      /** Format: date-time */
+      createdAt?: string;
+    };
+    ShoppingListResponse: {
+      /** Format: uuid */
+      id?: string;
+      /** Format: date */
+      weekStart?: string;
+      note?: string;
+      /** Format: int64 */
+      version?: number;
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: date-time */
+      updatedAt?: string;
+      items?: components['schemas']['ItemResponse'][];
+    };
     DailyMenuRequest: {
       /** @enum {string} */
       status: 'DRAFT' | 'CONFIRMED';
@@ -4767,6 +4891,56 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  update: {
+    parameters: {
+      query?: never;
+      header?: {
+        'Idempotency-Key'?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseShoppingListResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   getMenu: {
     parameters: {
       query: {
@@ -4947,7 +5121,7 @@ export interface operations {
       };
     };
   };
-  update: {
+  update_1: {
     parameters: {
       query: {
         version: number;
@@ -5131,7 +5305,7 @@ export interface operations {
       };
     };
   };
-  update_1: {
+  update_2: {
     parameters: {
       query?: never;
       header?: never;
@@ -5265,7 +5439,7 @@ export interface operations {
       };
     };
   };
-  update_2: {
+  update_3: {
     parameters: {
       query?: never;
       header?: never;
@@ -5679,7 +5853,7 @@ export interface operations {
       };
     };
   };
-  update_3: {
+  update_4: {
     parameters: {
       query: {
         version: number;
@@ -5817,7 +5991,7 @@ export interface operations {
       };
     };
   };
-  update_4: {
+  update_5: {
     parameters: {
       query?: never;
       header?: never;
@@ -5907,7 +6081,7 @@ export interface operations {
       };
     };
   };
-  update_5: {
+  update_6: {
     parameters: {
       query?: never;
       header?: never;
@@ -5997,7 +6171,7 @@ export interface operations {
       };
     };
   };
-  update_6: {
+  update_7: {
     parameters: {
       query?: never;
       header?: never;
@@ -6087,7 +6261,7 @@ export interface operations {
       };
     };
   };
-  update_7: {
+  update_8: {
     parameters: {
       query?: never;
       header?: never;
@@ -6378,6 +6552,100 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponsePostLikeResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  clearChecked: {
+    parameters: {
+      query: {
+        expectedVersion: number;
+      };
+      header?: {
+        'Idempotency-Key'?: string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseShoppingListResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  generate: {
+    parameters: {
+      query: {
+        weekStart: string;
+      };
+      header?: {
+        'Idempotency-Key'?: string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseShoppingListResponse'];
         };
       };
       /** @description Bad Request */
@@ -11135,6 +11403,50 @@ export interface operations {
       };
     };
   };
+  get_1: {
+    parameters: {
+      query: {
+        weekStart: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseShoppingListResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   history: {
     parameters: {
       query?: {
@@ -11576,7 +11888,7 @@ export interface operations {
       };
     };
   };
-  get_1: {
+  get_2: {
     parameters: {
       query?: never;
       header?: {

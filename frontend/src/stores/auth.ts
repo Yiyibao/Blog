@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { Capabilities, getCapabilities, type Capability } from '../utils/capabilities';
+import { clearKitchenOfflineQueue } from '../utils/kitchenOfflineQueue';
 
 const memorySession = new Map<string, string>();
 
@@ -170,6 +171,18 @@ export const useAuthStore = defineStore('auth', () => {
     capabilities.value = [];
     for (const key of SESSION_KEYS) {
       removeSessionValue(key);
+    }
+    clearKitchenOfflineQueue();
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      void caches
+        .keys()
+        .then((keys) =>
+          Promise.all(
+            keys
+              .filter((key) => /(?:kitchen|private|admin|notes|ai)/i.test(key))
+              .map((key) => caches.delete(key)),
+          ),
+        );
     }
   }
 

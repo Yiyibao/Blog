@@ -15,7 +15,7 @@ export default defineConfig({
   projects: [
     {
       name: 'offline-chromium',
-      testMatch: /public-site\.spec\.ts/,
+      testMatch: /(?:public-site|pwa-offline)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], channel: process.env.CI ? undefined : 'chrome' },
     },
     {

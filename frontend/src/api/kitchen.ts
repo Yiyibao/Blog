@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/auth';
+import type { KitchenQueuePayload } from '../utils/kitchenOfflineQueue';
 
 /**
  * FD-12：kitchen（今日菜单/打卡）专用 API 实例——站内第三条语义线：
@@ -256,4 +257,94 @@ export function deleteMealLog(id: number) {
 /** "我们做过 N 次"聚合——FD-19 榜单主口径数据源。 */
 export function fetchDishStats() {
   return unwrap<DishCookStat[]>(api.get('/kitchen/dish-stats'));
+}
+
+// ---- M11：持久化周购物清单 ----
+
+export interface ShoppingListItem {
+  id: string;
+  displayName: string;
+  normalizedName: string;
+  quantity: number | null;
+  unit: string;
+  originalQuantity: string;
+  sourceRecipe: string;
+  category: string;
+  checked: boolean;
+  manual: boolean;
+  note: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface ShoppingList {
+  id: string;
+  weekStart: string;
+  note: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  items: ShoppingListItem[];
+}
+
+export interface ShoppingListItemDraft {
+  id?: string;
+  displayName: string;
+  normalizedName: string;
+  quantity?: number | null;
+  unit?: string;
+  originalQuantity?: string;
+  sourceRecipe?: string;
+  category?: string;
+  checked?: boolean;
+  manual?: boolean;
+  note?: string;
+}
+
+export interface ShoppingListUpdate {
+  expectedVersion: number;
+  note: string;
+  items: ShoppingListItemDraft[];
+}
+
+export function fetchShoppingList(weekStart: string) {
+  return unwrap<ShoppingList>(api.get('/kitchen/shopping-lists', { params: { weekStart } }));
+}
+
+export function generateShoppingList(weekStart: string, idempotencyKey: string = crypto.randomUUID()) {
+  return unwrap<ShoppingList>(
+    api.post('/kitchen/shopping-lists/generate', null, {
+      params: { weekStart },
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
+  );
+}
+
+export function updateShoppingList(
+  listId: string,
+  payload: ShoppingListUpdate,
+  idempotencyKey: string = crypto.randomUUID(),
+) {
+  return unwrap<ShoppingList>(
+    api.put(`/kitchen/shopping-lists/${encodeURIComponent(listId)}`, payload, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
+  );
+}
+
+export function clearCheckedShoppingList(
+  listId: string,
+  expectedVersion: number,
+  idempotencyKey: string = crypto.randomUUID(),
+) {
+  return unwrap<ShoppingList>(
+    api.post(`/kitchen/shopping-lists/${encodeURIComponent(listId)}/clear-checked`, null, {
+      params: { expectedVersion },
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
+  );
+}
+
+export async function replayShoppingListMutation(payload: KitchenQueuePayload) {
+  return updateShoppingList(payload.listId, payload.update, payload.idempotencyKey);
 }
