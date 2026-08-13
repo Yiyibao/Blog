@@ -74,6 +74,7 @@ const loadError = ref('');
 const selectedNodeId = ref<string | null>(null);
 const hoveredNodeId = ref<string | null>(null);
 const activeTypeFilter = ref<string>('');
+const viewMode = ref<'canvas' | 'list'>('canvas');
 const TREE_TYPES = new Set(['POST', 'NOTE', 'DISH']);
 
 // Subgraph & Local Mode composable
@@ -124,6 +125,25 @@ const visibleNodesList = computed(() => {
 const visibleEdgesList = computed(() => {
   const visibleIds = new Set(visibleNodesList.value.map((n) => n.id));
   return gardenLayout.value.edgesList.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
+});
+
+const accessibleEdges = computed(() => {
+  const accessibleNodes = rawNodes.value.filter(
+    (node) =>
+      !activeTypeFilter.value ||
+      node.type === activeTypeFilter.value ||
+      node.kind === 'ROOT' ||
+      node.kind === 'GROUP',
+  );
+  const visibleIds = new Set(accessibleNodes.map((node) => node.id));
+  const labels = new Map(accessibleNodes.map((node) => [node.id, node.label]));
+  return rawEdges.value
+    .filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+    .map((edge) => ({
+      ...edge,
+      sourceLabel: labels.get(edge.source) || edge.source,
+      targetLabel: labels.get(edge.target) || edge.target,
+    }));
 });
 
 // Neighbor highlighting calculation
@@ -311,6 +331,7 @@ function exportGraphJson() {
   downloadGraphFile(
     JSON.stringify(
       {
+        schemaVersion: '2.0',
         exportedAt: new Date().toISOString(),
         filter: activeTypeFilter.value || null,
         nodes: visibleNodesList.value.map(({ x: _x, y: _y, ...node }) => node),
@@ -331,6 +352,9 @@ function exportGraphImage() {
   clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   clone.setAttribute('width', String(BASE_W));
   clone.setAttribute('height', String(BASE_H));
+  const metadata = document.createElementNS('http://www.w3.org/2000/svg', 'metadata');
+  metadata.textContent = JSON.stringify({ schemaVersion: '2.0', exportedAt: new Date().toISOString() });
+  clone.insertBefore(metadata, clone.firstChild);
   downloadGraphFile(new XMLSerializer().serializeToString(clone), 'image/svg+xml;charset=utf-8', 'svg');
 }
 
@@ -402,6 +426,15 @@ onUnmounted(() => {
         <h2>全站知识关联图谱</h2>
       </div>
 
+      <button
+        type="button"
+        class="graph-view-toggle"
+        :aria-pressed="viewMode === 'list'"
+        @click="viewMode = viewMode === 'canvas' ? 'list' : 'canvas'"
+      >
+        {{ viewMode === 'canvas' ? '切换到关系列表' : '切换到图形视图' }}
+      </button>
+
       <GraphToolbar
         :is-fullscreen="isFullscreen"
         :local-mode="localMode"
@@ -445,25 +478,71 @@ onUnmounted(() => {
 
       <!-- Center Main Canvas Stage -->
       <div class="canvas-stage glass-card">
+        <div v-if="viewMode === 'list'" class="graph-list-view" role="region" aria-label="知识图谱关系列表">
+          <div v-if="loading" class="stage-state" role="status">正在加载知识图谱</div>
+          <div v-else-if="loadError" class="stage-state" role="alert">
+            <p>{{ loadError }}</p>
+            <button class="button primary" type="button" @click="loadGraphData">重试</button>
+          </div>
+          <div v-else-if="visibleNodesList.length === 0" class="stage-state">
+            <p>暂无符合条件的关联节点。</p>
+          </div>
+          <template v-else>
+            <h3>节点列表</h3>
+            <p class="graph-list-help">这是图形视图的无障碍等价内容，适合键盘、读屏和窄屏浏览。</p>
+            <div class="graph-table-wrap">
+              <table class="graph-accessible-table">
+                <caption class="sr-only">
+                  知识图谱节点
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">名称</th>
+                    <th scope="col">类型</th>
+                    <th scope="col">连接数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="node in visibleNodesList" :key="node.id">
+                    <th scope="row">{{ node.label }}</th>
+                    <td>{{ node.type }}</td>
+                    <td>{{ node.degree ?? 0 }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <h3>关系列表</h3>
+            <ul class="graph-relation-list" aria-label="知识图谱关系">
+              <li v-for="edge in accessibleEdges" :key="`${edge.source}:${edge.target}`">
+                <span>{{ edge.sourceLabel }}</span
+                ><span aria-hidden="true"> → </span><span>{{ edge.targetLabel }}</span>
+              </li>
+              <li v-if="accessibleEdges.length === 0">暂无关系</li>
+            </ul>
+          </template>
+        </div>
         <!-- Skeleton Loading State -->
-        <div v-if="loading" class="stage-state stage-loading" role="status">
+        <div v-if="viewMode === 'canvas' && loading" class="stage-state stage-loading" role="status">
           <div class="skeleton-flower">🌸</div>
           <span>正在生根发芽，载入全站知识图谱…</span>
         </div>
 
         <!-- Error State -->
-        <div v-else-if="loadError" class="stage-state stage-error" role="alert">
+        <div v-else-if="viewMode === 'canvas' && loadError" class="stage-state stage-error" role="alert">
           <p>{{ loadError }}</p>
           <button class="button primary" type="button" @click="loadGraphData">重试</button>
         </div>
 
         <!-- Empty State -->
-        <div v-else-if="visibleNodesList.length === 0" class="stage-state stage-empty">
+        <div
+          v-else-if="viewMode === 'canvas' && visibleNodesList.length === 0"
+          class="stage-state stage-empty"
+        >
           <p>暂无符合条件的关联节点。</p>
         </div>
 
         <!-- Interactive SVG Canvas -->
-        <template v-else>
+        <template v-else-if="viewMode === 'canvas'">
           <GraphCanvas
             :nodes="visibleNodesList"
             :edges="visibleEdgesList"
@@ -565,6 +644,16 @@ onUnmounted(() => {
   color: var(--ink, #1e293b);
 }
 
+.graph-view-toggle {
+  margin-left: auto;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+  border-radius: 9px;
+  padding: 8px 12px;
+  background: var(--surface, #fff);
+  color: var(--ink, #1e293b);
+  cursor: pointer;
+}
+
 .status-notice {
   display: flex;
   align-items: center;
@@ -612,6 +701,60 @@ onUnmounted(() => {
   border: 1px solid var(--line, rgba(0, 0, 0, 0.06));
   overflow: hidden;
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.graph-list-view {
+  min-height: 520px;
+  padding: 24px;
+  overflow: auto;
+  color: var(--ink, #1e293b);
+}
+.graph-list-view h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.graph-list-view h3:not(:first-child) {
+  margin-top: 28px;
+}
+.graph-list-help {
+  margin: 0 0 16px;
+  color: var(--muted, #64748b);
+  font-size: 13px;
+}
+.graph-table-wrap {
+  overflow-x: auto;
+}
+.graph-accessible-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.graph-accessible-table th,
+.graph-accessible-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line, rgba(0, 0, 0, 0.08));
+  text-align: left;
+}
+.graph-relation-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.graph-relation-list li {
+  line-height: 1.45;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .stage-state {

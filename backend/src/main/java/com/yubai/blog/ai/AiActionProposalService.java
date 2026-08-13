@@ -27,6 +27,7 @@ public class AiActionProposalService {
     private final AiTaskService taskService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final com.yubai.blog.graph.GraphRelationService graphRelationService;
     private final SecureRandom random = new SecureRandom();
 
     public AiActionProposalService(
@@ -34,10 +35,21 @@ public class AiActionProposalService {
             AiTaskService taskService,
             ObjectMapper objectMapper,
             Clock clock) {
+        this(repository, taskService, objectMapper, clock, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiActionProposalService(
+            AiActionProposalRepository repository,
+            AiTaskService taskService,
+            ObjectMapper objectMapper,
+            Clock clock,
+            com.yubai.blog.graph.GraphRelationService graphRelationService) {
         this.repository = repository;
         this.taskService = taskService;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.graphRelationService = graphRelationService;
     }
 
     @Transactional
@@ -87,8 +99,31 @@ public class AiActionProposalService {
             throw new AiServiceException(HttpStatus.CONFLICT, "proposal target version is stale");
         }
         requireNonce(entity, nonce);
+        executeApprovedGraphRelation(entity, owner);
         entity.approve(owner, clock.instant());
         return toResponse(entity, null);
+    }
+
+    private void executeApprovedGraphRelation(AiActionProposalEntity entity, String owner) {
+        if (!"graph.relation.create".equals(entity.getActionType())) return;
+        if (graphRelationService == null) {
+            throw new AiServiceException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "graph relation approval is unavailable");
+        }
+        try {
+            var arguments = objectMapper.readTree(entity.getArguments());
+            graphRelationService.create(
+                    new com.yubai.blog.graph.GraphRelationService.CreateRequest(
+                            arguments.path("sourceId").asText(),
+                            arguments.path("targetId").asText(),
+                            arguments.path("relationType").asText()),
+                    owner,
+                    com.yubai.blog.graph.GraphRelationOrigin.AI_APPROVED);
+        } catch (com.yubai.blog.admin.ai.AiServiceException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new AiServiceException(HttpStatus.CONFLICT, "graph relation proposal is invalid");
+        }
     }
 
     @Transactional

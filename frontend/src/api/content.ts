@@ -234,6 +234,22 @@ export function fetchGraphSubgraph(center: string, depth = 2) {
   );
 }
 
+export interface GraphBacklink {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  relationType: string;
+  origin: 'MANUAL' | 'SYSTEM' | 'AI_APPROVED' | string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export function fetchGraphBacklinks(center: string) {
+  return unwrap<GraphBacklink[]>(api.get(`/graph/nodes/${encodeURIComponent(center)}/backlinks`));
+}
+
 export interface RemoteMusicTrack {
   id: number | string;
   title: string;

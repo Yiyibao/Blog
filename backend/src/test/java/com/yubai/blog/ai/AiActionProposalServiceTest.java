@@ -3,6 +3,7 @@ package com.yubai.blog.ai;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,6 +25,7 @@ class AiActionProposalServiceTest {
 
     @Mock private AiActionProposalRepository repository;
     @Mock private AiTaskService taskService;
+    @Mock private com.yubai.blog.graph.GraphRelationService graphRelationService;
 
     private AiActionProposalService service;
 
@@ -124,5 +126,49 @@ class AiActionProposalServiceTest {
                                         new AiActionProposalService.CreateRequest(
                                                 null, "update_post", null, null, null, "[]", null)))
                 .isInstanceOf(AiServiceException.class);
+    }
+
+    @Test
+    void graphRelationApprovalDelegatesToDomainServiceBeforeChangingProposalState() {
+        var saved = new AtomicReference<AiActionProposalEntity>();
+        when(repository.save(any()))
+                .thenAnswer(
+                        invocation -> {
+                            var entity = invocation.getArgument(0, AiActionProposalEntity.class);
+                            saved.set(entity);
+                            return entity;
+                        });
+        var graphAwareService =
+                new AiActionProposalService(
+                        repository,
+                        taskService,
+                        new ObjectMapper(),
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        graphRelationService);
+        var created =
+                graphAwareService.create(
+                        "alice",
+                        new AiActionProposalService.CreateRequest(
+                                null,
+                                "graph.relation.create",
+                                "graph_relation",
+                                null,
+                                null,
+                                "{\"sourceId\":\"p-1\",\"targetId\":\"p-2\",\"relationType\":\"related_to\"}",
+                                null));
+        var entity = saved.get();
+        when(repository.findByIdAndOwner(entity.getId(), "alice")).thenReturn(Optional.of(entity));
+
+        var approved =
+                graphAwareService.approve(
+                        entity.getId(), "alice", created.proposal().nonce(), null);
+
+        assertThat(approved.status()).isEqualTo(AiActionProposalStatus.APPROVED);
+        verify(graphRelationService)
+                .create(
+                        any(com.yubai.blog.graph.GraphRelationService.CreateRequest.class),
+                        org.mockito.ArgumentMatchers.eq("alice"),
+                        org.mockito.ArgumentMatchers.eq(
+                                com.yubai.blog.graph.GraphRelationOrigin.AI_APPROVED));
     }
 }

@@ -141,6 +141,7 @@ public class AiToolOrchestrator {
             case "generate_document" -> generateDocument(taskId, owner, parsed, call);
             case "generate_image" -> generateImage(taskId, owner, parsed, call);
             case "propose_action" -> proposeAction(taskId, owner, parsed);
+            case "propose_graph_relation" -> proposeGraphRelation(taskId, owner, parsed);
             case "search_content" -> searchContent(owner, parsed);
             default -> throw badRequest("Tool is not allowed: " + call.name());
         };
@@ -230,6 +231,46 @@ public class AiToolOrchestrator {
                         + "\",\"actionType\":\""
                         + safeJson(item.actionType())
                         + "\"}");
+    }
+
+    private ToolResult proposeGraphRelation(UUID taskId, String owner, JsonNode args) {
+        var sourceId = text(args, "sourceId", "");
+        var targetId = text(args, "targetId", "");
+        var relationType = text(args, "relationType", "");
+        if (sourceId.isBlank() || targetId.isBlank() || relationType.isBlank()) {
+            throw badRequest(
+                    "Graph relation proposal requires sourceId, targetId, and relationType");
+        }
+        try {
+            var arguments =
+                    objectMapper.writeValueAsString(
+                            java.util.Map.of(
+                                    "sourceId", sourceId.trim(),
+                                    "targetId", targetId.trim(),
+                                    "relationType", relationType.trim().toLowerCase(Locale.ROOT)));
+            var proposal =
+                    proposalService
+                            .create(
+                                    owner,
+                                    new AiActionProposalService.CreateRequest(
+                                            taskId,
+                                            "graph.relation.create",
+                                            "graph_relation",
+                                            null,
+                                            null,
+                                            arguments,
+                                            null))
+                            .proposal();
+            return new ToolResult(
+                    null,
+                    "proposal:" + proposal.id(),
+                    "已生成关系候选，等待作者审批",
+                    "{\"status\":\"PROPOSED\",\"proposalId\":\""
+                            + proposal.id()
+                            + "\",\"actionType\":\"graph.relation.create\"}");
+        } catch (Exception exception) {
+            throw badRequest("Graph relation proposal could not be created");
+        }
     }
 
     private ToolResult generateDocument(UUID taskId, String owner, JsonNode args, AiToolCall call) {

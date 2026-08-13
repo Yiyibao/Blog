@@ -29,6 +29,7 @@ const activeItem = computed(() => {
   if (path.startsWith('/admin/series')) return 'series';
   if (path.startsWith('/admin/attachments')) return 'attachments';
   if (path.startsWith('/admin/media')) return 'media';
+  if (path.startsWith('/admin/graph')) return 'graph';
   return '';
 });
 
@@ -85,6 +86,9 @@ function logout() {
       </RouterLink>
       <RouterLink :class="{ active: activeItem === 'media' }" to="/admin/media">
         <i>▧</i><span>统一媒体库</span>
+      </RouterLink>
+      <RouterLink :class="{ active: activeItem === 'graph' }" to="/admin/graph">
+        <i>⌘</i><span>知识图谱关系</span>
       </RouterLink>
     </nav>
     <footer>

@@ -715,7 +715,22 @@ describe('KnowledgeGraph V2 Suite', () => {
     ]);
     expect(linkClick).toHaveBeenCalledTimes(2);
     expect(revokeObjectUrl).toHaveBeenCalledTimes(2);
+    expect(await blobs[0].text()).toContain('"schemaVersion": "2.0"');
     vi.unstubAllGlobals();
+  });
+
+  it('provides an equivalent accessible list view for the graph canvas', async () => {
+    const { wrapper } = await mountGraph();
+    await flushPromises();
+
+    const toggle = wrapper.find('.graph-view-toggle');
+    expect(toggle.attributes('aria-pressed')).toBe('false');
+    await toggle.trigger('click');
+
+    expect(wrapper.find('.graph-list-view').exists()).toBe(true);
+    expect(wrapper.find('.graph-accessible-table').exists()).toBe(true);
+    expect(wrapper.find('.graph-relation-list').text()).toContain(sampleNodes[0]!.label);
+    expect(toggle.attributes('aria-pressed')).toBe('true');
   });
 
   it('garden layout is stable and always exposes exactly three primary branches', async () => {

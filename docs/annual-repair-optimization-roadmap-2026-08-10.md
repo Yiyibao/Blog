@@ -57,6 +57,7 @@ M2 把上述能力接入文章、笔记、菜谱、媒体、搜索和后台，�
 | M2–M7 | **完成；Production GA 仍关闭** | 全站 Agent/领域入口、知识与可靠性、公开质量、数据与发布安全、任务/模块化、全栈 E2E/安全供应链/SLO checkpoints 已落库并分别完成验证；M7 的 fake-provider 全栈 Chromium、Firefox、移动端和安全门已通过 | **M8 可启动：YES** |
 | M8 | **完成；未自动发布/未部署** | 创作预览、统一媒体库、发布质量门、文章乐观锁差异、AI 候选提案与审批保护完成；V57–V59、`docs/checkpoints/m8-authoring-media-2026-08-13.md`，后端/前端/迁移 manifest 验证通过 | **M9 可启动：YES**；Production GA 仍为 **NO** |
 | M9 | **完成；未自动发布/未部署** | categories 路由契约、URL 可复现 typed search、中文规范化与零结果评测、GlobalSearch/SearchPage/AI 只读工具统一查询语义、公开/登录笔记隔离、匿名哈希/零结果/延迟/点击指标完成；V60、`docs/checkpoints/m9-search-retrieval-2026-08-13.md`，OpenAPI/前端类型同步并通过集成回归 | **M10 可启动：YES**；Production GA 仍为 **NO** |
+| M10 | **完成；未自动发布/未部署** | V61 显式关系与审计、反向链接、后台 CRUD/导入预览、AI 关系 proposal/领域服务审批、列表等价视图、schemaVersion 2.0 导出、1,000 节点确定性/性能基准完成；`docs/checkpoints/m10-graph-relations-2026-08-13.md`，OpenAPI/前端类型与迁移 manifest 同步并通过回归 | **M11 可启动：YES**；Production GA 仍为 **NO** |
 
 M1 的完整证据、文件范围、风险和未执行项见
 [`docs/checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md`](checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md)。2026-08-10 发布跟进已完成 commit、push、迁移前备份、V51→V53 生产迁移、原子部署和线上冒烟；四个后端开关与前端 Workspace 开关继续关闭，未开放 Production GA，未执行真实模型调用。

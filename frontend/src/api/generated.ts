@@ -180,14 +180,14 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/admin/dishes/{id}': {
+  '/api/v1/admin/graph/relations/{id}': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get: operations['findOne_3'];
+    get?: never;
     put: operations['update_3'];
     post?: never;
     delete: operations['delete_3'];
@@ -196,14 +196,14 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/admin/dish-categories/{id}': {
+  '/api/v1/admin/dishes/{id}': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    get: operations['findOne_3'];
     put: operations['update_4'];
     post?: never;
     delete: operations['delete_4'];
@@ -212,7 +212,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/admin/categories/{id}': {
+  '/api/v1/admin/dish-categories/{id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -228,7 +228,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/admin/ai/providers/{id}': {
+  '/api/v1/admin/categories/{id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -239,6 +239,22 @@ export interface paths {
     put: operations['update_6'];
     post?: never;
     delete: operations['delete_6'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/ai/providers/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations['update_7'];
+    post?: never;
+    delete: operations['delete_7'];
     options?: never;
     head?: never;
     patch?: never;
@@ -1028,6 +1044,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/graph/relations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['list_2'];
+    put?: never;
+    post: operations['create_4'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/graph/relations/import-preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations['importPreview'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/dishes': {
     parameters: {
       query?: never;
@@ -1037,7 +1085,7 @@ export interface paths {
     };
     get: operations['findAll_2'];
     put?: never;
-    post: operations['create_4'];
+    post: operations['create_5'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1085,7 +1133,7 @@ export interface paths {
     };
     get: operations['findAll_3'];
     put?: never;
-    post: operations['create_5'];
+    post: operations['create_6'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1133,7 +1181,7 @@ export interface paths {
     };
     get: operations['findAll_4'];
     put?: never;
-    post: operations['create_6'];
+    post: operations['create_7'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1147,9 +1195,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_2'];
+    get: operations['list_3'];
     put?: never;
-    post: operations['create_7'];
+    post: operations['create_8'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1227,9 +1275,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_3'];
+    get: operations['list_4'];
     put?: never;
-    post: operations['create_8'];
+    post: operations['create_9'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1355,7 +1403,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_4'];
+    get: operations['list_5'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1387,7 +1435,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_5'];
+    get: operations['list_6'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1628,6 +1676,22 @@ export interface paths {
       cookie?: never;
     };
     get: operations['getSubgraph'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/graph/nodes/{center}/backlinks': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['getBacklinks'];
     put?: never;
     post?: never;
     delete?: never;
@@ -2107,7 +2171,23 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_6'];
+    get: operations['list_7'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/graph/relations/{id}/audit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['audit_1'];
     put?: never;
     post?: never;
     delete?: never;
@@ -2171,7 +2251,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get: operations['list_7'];
+    get: operations['list_8'];
     put?: never;
     post?: never;
     delete?: never;
@@ -2350,7 +2430,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete: operations['delete_7'];
+    delete: operations['delete_8'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2382,7 +2462,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete: operations['delete_8'];
+    delete: operations['delete_9'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2398,7 +2478,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete: operations['delete_9'];
+    delete: operations['delete_10'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2430,7 +2510,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete: operations['delete_10'];
+    delete: operations['delete_11'];
     options?: never;
     head?: never;
     patch?: never;
@@ -2761,6 +2841,35 @@ export interface components {
       data?: components['schemas']['AdminQuoteResponse'];
       /** Format: date-time */
       timestamp?: string;
+    };
+    RelationRequest: {
+      sourceId: string;
+      targetId: string;
+      relationType: string;
+    };
+    ApiResponseResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['Response'];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    Response: {
+      /** Format: uuid */
+      id?: string;
+      sourceId?: string;
+      targetId?: string;
+      relationType?: string;
+      /** @enum {string} */
+      origin?: 'MANUAL' | 'SYSTEM' | 'AI_APPROVED';
+      createdBy?: string;
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: date-time */
+      updatedAt?: string;
+      /** Format: int64 */
+      version?: number;
     };
     DishRequest: {
       name: string;
@@ -3300,44 +3409,6 @@ export interface components {
       /** Format: int32 */
       ttlMinutes?: number;
     };
-    ApiResponseResponse: {
-      /** Format: int32 */
-      code?: number;
-      message?: string;
-      data?: components['schemas']['Response'];
-      /** Format: date-time */
-      timestamp?: string;
-    };
-    Response: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      taskId?: string;
-      actionType?: string;
-      targetType?: string;
-      targetId?: string;
-      /** Format: int64 */
-      targetVersion?: number;
-      arguments?: string;
-      /** @enum {string} */
-      status?: 'PROPOSED' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CONFLICTED';
-      /** Format: date-time */
-      expiresAt?: string;
-      /** Format: int64 */
-      version?: number;
-      /** Format: date-time */
-      createdAt?: string;
-      /** Format: date-time */
-      updatedAt?: string;
-      /** Format: date-time */
-      approvedAt?: string;
-      approvedBy?: string;
-      /** Format: date-time */
-      rejectedAt?: string;
-      rejectedBy?: string;
-      rejectedReason?: string;
-      nonce?: string;
-    };
     ProposalRejectionRequest: {
       nonce: string;
       reason?: string;
@@ -3637,6 +3708,17 @@ export interface components {
       url?: string;
       /** Format: date-time */
       createdAt?: string;
+    };
+    ImportPreviewRequest: {
+      payload: string;
+    };
+    ApiResponseImportPreview: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['ImportPreview'];
+      /** Format: date-time */
+      timestamp?: string;
     };
     DishImportCommitRequest: {
       category: string;
@@ -4136,6 +4218,14 @@ export interface components {
       nodes?: components['schemas']['GraphNode'][];
       edges?: components['schemas']['GraphEdge'][];
     };
+    ApiResponseListResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['Response'][];
+      /** Format: date-time */
+      timestamp?: string;
+    };
     ApiResponsePageResponseDishResponse: {
       /** Format: int32 */
       code?: number;
@@ -4337,14 +4427,6 @@ export interface components {
       /** Format: date-time */
       timestamp?: string;
     };
-    ApiResponseListResponse: {
-      /** Format: int32 */
-      code?: number;
-      message?: string;
-      data?: components['schemas']['Response'][];
-      /** Format: date-time */
-      timestamp?: string;
-    };
     ApiResponseListAiProjectResponse: {
       /** Format: int32 */
       code?: number;
@@ -4510,6 +4592,32 @@ export interface components {
       createdAt?: string;
       storageKey?: string;
       url?: string;
+    };
+    ApiResponseListAuditResponse: {
+      /** Format: int32 */
+      code?: number;
+      message?: string;
+      data?: components['schemas']['AuditResponse'][];
+      /** Format: date-time */
+      timestamp?: string;
+    };
+    AuditResponse: {
+      /** Format: uuid */
+      id?: string;
+      /** Format: uuid */
+      relationId?: string;
+      sourceId?: string;
+      targetId?: string;
+      relationType?: string;
+      /** @enum {string} */
+      origin?: 'MANUAL' | 'SYSTEM' | 'AI_APPROVED';
+      /** @enum {string} */
+      action?: 'CREATE' | 'UPDATE' | 'DELETE';
+      actor?: string;
+      /** Format: int64 */
+      relationVersion?: number;
+      /** Format: date-time */
+      createdAt?: string;
     };
     ApiResponseListAdminDishCategory: {
       /** Format: int32 */
@@ -5571,6 +5679,100 @@ export interface operations {
       };
     };
   };
+  update_3: {
+    parameters: {
+      query: {
+        version: number;
+      };
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RelationRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  delete_3: {
+    parameters: {
+      query: {
+        version: number;
+      };
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   findOne_3: {
     parameters: {
       query?: never;
@@ -5615,7 +5817,7 @@ export interface operations {
       };
     };
   };
-  update_3: {
+  update_4: {
     parameters: {
       query?: never;
       header?: never;
@@ -5637,96 +5839,6 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseDishResponse'];
-        };
-      };
-      /** @description Bad Request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          '*/*': {
-            [key: string]: unknown;
-          };
-        };
-      };
-      /** @description Conflict */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          '*/*': {
-            [key: string]: unknown;
-          };
-        };
-      };
-    };
-  };
-  delete_3: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description No Content */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Bad Request */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          '*/*': {
-            [key: string]: unknown;
-          };
-        };
-      };
-      /** @description Conflict */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          '*/*': {
-            [key: string]: unknown;
-          };
-        };
-      };
-    };
-  };
-  update_4: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        id: number;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DishCategoryRequest'];
-      };
-    };
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          '*/*': components['schemas']['ApiResponseAdminDishCategory'];
         };
       };
       /** @description Bad Request */
@@ -5806,7 +5918,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        'application/json': components['schemas']['PostCategoryRequest'];
+        'application/json': components['schemas']['DishCategoryRequest'];
       };
     };
     responses: {
@@ -5816,7 +5928,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          '*/*': components['schemas']['ApiResponseAdminPostCategory'];
+          '*/*': components['schemas']['ApiResponseAdminDishCategory'];
         };
       };
       /** @description Bad Request */
@@ -5896,6 +6008,96 @@ export interface operations {
     };
     requestBody: {
       content: {
+        'application/json': components['schemas']['PostCategoryRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseAdminPostCategory'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  delete_6: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  update_7: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
         'application/json': components['schemas']['AiProviderRequest'];
       };
     };
@@ -5933,7 +6135,7 @@ export interface operations {
       };
     };
   };
-  delete_6: {
+  delete_7: {
     parameters: {
       query?: never;
       header?: never;
@@ -8913,6 +9115,143 @@ export interface operations {
       };
     };
   };
+  list_2: {
+    parameters: {
+      query?: {
+        sourceId?: string;
+        targetId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  create_4: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RelationRequest'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  importPreview: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ImportPreviewRequest'];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseImportPreview'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
   findAll_2: {
     parameters: {
       query?: {
@@ -8958,7 +9297,7 @@ export interface operations {
       };
     };
   };
-  create_4: {
+  create_5: {
     parameters: {
       query?: never;
       header?: never;
@@ -9143,7 +9482,7 @@ export interface operations {
       };
     };
   };
-  create_5: {
+  create_6: {
     parameters: {
       query?: never;
       header?: never;
@@ -9323,7 +9662,7 @@ export interface operations {
       };
     };
   };
-  create_6: {
+  create_7: {
     parameters: {
       query?: never;
       header?: never;
@@ -9369,7 +9708,7 @@ export interface operations {
       };
     };
   };
-  list_2: {
+  list_3: {
     parameters: {
       query?: never;
       header?: never;
@@ -9411,7 +9750,7 @@ export interface operations {
       };
     };
   };
-  create_7: {
+  create_8: {
     parameters: {
       query?: never;
       header?: never;
@@ -9644,7 +9983,7 @@ export interface operations {
       };
     };
   };
-  list_3: {
+  list_4: {
     parameters: {
       query?: never;
       header?: never;
@@ -9686,7 +10025,7 @@ export interface operations {
       };
     };
   };
-  create_8: {
+  create_9: {
     parameters: {
       query?: never;
       header?: never;
@@ -10222,7 +10561,7 @@ export interface operations {
       };
     };
   };
-  list_4: {
+  list_5: {
     parameters: {
       query?: never;
       header?: never;
@@ -10311,7 +10650,7 @@ export interface operations {
       };
     };
   };
-  list_5: {
+  list_6: {
     parameters: {
       query?: never;
       header?: never;
@@ -10989,6 +11328,50 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseGraphResponse'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  getBacklinks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        center: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListResponse'];
         };
       };
       /** @description Bad Request */
@@ -12389,7 +12772,7 @@ export interface operations {
       };
     };
   };
-  list_6: {
+  list_7: {
     parameters: {
       query?: {
         sourceType?: string;
@@ -12408,6 +12791,50 @@ export interface operations {
         };
         content: {
           '*/*': components['schemas']['ApiResponseListMediaItem'];
+        };
+      };
+      /** @description Bad Request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': {
+            [key: string]: unknown;
+          };
+        };
+      };
+    };
+  };
+  audit_1: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          '*/*': components['schemas']['ApiResponseListAuditResponse'];
         };
       };
       /** @description Bad Request */
@@ -12566,7 +12993,7 @@ export interface operations {
       };
     };
   };
-  list_7: {
+  list_8: {
     parameters: {
       query?: never;
       header?: never;
@@ -13041,7 +13468,7 @@ export interface operations {
       };
     };
   };
-  delete_7: {
+  delete_8: {
     parameters: {
       query?: never;
       header?: never;
@@ -13126,7 +13553,7 @@ export interface operations {
       };
     };
   };
-  delete_8: {
+  delete_9: {
     parameters: {
       query?: never;
       header?: never;
@@ -13168,7 +13595,7 @@ export interface operations {
       };
     };
   };
-  delete_9: {
+  delete_10: {
     parameters: {
       query?: never;
       header?: never;
@@ -13256,7 +13683,7 @@ export interface operations {
       };
     };
   };
-  delete_10: {
+  delete_11: {
     parameters: {
       query?: never;
       header?: never;

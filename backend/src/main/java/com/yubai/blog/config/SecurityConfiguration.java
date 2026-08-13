@@ -119,6 +119,8 @@ public class SecurityConfiguration {
                                         .hasAuthority(Permissions.ATTACHMENTS_MANAGE)
                                         .requestMatchers("/api/v1/admin/library/**")
                                         .hasAuthority(Permissions.LIBRARY_MANAGE)
+                                        .requestMatchers("/api/v1/admin/graph/**")
+                                        .hasAuthority(Permissions.CONTENT_MANAGE)
                                         .requestMatchers("/api/v1/admin/**")
                                         .hasAuthority(Permissions.CONTENT_MANAGE)
                                         .requestMatchers("/api/**")

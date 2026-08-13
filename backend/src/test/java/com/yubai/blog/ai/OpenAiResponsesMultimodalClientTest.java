@@ -180,7 +180,11 @@ class OpenAiResponsesMultimodalClientTest {
                             assertThat(call.arguments()).contains("PDF");
                         });
         assertThat(captured.get().get("tools").toString())
-                .contains("generate_document", "generate_image", "search_content");
+                .contains(
+                        "generate_document",
+                        "generate_image",
+                        "search_content",
+                        "propose_graph_relation");
         assertThat(captured.get().get("store").asBoolean()).isFalse();
     }
 }

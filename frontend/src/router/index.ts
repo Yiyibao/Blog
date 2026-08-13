@@ -116,6 +116,12 @@ const router = createRouter({
       meta: { requiresAuth: true, capability: Capabilities.LIBRARY_MANAGE },
     },
     {
+      path: '/admin/graph',
+      name: 'admin-graph',
+      component: () => import('../pages/AdminGraphPage.vue'),
+      meta: { requiresAuth: true, capability: Capabilities.CONTENT_MANAGE },
+    },
+    {
       path: '/series',
       name: 'series',
       component: () => import('../pages/SeriesPage.vue'),
