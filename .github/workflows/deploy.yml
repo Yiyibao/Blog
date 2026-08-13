@@ -118,17 +118,17 @@ jobs:
     # Approval gate: Environment "production" with Required reviewers
     environment: production
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: dist/frontend
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: backend-jar
           path: dist/backend
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: deployment-safety
           path: dist/deploy
