@@ -39,7 +39,7 @@
 - `storage-inventory-<STAMP>.sha256`：shared storage 中每个文件的逐项 SHA-256；
 - `SHA256SUMS-<STAMP>`：整个批次的提交标记；COS 最后上传该文件。
 
-`scripts/restore-and-migrate-drill.ps1` 可恢复数据库与 storage archive，逐文件核对 inventory，并验证 V62、附件回收站、统一媒体元数据、AI 提案、AI budget、AI lifecycle 表、可恢复菜谱任务、知识索引和购物清单快照元数据。数据库 metadata 与 shared storage 必须作为同一批次恢复，不能只恢复其中一侧。
+`scripts/restore-and-migrate-drill.ps1` 可恢复数据库与 storage archive，逐文件核对 inventory，并验证 V62、附件回收站、统一媒体元数据、AI 提案、AI budget、AI lifecycle 表、可恢复菜谱任务、基于 PostgreSQL/pg_trgm 的内容搜索结构和购物清单快照元数据。当前没有独立 embedding/knowledge-index 表；数据库 metadata 与 shared storage 必须作为同一批次恢复，不能只恢复其中一侧。
 
 ## 发布前置
 

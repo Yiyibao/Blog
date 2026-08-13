@@ -81,7 +81,7 @@ function save(memory: AiMemory) {
         清除摘要
       </button>
     </div>
-    <form class="ai-memory-form" @submit.prevent="create(null)">
+    <form class="ai-memory-form" aria-label="创建记忆" @submit.prevent="create(null)">
       <label class="sr-only" for="ai-memory-content">新增长期记忆</label>
       <input
         id="ai-memory-content"
@@ -99,13 +99,19 @@ function save(memory: AiMemory) {
         </select>
       </label>
       <div class="ai-memory-form__actions">
-        <button class="ai-button ai-button--quiet" type="submit" :disabled="disabled || !content.trim()">
+        <button
+          class="ai-button ai-button--quiet"
+          type="submit"
+          aria-label="直接记住"
+          :disabled="disabled || !content.trim()"
+        >
           直接记住
         </button>
         <button
           v-if="currentTaskId"
           class="ai-button ai-button--quiet"
           type="button"
+          aria-label="保存为待确认提案"
           :disabled="disabled || !content.trim()"
           @click="create(currentTaskId)"
         >
@@ -115,7 +121,12 @@ function save(memory: AiMemory) {
     </form>
     <ul v-if="memories.length" class="ai-memory-list">
       <li v-for="memory in memories" :key="memory.id">
-        <form v-if="editingId === memory.id" class="ai-inline-form" @submit.prevent="save(memory)">
+        <form
+          v-if="editingId === memory.id"
+          class="ai-inline-form"
+          :aria-label="`编辑记忆 ${memory.content ?? ''}`"
+          @submit.prevent="save(memory)"
+        >
           <input v-model="editingContent" maxlength="4000" :disabled="disabled" aria-label="编辑记忆内容" />
           <button type="submit" class="ai-link-button" :disabled="!editingContent.trim()">保存</button>
         </form>
@@ -126,6 +137,7 @@ function save(memory: AiMemory) {
             v-if="memory.status === 'PROPOSED'"
             type="button"
             class="ai-link-button"
+            :aria-label="`确认记忆 ${memory.content ?? ''}`"
             @click="emit('confirm', memory)"
           >
             确认
@@ -134,6 +146,7 @@ function save(memory: AiMemory) {
             v-if="memory.status === 'PROPOSED'"
             type="button"
             class="ai-link-button ai-link-button--danger"
+            :aria-label="`拒绝记忆 ${memory.content ?? ''}`"
             @click="emit('reject', memory)"
           >
             拒绝
@@ -142,6 +155,7 @@ function save(memory: AiMemory) {
             v-if="memory.status === 'ACTIVE' || memory.status === 'DISABLED'"
             type="button"
             class="ai-link-button"
+            :aria-label="`${memory.status === 'ACTIVE' ? '禁用' : '启用'}记忆 ${memory.content ?? ''}`"
             @click="emit('toggle', memory)"
           >
             {{ memory.status === 'ACTIVE' ? '禁用' : '启用' }}
@@ -150,11 +164,17 @@ function save(memory: AiMemory) {
             v-if="memory.status !== 'REJECTED'"
             type="button"
             class="ai-link-button"
+            :aria-label="`编辑记忆 ${memory.content ?? ''}`"
             @click="startEditing(memory)"
           >
             编辑
           </button>
-          <button type="button" class="ai-link-button ai-link-button--danger" @click="emit('forget', memory)">
+          <button
+            type="button"
+            class="ai-link-button ai-link-button--danger"
+            :aria-label="`忘记记忆 ${memory.content ?? ''}`"
+            @click="emit('forget', memory)"
+          >
             忘记
           </button>
         </div>

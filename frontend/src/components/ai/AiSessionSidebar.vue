@@ -94,16 +94,25 @@ function sessionLabel(session: AiSession) {
               type="button"
               class="ai-project-new-task"
               title="在此项目中新建任务"
+              :aria-label="`在项目 ${project.title} 中新建任务`"
               :disabled="project.status !== 'ACTIVE'"
               @click.stop="emit('newProjectTask', project)"
             >
               ＋
             </button>
             <div class="ai-project-actions">
-              <button type="button" title="重命名项目" @click="emit('renameProject', project)">···</button>
+              <button
+                type="button"
+                title="重命名项目"
+                :aria-label="`重命名项目 ${project.title}`"
+                @click="emit('renameProject', project)"
+              >
+                ···
+              </button>
               <button
                 type="button"
                 :title="project.status === 'ACTIVE' ? '归档项目' : '恢复项目'"
+                :aria-label="`${project.status === 'ACTIVE' ? '归档' : '恢复'}项目 ${project.title}`"
                 @click="emit('toggleProject', project)"
               >
                 {{ project.status === 'ACTIVE' ? '−' : '↺' }}
@@ -245,7 +254,7 @@ function sessionLabel(session: AiSession) {
 
 .ai-brand small {
   margin-top: 4px;
-  color: #8d98aa;
+  color: #59677d;
   font-size: 11px;
   letter-spacing: 0.02em;
 }
@@ -383,7 +392,7 @@ function sessionLabel(session: AiSession) {
 
 .ai-project-title__button > small {
   margin-left: 2px;
-  color: #9aa5b5;
+  color: #59677d;
   font-size: 11px;
   font-weight: 500;
 }
@@ -575,7 +584,7 @@ function sessionLabel(session: AiSession) {
 
 .ai-session-link small,
 .ai-project-title--plain small {
-  color: #8d98aa;
+  color: #59677d;
   font-size: 11px;
   font-weight: 500;
 }
@@ -603,7 +612,7 @@ function sessionLabel(session: AiSession) {
 
 .ai-sidebar__empty {
   margin: 25px 4px;
-  color: #8a95a8;
+  color: #59677d;
   font-size: 13px;
   line-height: 1.7;
 }
@@ -650,7 +659,7 @@ function sessionLabel(session: AiSession) {
 
 .ai-account small {
   margin-top: 3px;
-  color: #8d98aa;
+  color: #59677d;
   font-size: 12px;
 }
 

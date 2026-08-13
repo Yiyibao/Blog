@@ -31,7 +31,7 @@
 }
 
 .admin-login-copy h1 em {
-  color: var(--accent);
+  color: #8f334f;
   font-weight: 400;
 }
 .admin-login-copy > p:not(.eyebrow) {

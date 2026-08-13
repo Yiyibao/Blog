@@ -40,6 +40,14 @@ export function refreshReveals() {
 
   nodes.forEach((element) => {
     if (element.classList.contains('hero')) return;
+    // Admin screens are application surfaces, not landing-page reveals. Keeping
+    // them visible prevents the reveal opacity from blending text into the
+    // background during accessibility scans and while assistive technology is
+    // moving through the page.
+    if (element.closest('.admin-mode')) {
+      element.classList.add('is-visible');
+      return;
+    }
     const lite = LITE_CLASSES.some((cls) => element.classList.contains(cls));
     element.classList.add(lite ? 'reveal-lite' : 'reveal-item');
     const parent = element.closest(
@@ -76,6 +84,7 @@ export function refreshReveals() {
 
   nodes.forEach((element) => {
     if (element.classList.contains('hero')) return;
+    if (element.closest('.admin-mode')) return;
     revealObserver?.observe(element);
   });
 }

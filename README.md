@@ -4,7 +4,7 @@
 
 一个由 Vue 3 + TypeScript 前端与 Spring Boot + PostgreSQL 后端组成的个人博客。前后端拥有独立的依赖、构建和运行流程，通过 REST API 通信。
 
-> 当前唯一执行路线图为 [`docs/project-audit-and-execution-plan-2026-08-09.md`](docs/project-audit-and-execution-plan-2026-08-09.md)。`docs/checkpoints/` 保存阶段验收记录；其余带日期的计划与 checkpoint 仅作历史依据。
+> 当前年度执行路线图为 [`docs/annual-repair-optimization-roadmap-2026-08-10.md`](docs/annual-repair-optimization-roadmap-2026-08-10.md)，配套 Agent 提示词为 [`docs/prompts/annual-roadmap-agent-prompts-2026-08-10.md`](docs/prompts/annual-roadmap-agent-prompts-2026-08-10.md)。`docs/checkpoints/` 保存阶段验收记录；其余带日期的计划与 checkpoint 仅作历史依据。M12 本地年度审计见 [`docs/annual-audit-2027-07.md`](docs/annual-audit-2027-07.md)，Production GA 仍受外部发布门控制。
 
 ## 生产运行约束
 

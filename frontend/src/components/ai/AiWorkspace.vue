@@ -427,7 +427,12 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="ai-topbar__controls" aria-label="模型与推理设置" :title="selectedCapabilityLabel">
+        <div
+          class="ai-topbar__controls"
+          role="group"
+          aria-label="模型与推理设置"
+          :title="selectedCapabilityLabel"
+        >
           <label class="ai-selector">
             <span>供应商</span>
             <select
@@ -479,11 +484,11 @@ onMounted(async () => {
           >
             ⋮
           </button>
-          <div v-if="overflowOpen" class="ai-overflow-menu">
-            <button type="button" @click="openUtility('files')">▧ 附件与多模态输入</button>
-            <button type="button" @click="openUtility('memory')">✧ 真实记忆</button>
-            <button type="button" @click="openUtility('artifacts')">▤ 可下载产物</button>
-            <button type="button" @click="openUtility('timeline')">◷ 任务时间线</button>
+          <div v-if="overflowOpen" class="ai-overflow-menu" role="menu" aria-label="工作台工具">
+            <button type="button" role="menuitem" @click="openUtility('files')">▧ 附件与多模态输入</button>
+            <button type="button" role="menuitem" @click="openUtility('memory')">✧ 真实记忆</button>
+            <button type="button" role="menuitem" @click="openUtility('artifacts')">▤ 可下载产物</button>
+            <button type="button" role="menuitem" @click="openUtility('timeline')">◷ 任务时间线</button>
           </div>
         </div>
       </header>
@@ -517,11 +522,11 @@ onMounted(async () => {
     </section>
 
     <div v-if="utilityPanel" class="ai-utility-backdrop" @click.self="utilityPanel = null">
-      <aside class="ai-utility-drawer" aria-label="工作台工具面板">
+      <aside class="ai-utility-drawer" role="dialog" aria-modal="true" aria-labelledby="ai-utility-title">
         <header>
           <div>
             <p>Workspace tools</p>
-            <h2>{{ utilityTitle() }}</h2>
+            <h2 id="ai-utility-title">{{ utilityTitle() }}</h2>
           </div>
           <button type="button" aria-label="关闭工具面板" @click="utilityPanel = null">×</button>
         </header>
@@ -648,7 +653,7 @@ onMounted(async () => {
 
 .ai-context-chip--memory {
   border-color: #bde2c9;
-  color: #3e8b5e;
+  color: #276b40;
   background: #f6fcf7;
 }
 
@@ -682,7 +687,7 @@ onMounted(async () => {
 }
 
 .ai-selector span {
-  color: #8995a7;
+  color: #5c697c;
   font-size: 12px;
 }
 
@@ -776,7 +781,7 @@ onMounted(async () => {
 }
 
 .ai-loading {
-  color: #72819a;
+  color: #52627a;
   background: #f8faff;
 }
 
@@ -813,7 +818,7 @@ onMounted(async () => {
 
 .ai-utility-drawer > header p {
   margin: 0 0 5px;
-  color: #8995a7;
+  color: #5c697c;
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;

@@ -29,74 +29,79 @@ function formatUpdatedAt(value: string | null | undefined): string {
     <div class="sidebar-card glass-card">
       <h4 class="card-title">图例 · 分类</h4>
       <ul class="legend-list">
-        <li
-          v-for="item in legend"
-          :key="item.type"
-          class="legend-item"
-          :class="{ active: activeTypeFilter === item.type }"
-          role="button"
-          tabindex="0"
-          @click="emit('filterType', item.type)"
-          @keydown.enter.prevent="emit('filterType', item.type)"
-          @keydown.space.prevent="emit('filterType', item.type)"
-        >
-          <span class="legend-badge" :style="{ backgroundColor: item.color }">
-            <svg
-              v-if="item.type === 'POST'"
-              viewBox="0 0 24 24"
-              width="12"
-              height="12"
-              stroke="#fff"
-              fill="none"
-              stroke-width="2"
-            >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            <svg
-              v-else-if="item.type === 'NOTE'"
-              viewBox="0 0 24 24"
-              width="12"
-              height="12"
-              stroke="#fff"
-              fill="none"
-              stroke-width="2"
-            >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-            </svg>
-            <svg
-              v-else-if="item.type === 'DISH'"
-              viewBox="0 0 24 24"
-              width="12"
-              height="12"
-              stroke="#fff"
-              fill="none"
-              stroke-width="2"
-            >
-              <path d="M6 13.87A8 8 0 0 1 12 4a8 8 0 0 1 6 9.87" />
-              <line x1="4" y1="18" x2="20" y2="18" />
-            </svg>
-            <svg
-              v-else-if="item.type === 'SERIES'"
-              viewBox="0 0 24 24"
-              width="12"
-              height="12"
-              stroke="#fff"
-              fill="none"
-              stroke-width="2"
-            >
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
-            </svg>
-            <svg v-else viewBox="0 0 24 24" width="12" height="12" stroke="#fff" fill="none" stroke-width="2">
-              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-              <line x1="7" y1="7" x2="7.01" y2="7" />
-            </svg>
-          </span>
-          <span class="legend-label">{{ item.label }}</span>
-          <span class="legend-count">{{ item.count }}</span>
+        <li v-for="item in legend" :key="item.type">
+          <button
+            type="button"
+            class="legend-item"
+            :class="{ active: activeTypeFilter === item.type }"
+            @click="emit('filterType', item.type)"
+          >
+            <span class="legend-badge" :style="{ backgroundColor: item.color }">
+              <svg
+                v-if="item.type === 'POST'"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                stroke="#fff"
+                fill="none"
+                stroke-width="2"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <svg
+                v-else-if="item.type === 'NOTE'"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                stroke="#fff"
+                fill="none"
+                stroke-width="2"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+              <svg
+                v-else-if="item.type === 'DISH'"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                stroke="#fff"
+                fill="none"
+                stroke-width="2"
+              >
+                <path d="M6 13.87A8 8 0 0 1 12 4a8 8 0 0 1 6 9.87" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+              <svg
+                v-else-if="item.type === 'SERIES'"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                stroke="#fff"
+                fill="none"
+                stroke-width="2"
+              >
+                <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                <polyline points="2 17 12 22 22 17" />
+                <polyline points="2 12 12 17 22 12" />
+              </svg>
+              <svg
+                v-else
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                stroke="#fff"
+                fill="none"
+                stroke-width="2"
+              >
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <line x1="7" y1="7" x2="7.01" y2="7" />
+              </svg>
+            </span>
+            <span class="legend-label">{{ item.label }}</span>
+            <span class="legend-count">{{ item.count }}</span>
+          </button>
         </li>
       </ul>
     </div>

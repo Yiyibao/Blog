@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 const enabled = process.env.E2E_FULL_STACK === 'true';
@@ -10,9 +11,10 @@ test.describe('full-stack deterministic provider contract', () => {
   test('auth, private AI lifecycle, owner isolation, and real public rendering', async ({
     page,
     request,
-  }) => {
-    const admin = await login(request, 'admin', 'admin-pass-12345');
-    const partner = await login(request, 'partner', 'partner-pass-12345');
+  }, testInfo) => {
+    const clientIp = testClientIp(testInfo.project.name);
+    const admin = await login(request, 'admin', 'admin-pass-12345', clientIp);
+    const partner = await login(request, 'partner', 'partner-pass-12345', clientIp);
 
     const refresh = await request.post('/api/v1/auth/refresh');
     expect(refresh.ok()).toBe(true);
@@ -147,16 +149,80 @@ test.describe('full-stack deterministic provider contract', () => {
     await expect(page.locator('.offline-reading-banner')).toHaveCount(0);
     await expect(page.locator('.content-unavailable')).toHaveCount(0);
   });
+
+  test('authenticated admin, editor, AI, media, and graph routes have no severe axe violations', async ({
+    page,
+    request,
+  }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const admin = await login(request, 'admin', 'admin-pass-12345', testClientIp(testInfo.project.name));
+    await page.addInitScript((session) => {
+      window.sessionStorage.setItem('yubai-admin-token', session.token);
+      window.sessionStorage.setItem('yubai-admin-name', session.username);
+      window.sessionStorage.setItem('yubai-admin-expiry', session.expiresAt);
+      window.sessionStorage.setItem('yubai-admin-role', session.role ?? 'ADMIN');
+      window.sessionStorage.setItem('yubai-admin-display', session.displayName ?? 'Full-stack E2E admin');
+      window.sessionStorage.setItem('yubai-admin-capabilities', JSON.stringify(session.capabilities ?? []));
+    }, admin.session);
+
+    const routes = [
+      '/admin',
+      '/admin/notes',
+      '/admin/ai',
+      '/admin/attachments',
+      '/admin/media',
+      '/admin/graph',
+    ];
+    const failures: string[] = [];
+    for (const route of routes) {
+      await test.step(`audit ${route}`, async () => {
+        await page.goto(route, { waitUntil: 'domcontentloaded' });
+        const rootSelector =
+          route === '/admin/notes'
+            ? '.notes-studio'
+            : route === '/admin/ai'
+              ? '.ai-workspace'
+              : '.admin-console';
+        await expect(page.locator('.site-shell.admin-mode')).toHaveCount(1);
+        await expect(page.locator(rootSelector)).toHaveCount(1, { timeout: 10_000 });
+        await page.keyboard.press('Tab');
+        await expect(page.locator(':focus')).toHaveCount(1);
+
+        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+        const severe = results.violations.filter((violation) =>
+          ['serious', 'critical'].includes(violation.impact ?? ''),
+        );
+        if (severe.length) {
+          failures.push(
+            `${route}: ${JSON.stringify({
+              violations: severe.map((violation) => ({
+                id: violation.id,
+                nodes: violation.nodes.map((node) => node.target),
+              })),
+            })}`,
+          );
+        }
+      });
+    }
+    expect(failures.join('\n')).toBe('');
+  });
 });
 
-async function login(request: APIRequestContext, username: string, password: string) {
+function testClientIp(projectName: string) {
+  return projectName.includes('firefox') ? '198.51.100.12' : '198.51.100.11';
+}
+
+async function login(request: APIRequestContext, username: string, password: string, clientIp: string) {
+  const headers = { 'X-Forwarded-For': clientIp };
   const challengeResponse = await request.get(
     `/api/v1/auth/challenge?username=${encodeURIComponent(username)}`,
+    { headers },
   );
   expect(challengeResponse.ok()).toBe(true);
   const challenge = (await challengeResponse.json()).data;
   const nonce = solvePow(challenge.salt, challenge.difficulty);
   const response = await request.post('/api/v1/auth/login', {
+    headers,
     data: {
       username,
       password,
@@ -168,8 +234,15 @@ async function login(request: APIRequestContext, username: string, password: str
   if (!response.ok()) {
     throw new Error(`${username} login failed (${response.status()}): ${body}`);
   }
-  const token = JSON.parse(body).data.token as string;
-  return { token, headers: { Authorization: `Bearer ${token}` } };
+  const session = JSON.parse(body).data as {
+    token: string;
+    username: string;
+    expiresAt: string;
+    role?: string;
+    displayName?: string;
+    capabilities?: string[];
+  };
+  return { token: session.token, headers: { Authorization: `Bearer ${session.token}` }, session };
 }
 
 function solvePow(salt: string, difficulty: number) {

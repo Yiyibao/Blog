@@ -67,7 +67,12 @@ function formatBytes(value: number) {
 </script>
 
 <template>
-  <form class="ai-composer" :class="{ 'ai-composer--preview': props.preview }" @submit.prevent="submit">
+  <form
+    class="ai-composer"
+    :class="{ 'ai-composer--preview': props.preview }"
+    aria-label="AI 任务输入"
+    @submit.prevent="submit"
+  >
     <div v-if="props.selectedFiles?.length" class="ai-composer__files" aria-label="已选输入">
       <span v-for="file in props.selectedFiles" :key="file.id" class="ai-composer__file-chip">
         <b>{{ file.mediaType.startsWith('image/') ? '图片' : '文件' }}</b>
@@ -90,6 +95,7 @@ function formatBytes(value: number) {
         type="button"
         class="ai-composer__plus"
         :aria-expanded="attachMenuOpen"
+        aria-controls="ai-attach-menu"
         aria-label="添加图片或文件"
         @click="attachMenuOpen = !attachMenuOpen"
       >
@@ -100,6 +106,7 @@ function formatBytes(value: number) {
         id="ai-task-prompt"
         data-testid="ai-chat-input"
         v-model="prompt"
+        aria-label="AI 消息"
         rows="1"
         maxlength="32000"
         :disabled="props.running"
@@ -119,7 +126,13 @@ function formatBytes(value: number) {
       </button>
     </div>
 
-    <div v-if="attachMenuOpen && !props.running" class="ai-attach-menu" role="menu">
+    <div
+      v-if="attachMenuOpen && !props.running"
+      id="ai-attach-menu"
+      class="ai-attach-menu"
+      role="menu"
+      aria-label="添加输入"
+    >
       <button type="button" role="menuitem" @click="openPicker('image/*')">
         <span aria-hidden="true">▧</span> 上传图片
       </button>
@@ -150,7 +163,14 @@ function formatBytes(value: number) {
       </label>
     </div>
 
-    <input ref="fileInput" class="ai-file-input" type="file" multiple @change="onFilesSelected" />
+    <input
+      ref="fileInput"
+      class="ai-file-input"
+      type="file"
+      multiple
+      aria-label="上传图片或文件"
+      @change="onFilesSelected"
+    />
     <p class="ai-composer__hint">AI 可能会犯错，请核对重要信息</p>
   </form>
 </template>
@@ -346,7 +366,7 @@ function formatBytes(value: number) {
 
 .ai-composer__hint {
   margin: 10px 0 0;
-  color: #a0aaba;
+  color: #5c697c;
   font-size: 11px;
   text-align: center;
 }

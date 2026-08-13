@@ -20,6 +20,8 @@ describe('AI Workspace components', () => {
   it('composer exposes an accessible cancel action while a task runs', async () => {
     const wrapper = mount(AiTaskComposer, { props: { running: true, selectedCount: 2 } });
 
+    expect(wrapper.get('form').attributes('aria-label')).toBe('AI 任务输入');
+    expect(wrapper.get('textarea').attributes('aria-label')).toBe('AI 消息');
     expect(wrapper.get('textarea').attributes('disabled')).toBeDefined();
     await wrapper.get('button').trigger('click');
     expect(wrapper.emitted('cancel')).toHaveLength(1);
@@ -42,9 +44,11 @@ describe('AI Workspace components', () => {
     };
     const wrapper = mount(AiMemoryPanel, { props: { memories: [base] } });
 
+    expect(wrapper.get('form.ai-memory-form').attributes('aria-label')).toBe('创建记忆');
     expect(wrapper.text()).toContain('PROPOSED');
     await wrapper.get('button.ai-link-button').trigger('click');
     expect(wrapper.emitted('confirm')?.[0]?.[0]).toEqual(base);
+    expect(wrapper.get('button.ai-link-button').attributes('aria-label')).toContain('确认记忆');
     expect(wrapper.findAll('button').some((button) => button.text() === '忘记')).toBe(true);
   });
 

@@ -207,7 +207,7 @@ onMounted(load);
   padding: 3px 7px;
   border-radius: 7px;
   background: color-mix(in srgb, #2f7d4f 12%, var(--surface));
-  color: #2f7d4f;
+  color: #25603e;
 }
 @media (max-width: 720px) {
   .media-filters {

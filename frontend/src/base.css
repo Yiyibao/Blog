@@ -2217,7 +2217,7 @@ a {
 }
 .site-shell:not(.admin-mode) .button.primary {
   color: #fff;
-  background: var(--sakura-deep);
+  background: #8f334f;
   box-shadow: 0 12px 30px rgba(185, 99, 121, 0.2);
 }
 .dark .site-shell:not(.admin-mode) .button.primary {

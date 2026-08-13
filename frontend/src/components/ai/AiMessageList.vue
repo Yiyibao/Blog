@@ -153,7 +153,7 @@ function artifactDownload(artifact: AiArtifact) {
                 class="ai-inline-artifact"
                 :class="{ 'ai-inline-artifact--image': isImage(artifact) }"
               >
-                <div v-if="isImage(artifact)" class="ai-cover-preview" aria-label="生成的封面预览">
+                <div v-if="isImage(artifact)" class="ai-cover-preview" role="img" aria-label="生成的封面预览">
                   <span class="ai-cover-preview__orb ai-cover-preview__orb--one" />
                   <span class="ai-cover-preview__orb ai-cover-preview__orb--two" />
                   <span class="ai-cover-preview__bars"><i /><i /><i /><i /></span>
@@ -360,7 +360,7 @@ function artifactDownload(artifact: AiArtifact) {
 
 .ai-input-file-card small {
   margin-top: 3px;
-  color: #8c98ab;
+  color: #5c697c;
   font-size: 11px;
 }
 
@@ -516,7 +516,7 @@ function artifactDownload(artifact: AiArtifact) {
   height: 54px;
   border-radius: 9px;
   color: #fff;
-  background: #e93531;
+  background: #c52224;
   font-size: 12px;
   font-weight: 800;
 }
@@ -540,7 +540,7 @@ function artifactDownload(artifact: AiArtifact) {
 
 .ai-file-artifact small {
   margin-top: 5px;
-  color: #8995a7;
+  color: #5c697c;
   font-size: 11px;
 }
 
@@ -566,7 +566,7 @@ function artifactDownload(artifact: AiArtifact) {
   align-items: center;
   gap: 7px;
   margin: -7px 0 0 62px;
-  color: #25a45c;
+  color: #19733d;
   font-size: 13px;
   font-weight: 600;
 }
@@ -576,7 +576,7 @@ function artifactDownload(artifact: AiArtifact) {
   place-items: center;
   width: 18px;
   height: 18px;
-  border: 1.5px solid #25a45c;
+  border: 1.5px solid #19733d;
   border-radius: 50%;
   font-size: 12px;
 }

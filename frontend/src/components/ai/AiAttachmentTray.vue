@@ -156,6 +156,7 @@ onBeforeUnmount(() => {
             type="button"
             class="ai-file-thumb"
             :title="`预览 ${file.name}`"
+            :aria-label="`预览 ${file.name}`"
             :disabled="file.status !== 'READY'"
             @click="preview(file)"
           >

@@ -15,8 +15,13 @@ export default defineConfig({
   projects: [
     {
       name: 'offline-chromium',
-      testMatch: /(?:public-site|pwa-offline)\.spec\.ts/,
+      testMatch: /(?:public-site|pwa-offline|key-pages-accessibility)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], channel: process.env.CI ? undefined : 'chrome' },
+    },
+    {
+      name: 'offline-firefox',
+      testMatch: /key-pages-accessibility\.spec\.ts/,
+      use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'online-chromium',
@@ -25,7 +30,7 @@ export default defineConfig({
     },
     {
       name: 'online-firefox',
-      testMatch: /online-contract\.spec\.ts/,
+      testMatch: /(?:online-contract|full-stack)\.spec\.ts/,
       use: { ...devices['Desktop Firefox'] },
     },
     {

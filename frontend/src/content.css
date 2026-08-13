@@ -755,9 +755,9 @@
   background: #1a1b18;
 }
 .note-top-actions .publish-note {
-  background: #b45f78;
+  background: #8f334f;
   color: #fff;
-  border-color: #b45f78;
+  border-color: #8f334f;
   font-weight: 600;
 }
 .note-top-actions .publish-note:hover {
@@ -1291,7 +1291,7 @@
   opacity: 1;
 }
 .outline-note code {
-  color: #986847;
+  color: #704827;
 }
 .attachment-panel {
   margin-top: 28px;

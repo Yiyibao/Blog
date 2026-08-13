@@ -59,6 +59,7 @@ M2 把上述能力接入文章、笔记、菜谱、媒体、搜索和后台，�
 | M9 | **完成；未自动发布/未部署** | categories 路由契约、URL 可复现 typed search、中文规范化与零结果评测、GlobalSearch/SearchPage/AI 只读工具统一查询语义、公开/登录笔记隔离、匿名哈希/零结果/延迟/点击指标完成；V60、`docs/checkpoints/m9-search-retrieval-2026-08-13.md`，OpenAPI/前端类型同步并通过集成回归 | **M10 可启动：YES**；Production GA 仍为 **NO** |
 | M10 | **完成；未自动发布/未部署** | V61 显式关系与审计、反向链接、后台 CRUD/导入预览、AI 关系 proposal/领域服务审批、列表等价视图、schemaVersion 2.0 导出、1,000 节点确定性/性能基准完成；`docs/checkpoints/m10-graph-relations-2026-08-13.md`，OpenAPI/前端类型与迁移 manifest 同步并通过回归 | **M11 可启动：YES**；Production GA 仍为 **NO** |
 | M11 | **完成；未自动发布/未部署** | V62 持久化周购物清单、同单位归并、来源/原始数量快照、勾选/分类/手工项/备注/清理、乐观锁、删除菜谱后快照保留、静态常备项建议、私有 PWA 缓存边界和有界离线队列完成；后端 817、前端 835 测试，全量构建与 Chromium/Firefox/移动 Chromium 在线 E2E 7/7 通过；`docs/checkpoints/m11-kitchen-pwa-2026-08-13.md` | **M12 可启动：YES**；Production GA 仍为 **NO** |
+| M12 | **本地年度验收完成；生产部署待外部门禁** | 隔离 V62 DB/存储恢复与 checksum/数量/hash/Flyway/query audit 通过，实测 RTO 8.8s；后端 817、前端 835、公开关键页 Axe Chromium 14/14、Firefox 9/9、全栈认证后台/AI/媒体/图谱 Chromium+Firefox 10/10；无 serious/critical Axe 违规；构建 49 JS/1,500,807 bytes、PWA 100 entries、迁移 manifest 与依赖审计通过。详细证据见 `docs/checkpoints/m12-annual-audit-2026-08-13.md` 与 `docs/annual-audit-2027-07.md` | **Production GA：NO**；需生产环境 reviewer/secrets/known-host 与真实备份、线上指标、人工读屏抽查后再发布 |
 
 M1 的完整证据、文件范围、风险和未执行项见
 [`docs/checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md`](checkpoints/m1-ai-multimodal-memory-artifacts-2026-08-10.md)。2026-08-10 发布跟进已完成 commit、push、迁移前备份、V51→V53 生产迁移、原子部署和线上冒烟；四个后端开关与前端 Workspace 开关继续关闭，未开放 Production GA，未执行真实模型调用。

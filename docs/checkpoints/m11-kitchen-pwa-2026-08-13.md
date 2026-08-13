@@ -22,7 +22,7 @@ M11 已完成并通过专项与全量验收，尚未部署；Production GA 继�
 - 隔离 PostgreSQL + Spring Boot + fake provider 在线 E2E：Chromium、Firefox、移动 Chromium 共 7/7；未发起真实外部模型请求。
 - OpenAPI 重新生成并通过契约审计，V62 migration manifest 与 `git diff --check` 通过；PWA runtime cache 仅保留公开 GET 内容和图片缓存规则。
 
-## 待完成
+## 后续收口
 
-- 本批次全量门禁与在线/离线 E2E 已完成；待执行最终 commit/push 后进入 M12。
-- M12 年度恢复/灾备/可访问性/性能收口完成前不部署生产。
+- M11 已于提交 `7913319` 完成 commit/push。
+- M12 年度恢复/灾备/可访问性/性能验收现已在 [`docs/checkpoints/m12-annual-audit-2026-08-13.md`](m12-annual-audit-2026-08-13.md) 记录；Production GA 仍受真实生产指标、人工读屏和 GitHub production Environment 门禁控制。

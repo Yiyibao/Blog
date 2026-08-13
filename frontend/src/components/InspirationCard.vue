@@ -205,7 +205,7 @@ onMounted(() => {
   color: var(--muted);
 }
 .calendar-category {
-  color: var(--accent);
+  color: #8f334f;
   font-weight: 600;
   font-size: 11px;
 }
@@ -219,7 +219,7 @@ onMounted(() => {
     800 64px/1 Georgia,
     'Times New Roman',
     serif;
-  color: var(--accent);
+  color: #8f334f;
   letter-spacing: -0.04em;
 }
 .date-weekday {
@@ -273,9 +273,9 @@ onMounted(() => {
   transition: all 0.2s;
 }
 .tear-btn {
-  background: var(--accent);
+  background: #8f334f;
   color: #fff;
-  border-color: var(--accent);
+  border-color: #8f334f;
 }
 .tear-btn:hover {
   transform: translateY(-1px);
